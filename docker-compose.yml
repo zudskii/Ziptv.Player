@@ -1,0 +1,64 @@
+# Local / self-hosted stack: MongoDB + ZIPTV (API and client on one origin).
+#   cp .env.example .env                 # set STREAM_TOKEN_SECRET (+ LEGACY_* for the 1.x migration)
+#   docker compose up -d --build         # → http://localhost:8080
+#   docker compose run --rm tools npm run migrate:legacy -w @ziptv/server -- --dry-run
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    # Only on this machine's loopback: lets you inspect data with Compass/mongosh.
+    ports:
+      - '127.0.0.1:${MONGO_PORT:-27018}:27017'
+    healthcheck:
+      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ziptv:local
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/ziptv
+      STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
+      TRUST_PROXY: ${TRUST_PROXY:-0}
+      # true only for a home server whose playlists point to LAN addresses (e.g. TVHeadend).
+      ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-false}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    ports:
+      - '${PORT:-8080}:8080'
+    # Live streams get time to finish during `docker compose down` / redeploys.
+    stop_grace_period: 20s
+
+  # One-off tasks (migration, tests) with dev dependencies and sources — never runs by itself.
+  #   docker compose run --rm tools npm run migrate:legacy -w @ziptv/server -- --dry-run
+  #   docker compose run --rm tools npm test
+  tools:
+    profiles: ['tools']
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: build
+    image: ziptv:tools
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/ziptv
+      LOG_LEVEL: warn
+      LEGACY_MONGO_URI: ${LEGACY_MONGO_URI:-}
+      LEGACY_FILES_DIR: /legacy
+      TEST_MONGO_URI: mongodb://mongo:27017
+    volumes:
+      - ${LEGACY_FILES_DIR:-./legacy-m3ulist}:/legacy:ro
+
+volumes:
+  mongo-data:

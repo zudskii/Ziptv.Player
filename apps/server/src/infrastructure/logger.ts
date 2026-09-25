@@ -1,0 +1,21 @@
+import { pino, type Logger } from 'pino';
+
+import type { AppConfig } from '../config/env.js';
+
+export type { Logger };
+
+/** Structured JSON logs in production, pretty logs in development. Secrets are redacted. */
+export function createLogger(config: Pick<AppConfig, 'log' | 'env'>): Logger {
+  return pino({
+    level: config.log.level,
+    base: { service: 'ziptv-server' },
+    redact: {
+      paths: ['req.headers.authorization', 'req.headers.cookie', 'headers.authorization', 'headers.cookie', '*.token'],
+      censor: '[redacted]',
+    },
+    transport:
+      config.env === 'development'
+        ? { target: 'pino-pretty', options: { colorize: true, translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname,service' } }
+        : undefined,
+  });
+}

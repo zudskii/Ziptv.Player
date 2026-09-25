@@ -1,0 +1,12 @@
+{
+  "name": "@ziptv/contracts",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Types-only API contract shared by @ziptv/server and @ziptv/client. No runtime code.",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts"
+    }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "ziptv",
+  "version": "2.0.0",
+  "private": true,
+  "description": "ZIPTV — M3U/IPTV web player (server + client monorepo)",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20.12"
+  },
+  "scripts": {
+    "dev:server": "npm run dev -w @ziptv/server",
+    "dev:client": "npm run dev -w @ziptv/client",
+    "build": "npm run build -w @ziptv/server && npm run build -w @ziptv/client",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "lint": "eslint ."
+  },
+  "type": "module",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.12.0",
+    "typescript-eslint": "^8.70.1"
+  }
+}

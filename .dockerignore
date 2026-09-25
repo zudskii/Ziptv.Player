@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+**/coverage
+**/.env
+**/.env.*
+!**/.env.example
+**/*.log
+.git
+.github
+Dockerfile
+docker-compose.yml
+legacy-m3ulist
+ 

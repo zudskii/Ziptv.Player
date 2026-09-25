@@ -1,0 +1,17 @@
+# Apache/LiteSpeed static hosting (e.g. InfinityFree) for the client build.
+# SPA fallback: deep links like /watch/<playlist>/<channel> must serve index.html.
+Options -MultiViews
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^ index.html [QSA,L]
+
+<IfModule mod_headers.c>
+  # index.html must always be revalidated; content-hashed build files never change.
+  <FilesMatch "^index\.html$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  <FilesMatch "-[A-Za-z0-9_-]{8}\.(js|css)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+</IfModule>

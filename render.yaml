@@ -1,0 +1,18 @@
+# Render Blueprint: one web service (API + client, same origin) built from the Dockerfile.
+# MongoDB: use MongoDB Atlas and set MONGO_URI in the Render dashboard.
+services:
+  - type: web
+    name: ziptv
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /readyz
+    envVars:
+      - key: MONGO_URI
+        sync: false
+      - key: STREAM_TOKEN_SECRET
+        generateValue: true
+      # Render's proxy is one hop; use 2 if Cloudflare proxies in front of Render.
+      - key: TRUST_PROXY
+        value: '1'
+      - key: LOG_LEVEL
+        value: info
