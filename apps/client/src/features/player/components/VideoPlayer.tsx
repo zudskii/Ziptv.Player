@@ -1,9 +1,10 @@
-import type { ChannelDto } from '@ziptv/contracts';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import type { ContentRefDto } from '@ziptv/contracts';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 
+import { cn } from '../../../lib/cn';
 import { changeVolume, restoreAudio, setMuted, toggleFullscreen, toggleMute, togglePlay } from '../media-actions';
 import { usePlayerPrefs } from '../player-prefs';
-import { useChannelPlayback, usePlaybackController } from '../use-playback';
+import { useContentPlayback, usePlaybackController } from '../use-playback';
 import { usePlayerShortcuts } from '../use-player-shortcuts';
 import { useVideoState } from '../use-video-state';
 import { PlayerControls } from './PlayerControls';
@@ -12,17 +13,24 @@ import { PlayerOverlay } from './PlayerOverlay';
 const CONTROLS_HIDE_DELAY_MS = 2500;
 
 interface VideoPlayerProps {
-  playlistId: string | undefined;
-  channel: ChannelDto | undefined;
-  onNext: () => void;
-  onPrevious: () => void;
+  content: ContentRefDto | undefined;
+  /** Accessible name of the video element. */
+  title?: string;
+  emptyLabel?: string;
+  onNext?: () => void;
+  onPrevious?: () => void;
+  onAlternate?: (ref: ContentRefDto) => void;
+  onBack?: () => void;
+  /** Drawn over the video while controls are visible (channel logo, now/next, timeline). */
+  infoOverlay?: ReactNode;
+  className?: string;
 }
 
-export function VideoPlayer({ playlistId, channel, onNext, onPrevious }: VideoPlayerProps) {
+export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, onAlternate, onBack, infoOverlay, className }: VideoPlayerProps) {
   const { videoRef, video, controller, snapshot } = usePlaybackController();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const state = useVideoState(video, container);
-  useChannelPlayback(controller, playlistId, channel?.key);
+  useContentPlayback(controller, content);
 
   // --- persisted volume ------------------------------------------------------------------
   const saveVolume = usePlayerPrefs((prefs) => prefs.setVolume);
@@ -48,9 +56,12 @@ export function VideoPlayer({ playlistId, channel, onNext, onPrevious }: VideoPl
     if (hideTimer.current) clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setControlsVisible(false), CONTROLS_HIDE_DELAY_MS);
   }, []);
-  useEffect(() => () => {
-    if (hideTimer.current) clearTimeout(hideTimer.current);
-  }, []);
+  useEffect(
+    () => () => {
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    },
+    [],
+  );
   const showControls = controlsVisible || state.paused || snapshot.status !== 'playing';
 
   usePlayerShortcuts({
@@ -58,15 +69,15 @@ export function VideoPlayer({ playlistId, channel, onNext, onPrevious }: VideoPl
     toggleMute: () => toggleMute(video),
     toggleFullscreen: () => void toggleFullscreen(container, video),
     volume: (delta) => changeVolume(video, delta),
-    nextChannel: onNext,
-    previousChannel: onPrevious,
+    nextChannel: () => onNext?.(),
+    previousChannel: () => onPrevious?.(),
   });
 
   return (
     <div
       ref={setContainer}
       data-player-status={snapshot.status}
-      className="group relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-white/10 [&:fullscreen]:rounded-none"
+      className={cn('group relative aspect-video w-full overflow-hidden rounded-xl bg-black shadow-2xl ring-1 ring-white/10 [&:fullscreen]:rounded-none', className)}
       onMouseMove={revealControls}
       onTouchStart={revealControls}
       onClick={() => {
@@ -75,18 +86,27 @@ export function VideoPlayer({ playlistId, channel, onNext, onPrevious }: VideoPl
       }}
       onDoubleClick={() => void toggleFullscreen(container, video)}
     >
-      <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="none" aria-label={channel?.name ?? 'Video player'} />
+      <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="none" aria-label={title ?? 'Video player'} />
+
+      {infoOverlay && content && snapshot.status !== 'error' && (
+        <div className={cn('pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-300', showControls ? 'opacity-100' : 'opacity-0')}>
+          {infoOverlay}
+        </div>
+      )}
 
       <PlayerOverlay
         snapshot={snapshot}
-        hasChannel={Boolean(channel)}
+        hasContent={Boolean(content)}
+        emptyLabel={emptyLabel}
         onRetry={() => controller?.retry()}
         onNext={onNext}
+        onBack={onBack}
+        onAlternate={onAlternate}
         onStart={() => void video?.play().catch(() => undefined)}
         onUnmute={() => setMuted(video, false)}
       />
 
-      {channel && (
+      {content && (
         <PlayerControls
           video={video}
           container={container}

@@ -1,5 +1,5 @@
 # Local / self-hosted stack: MongoDB + ZIPTV (API and client on one origin).
-#   cp .env.example .env                 # set STREAM_TOKEN_SECRET (+ LEGACY_* for the 1.x migration)
+#   cp .env.example .env                 # set STREAM_TOKEN_SECRET and DATA_ENCRYPTION_KEY
 #   docker compose up -d --build         # → http://localhost:8080
 #   docker compose run --rm tools npm run migrate:legacy -w @ziptv/server -- --dry-run
 services:
@@ -29,6 +29,7 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/ziptv
       STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY in .env}
       TRUST_PROXY: ${TRUST_PROXY:-0}
       # true only for a home server whose playlists point to LAN addresses (e.g. TVHeadend).
       ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-false}
@@ -54,6 +55,8 @@ services:
     environment:
       MONGO_URI: mongodb://mongo:27017/ziptv
       LOG_LEVEL: warn
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY in .env}
+      STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
       LEGACY_MONGO_URI: ${LEGACY_MONGO_URI:-}
       LEGACY_FILES_DIR: /legacy
       TEST_MONGO_URI: mongodb://mongo:27017

@@ -1,16 +1,21 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { lazy, Suspense } from 'react';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { lazy, Suspense, useEffect, type ReactNode } from 'react';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router';
 import { Toaster } from 'sonner';
 
+import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
 import { ApiError } from '../lib/api-client';
 import { SessionGate } from '../features/session/SessionGate';
+import { installThemeSync, resolveTheme, useThemeStore } from '../features/theme/theme-store';
 import { HomePage } from '../pages/HomePage';
 import { NotFoundPage } from '../pages/NotFoundPage';
+import { OnboardingPage } from '../pages/onboarding/OnboardingPage';
+import { SettingsPage } from '../pages/SettingsPage';
+import { SourcesPage } from '../pages/SourcesPage';
 
-// The player (and its hooks/virtual list) is only downloaded when someone opens it.
-const WatchPage = lazy(() => import('../pages/watch/WatchPage').then((module) => ({ default: module.WatchPage })));
+// Player-heavy screens are only downloaded when opened.
+const LivePage = lazy(() => import('../pages/live/LivePage').then((module) => ({ default: module.LivePage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -23,27 +28,40 @@ const queryClient = new QueryClient({
 });
 
 export function App() {
+  useEffect(() => installThemeSync(), []);
+  const theme = resolveTheme(useThemeStore((state) => state.preference));
+
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<HomePage />} />
-          <Route
-            path="/watch/:playlistId?/:channelKey?"
-            element={
-              <SessionGate>
-                <Suspense fallback={<Spinner className="min-h-dvh justify-center" label="Loading player…" />}>
-                  <WatchPage />
-                </Suspense>
-              </SessionGate>
-            }
-          />
-          {/* 1.x URLs */}
-          <Route path="/tv/*" element={<Navigate to="/watch" replace />} />
+          <Route path="/welcome" element={<Gate><OnboardingPage /></Gate>} />
+          <Route element={<Gate><AppShell /></Gate>}>
+            <Route index element={<HomePage />} />
+            <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />
+            <Route path="sources" element={<SourcesPage />} />
+            <Route path="settings" element={<SettingsPage />} />
+          </Route>
+          {/* 2.x / 1.x URLs (playlist ids are source ids since 3.0) */}
+          <Route path="/watch/:playlistId?/:channelKey?" element={<LegacyWatchRedirect />} />
+          <Route path="/tv/*" element={<Navigate to="/live" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
-      <Toaster theme="dark" position="bottom-right" richColors closeButton />
+      <Toaster theme={theme} position="bottom-right" richColors closeButton />
     </QueryClientProvider>
   );
+}
+
+function Gate({ children }: { children: ReactNode }) {
+  return <SessionGate>{children}</SessionGate>;
+}
+
+function Lazy({ children }: { children: ReactNode }) {
+  return <Suspense fallback={<Spinner className="min-h-[50vh] justify-center" label="Loading…" />}>{children}</Suspense>;
+}
+
+function LegacyWatchRedirect() {
+  const { playlistId, channelKey } = useParams();
+  return <Navigate to={`/live${playlistId ? `/${playlistId}` : ''}${channelKey ? `/${channelKey}` : ''}`} replace />;
 }

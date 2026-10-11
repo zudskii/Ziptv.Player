@@ -1,7 +1,8 @@
-import type { PlaybackCandidateDto, PlaybackPlanDto } from '@ziptv/contracts';
+import type { AlternateStreamDto, PlaybackCandidateDto, PlaybackPlanDto, ProblemKind } from '@ziptv/contracts';
 
 import { resolveApiUrl } from '../../config';
 import { ApiError, errorMessage } from '../../lib/api-client';
+import { problemOf } from '../../lib/problems';
 import { loadEngine as defaultLoadEngine, type EngineLoader } from './engines';
 import { EngineError, type EngineHandle, type QualityLevel } from './engines/types';
 
@@ -15,12 +16,16 @@ export interface PlaybackAttempt {
 }
 
 export interface PlaybackFailure {
+  /** Which error screen to show (stream unavailable, unsupported format, locked…). */
+  problem: ProblemKind;
   message: string;
   /** One line per failed candidate — shown under "technical details". */
   details: string[];
   /** Web-page entries (YouTube…) can be opened externally. */
   externalUrl?: string;
   retryable: boolean;
+  /** "Try alternate stream": the same channel in other sources. */
+  alternates: AlternateStreamDto[];
 }
 
 export interface PlaybackSnapshot {
@@ -31,6 +36,8 @@ export interface PlaybackSnapshot {
   quality: number;
   /** Autoplay with sound was blocked; playback started muted. */
   mutedByAutoplayPolicy: boolean;
+  /** The plan being played (content info, resume position, next episode, alternates). */
+  plan: PlaybackPlanDto | null;
 }
 
 export const IDLE_SNAPSHOT: PlaybackSnapshot = {
@@ -40,6 +47,7 @@ export const IDLE_SNAPSHOT: PlaybackSnapshot = {
   qualities: [],
   quality: -1,
   mutedByAutoplayPolicy: false,
+  plan: null,
 };
 
 export type PlanResolver = (signal: AbortSignal) => Promise<PlaybackPlanDto>;
@@ -143,7 +151,7 @@ export class PlaybackController {
     this.cancelPending();
     this.teardownEngine();
     this.abort = new AbortController();
-    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1 });
+    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1, ...(status === 'resolving' ? { plan: null } : {}) });
 
     let plan: PlaybackPlanDto;
     try {
@@ -155,6 +163,7 @@ export class PlaybackController {
       return;
     }
     if (generation !== this.generation) return;
+    this.update({ plan });
 
     const details: string[] = [];
     const kinds = new Set<string>();
@@ -183,11 +192,13 @@ export class PlaybackController {
 
     const codecOnly = [...kinds].every((kind) => kind === 'unsupported' || kind === 'media');
     this.fail({
+      problem: codecOnly ? 'unsupported_format' : 'stream_unavailable',
       message: codecOnly
         ? 'This browser cannot decode this stream (unsupported format or codec). Try another browser or device.'
-        : 'This channel could not be played right now.',
+        : "ZIPTV couldn't connect to this stream.",
       details,
       retryable: true,
+      alternates: plan.alternates,
     });
   }
 
@@ -215,7 +226,13 @@ export class PlaybackController {
   private onRuntimeFailure(generation: number, error: EngineError | Error): void {
     if (generation !== this.generation) return;
     if (this.reconnects >= this.maxReconnects) {
-      this.fail({ message: 'The stream stopped and could not be resumed.', details: [errorMessage(error)], retryable: true });
+      this.fail({
+        problem: 'stream_unavailable',
+        message: 'The stream stopped and could not be resumed.',
+        details: [errorMessage(error)],
+        retryable: true,
+        alternates: this.snapshot.plan?.alternates ?? [],
+      });
       return;
     }
     const delay = Math.min(8_000, 1_000 * 2 ** this.reconnects);
@@ -302,13 +319,15 @@ function planFailure(error: unknown): PlaybackFailure {
   if (error instanceof ApiError) {
     const details = (error.details ?? {}) as { url?: unknown; reason?: unknown };
     return {
+      problem: problemOf(error),
       message: error.message,
       details: error.requestId ? [`request ${error.requestId}`] : [],
       externalUrl: typeof details.url === 'string' ? details.url : undefined,
-      retryable: error.code !== 'UNPLAYABLE' && error.code !== 'NOT_FOUND',
+      retryable: error.code !== 'UNPLAYABLE' && error.code !== 'NOT_FOUND' && error.code !== 'PARENTAL_LOCKED',
+      alternates: [],
     };
   }
-  return { message: errorMessage(error), details: [], retryable: true };
+  return { problem: 'stream_unavailable', message: errorMessage(error), details: [], retryable: true, alternates: [] };
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {

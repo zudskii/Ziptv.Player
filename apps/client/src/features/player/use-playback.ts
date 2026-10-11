@@ -1,5 +1,5 @@
-import type { PlaybackPlanDto, ResolvePlaybackRequest } from '@ziptv/contracts';
-import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
+import type { ContentRefDto, PlaybackPlanDto, ResolvePlaybackRequest } from '@ziptv/contracts';
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 
 import { config } from '../../config';
 import { apiRequest } from '../../lib/api-client';
@@ -38,14 +38,36 @@ export function usePlaybackController() {
   return { videoRef, video: state?.video ?? null, controller, snapshot };
 }
 
-/** Starts/stops playback whenever the selected channel changes. */
-export function useChannelPlayback(controller: PlaybackController | null, playlistId: string | undefined, channelKey: string | undefined) {
+/** Stable identity of a content reference (effects re-run only when *what* to play changes). */
+export function contentKey(content: ContentRefDto | undefined | null): string {
+  if (!content) return '';
+  switch (content.type) {
+    case 'episode':
+      return `episode:${content.sourceId}:${content.seriesKey}:${content.key}`;
+    case 'catchup':
+      return `catchup:${content.sourceId}:${content.key}:${content.start}`;
+    default:
+      return `${content.type}:${content.sourceId}:${content.key}`;
+  }
+}
+
+/** Starts/stops playback whenever the selected content changes. */
+export function useContentPlayback(controller: PlaybackController | null, content: ContentRefDto | undefined, unlockToken?: string | null) {
+  const key = contentKey(content);
+  const latest = useRef(content);
+  useEffect(() => {
+    latest.current = content;
+  });
+
   useEffect(() => {
     if (!controller) return;
-    if (!playlistId || !channelKey) {
+    const current = latest.current;
+    if (!key || !current) {
       controller.stop();
       return;
     }
-    controller.play((signal) => resolvePlayback({ playlistId, channelKey, secureContext: config.isSecurePage }, signal));
-  }, [controller, playlistId, channelKey]);
+    controller.play((signal) =>
+      resolvePlayback({ content: current, secureContext: config.isSecurePage, ...(unlockToken ? { unlockToken } : {}) }, signal),
+    );
+  }, [controller, key, unlockToken]);
 }

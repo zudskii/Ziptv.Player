@@ -61,9 +61,22 @@ function fakeLoader(behaviours: Behaviour[]) {
 }
 
 const plan = (...urls: string[]): PlaybackPlanDto => ({
-  channel: { key: 'k', name: 'Ch', groups: [], logo: null, tvgId: null, kind: 'hls', unplayableReason: null },
+  sessionId: '00000000-0000-4000-8000-000000000000',
+  content: {
+    ref: { type: 'channel', sourceId: 'a'.repeat(24), key: 'k' },
+    mode: 'live',
+    title: 'Ch',
+    subtitle: null,
+    image: null,
+    durationSecs: null,
+    channel: { key: 'k', name: 'Ch', groups: [], logo: null, tvgId: null, kind: 'hls', unplayableReason: null, catchupDays: null, hasEpg: false, locked: false },
+    programme: null,
+  },
   candidates: urls.map((url, index) => ({ engine: 'hls', url, via: index === 0 ? 'direct' : 'proxy' })),
   expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+  resumeFrom: null,
+  next: null,
+  alternates: [{ ref: { type: 'channel', sourceId: 'b'.repeat(24), key: 'k2' }, sourceName: 'Other', name: 'Ch' }],
 });
 
 async function settle(): Promise<void> {
@@ -104,6 +117,8 @@ describe('PlaybackController', () => {
     const snapshot: PlaybackSnapshot = controller.getSnapshot();
     expect(snapshot.status).toBe('error');
     expect(snapshot.failure?.details).toEqual(['hls · direct: failed http://a', 'hls · proxy: failed http://b']);
+    expect(snapshot.failure).toMatchObject({ problem: 'stream_unavailable', alternates: [{ sourceName: 'Other' }] });
+    expect(snapshot.plan?.content.title).toBe('Ch');
   });
 
   it('times out hanging candidates', async () => {
@@ -162,6 +177,6 @@ describe('PlaybackController', () => {
     });
     await settle();
     expect(engines).toHaveLength(0);
-    expect(controller.getSnapshot().failure).toMatchObject({ externalUrl: 'https://youtube.com/x', retryable: false });
+    expect(controller.getSnapshot().failure).toMatchObject({ externalUrl: 'https://youtube.com/x', retryable: false, problem: 'stream_unavailable' });
   });
 });

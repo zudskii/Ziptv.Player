@@ -5,7 +5,7 @@ import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
 import { Agent, request } from 'undici';
 
 import type { AppConfig } from '../../config/env.js';
-import { destroyQuietly } from '../../shared/streams/destroy.js';
+import { destroyQuietly } from '../streams/destroy.js';
 import { assertUpstreamUrlAllowed, BlockedAddressError, createGuardedLookup } from './network-policy.js';
 
 export type UpstreamErrorKind = 'blocked' | 'timeout' | 'network' | 'too_large' | 'status' | 'redirects';

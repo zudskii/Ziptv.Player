@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { useEffect, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode } from 'react';
 
 import { cn } from '../../lib/cn';
 import { IconButton } from './Button';
@@ -19,6 +19,7 @@ interface DialogProps {
  */
 export function Dialog({ open, onClose, title, description, children, className }: DialogProps) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -40,19 +41,19 @@ export function Dialog({ open, onClose, title, description, children, className 
         if (event.target === ref.current) onClose();
       }}
       className={cn(
-        'w-[min(92vw,34rem)] rounded-2xl border border-white/10 bg-ink-850 p-0 text-slate-100 shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm',
+        'w-[min(94vw,34rem)] rounded-2xl border border-line/10 bg-elevated p-0 text-fg shadow-2xl backdrop:bg-black/70 backdrop:backdrop-blur-sm',
         className,
       )}
-      aria-labelledby="dialog-title"
+      aria-labelledby={titleId}
     >
       {open && (
-        <div className="flex max-h-[85vh] flex-col">
-          <header className="flex items-start justify-between gap-4 border-b border-white/5 px-5 py-4">
-            <div>
-              <h2 id="dialog-title" className="text-base font-semibold text-white">
+        <div className="flex max-h-[88vh] flex-col">
+          <header className="flex items-start justify-between gap-4 border-b border-line/5 px-5 py-4">
+            <div className="min-w-0">
+              <h2 id={titleId} className="text-base font-semibold text-fg">
                 {title}
               </h2>
-              {description && <p className="mt-1 text-sm text-slate-400">{description}</p>}
+              {description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
             </div>
             <IconButton label="Close" onClick={onClose}>
               <X className="h-4 w-4" />

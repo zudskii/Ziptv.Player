@@ -1,5 +1,6 @@
-import { pino, type Logger } from 'pino';
+import { pino } from 'pino';
 
+import type { Logger } from '../application/ports/logger.js';
 import type { AppConfig } from '../config/env.js';
 
 export type { Logger };
@@ -10,7 +11,7 @@ export function createLogger(config: Pick<AppConfig, 'log' | 'env'>): Logger {
     level: config.log.level,
     base: { service: 'ziptv-server' },
     redact: {
-      paths: ['req.headers.authorization', 'req.headers.cookie', 'headers.authorization', 'headers.cookie', '*.token'],
+      paths: ['req.headers.authorization', 'req.headers.cookie', 'headers.authorization', 'headers.cookie', '*.token', '*.password', '*.credential', '*.locator'],
       censor: '[redacted]',
     },
     transport:

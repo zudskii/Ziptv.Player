@@ -16,3 +16,4 @@ coverage/
 # 1.x playlist files for the one-time migration (contain provider tokens)
 legacy-m3ulist/
  
+node_modules/

@@ -7,9 +7,9 @@ type Size = 'sm' | 'md' | 'lg';
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-brand text-white hover:bg-brand-strong shadow-lg shadow-brand/20',
-  secondary: 'bg-white/5 text-slate-100 ring-1 ring-inset ring-white/10 hover:bg-white/10',
-  ghost: 'text-slate-300 hover:bg-white/5 hover:text-white',
-  danger: 'bg-red-500/10 text-red-300 ring-1 ring-inset ring-red-500/30 hover:bg-red-500/20',
+  secondary: 'bg-fg/5 text-fg ring-1 ring-inset ring-line/10 hover:bg-fg/10',
+  ghost: 'text-fg-muted hover:bg-fg/5 hover:text-fg',
+  danger: 'bg-red-500/10 text-red-500 ring-1 ring-inset ring-red-500/30 hover:bg-red-500/20',
 };
 
 const SIZES: Record<Size, string> = {
@@ -25,17 +25,7 @@ export interface ButtonProps extends ComponentPropsWithRef<'button'> {
   loading?: boolean;
 }
 
-export function Button({
-  variant = 'secondary',
-  size = 'md',
-  icon,
-  loading = false,
-  className,
-  children,
-  disabled,
-  type = 'button',
-  ...props
-}: ButtonProps) {
+export function Button({ variant = 'secondary', size = 'md', icon, loading = false, className, children, disabled, type = 'button', ...props }: ButtonProps) {
   return (
     <button
       type={type}
@@ -58,9 +48,11 @@ export interface IconButtonProps extends ComponentPropsWithRef<'button'> {
   /** Required: used for aria-label and the tooltip. */
   label: string;
   active?: boolean;
+  /** `onDark` for controls drawn over video (always white). */
+  tone?: 'default' | 'onDark';
 }
 
-export function IconButton({ label, active = false, className, children, type = 'button', ...props }: IconButtonProps) {
+export function IconButton({ label, active = false, tone = 'default', className, children, type = 'button', ...props }: IconButtonProps) {
   return (
     <button
       type={type}
@@ -68,7 +60,13 @@ export function IconButton({ label, active = false, className, children, type = 
       title={label}
       className={cn(
         'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-40',
-        active ? 'bg-brand/20 text-brand-soft' : 'text-slate-200 hover:bg-white/10 hover:text-white',
+        tone === 'onDark'
+          ? active
+            ? 'bg-white/20 text-white'
+            : 'text-white/90 hover:bg-white/15 hover:text-white'
+          : active
+            ? 'bg-brand/15 text-brand-soft'
+            : 'text-fg-muted hover:bg-fg/10 hover:text-fg',
         className,
       )}
       {...props}

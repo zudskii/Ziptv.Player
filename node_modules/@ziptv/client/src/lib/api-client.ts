@@ -28,13 +28,19 @@ export interface AuthProvider {
 }
 
 let authProvider: AuthProvider | null = null;
+let contextHeaders: () => Record<string, string> = () => ({});
 
 export function configureAuth(provider: AuthProvider): void {
   authProvider = provider;
 }
 
+/** Extra headers on every API call (active profile, parental unlock token). */
+export function configureContextHeaders(provider: () => Record<string, string>): void {
+  contextHeaders = provider;
+}
+
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** Plain objects are sent as JSON, FormData as multipart. */
   body?: unknown;
   signal?: AbortSignal;
@@ -49,7 +55,7 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 }
 
 async function send(path: string, options: RequestOptions, withAuth: boolean, isRetry = false): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
+  const headers: Record<string, string> = { Accept: 'application/json', ...(withAuth ? contextHeaders() : {}) };
   let body: BodyInit | undefined;
   if (options.body instanceof FormData) {
     body = options.body;

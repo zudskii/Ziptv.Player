@@ -26,8 +26,8 @@ interface PlayerControlsProps {
   snapshot: PlaybackSnapshot;
   state: VideoState;
   visible: boolean;
-  onNext: () => void;
-  onPrevious: () => void;
+  onNext?: () => void;
+  onPrevious?: () => void;
 }
 
 export function PlayerControls({ video, container, controller, snapshot, state, visible, onNext, onPrevious }: PlayerControlsProps) {
@@ -45,18 +45,22 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-center gap-0.5 sm:gap-1">
-        <IconButton label={state.paused ? 'Play (Space)' : 'Pause (Space)'} onClick={() => togglePlay(video)} disabled={!active}>
+        <IconButton tone="onDark" label={state.paused ? 'Play (Space)' : 'Pause (Space)'} onClick={() => togglePlay(video)} disabled={!active}>
           {state.paused ? <Play className="h-5 w-5 fill-current" /> : <Pause className="h-5 w-5 fill-current" />}
         </IconButton>
-        <IconButton label="Previous channel (P)" onClick={onPrevious} className="hidden xs:inline-flex">
-          <SkipBack className="h-4 w-4" />
-        </IconButton>
-        <IconButton label="Next channel (N)" onClick={onNext}>
-          <SkipForward className="h-4 w-4" />
-        </IconButton>
+        {onPrevious && (
+          <IconButton tone="onDark" label="Previous channel (P)" onClick={onPrevious} className="hidden xs:inline-flex">
+            <SkipBack className="h-4 w-4" />
+          </IconButton>
+        )}
+        {onNext && (
+          <IconButton tone="onDark" label="Next channel (N)" onClick={onNext}>
+            <SkipForward className="h-4 w-4" />
+          </IconButton>
+        )}
 
         <div className="group/volume flex items-center">
-          <IconButton label={state.muted ? 'Unmute (M)' : 'Mute (M)'} onClick={() => toggleMute(video)}>
+          <IconButton tone="onDark" label={state.muted ? 'Unmute (M)' : 'Mute (M)'} onClick={() => toggleMute(video)}>
             <VolumeIcon className="h-5 w-5" />
           </IconButton>
           <input
@@ -75,7 +79,7 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
           type="button"
           onClick={() => controller?.goLive()}
           disabled={!active}
-          className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 sm:ml-2 text-xs font-semibold uppercase tracking-wide text-slate-200 hover:bg-white/10 disabled:opacity-40"
+          className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 hover:bg-white/10 disabled:opacity-40 sm:ml-2"
           title="Jump to live"
         >
           <span className={cn('h-2 w-2 rounded-full', snapshot.status === 'playing' ? 'bg-red-500' : 'bg-slate-500')} />
@@ -88,7 +92,7 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
               <button
                 type="button"
                 onClick={() => setQualityOpen((open) => !open)}
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-slate-200 hover:bg-white/10"
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg px-2 text-xs font-medium text-white/90 hover:bg-white/10"
                 aria-haspopup="menu"
                 aria-expanded={qualityOpen}
               >
@@ -109,7 +113,7 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
                         }}
                         className={cn(
                           'w-full px-3 py-1.5 text-left hover:bg-white/10',
-                          level.index === snapshot.quality ? 'text-brand-soft' : 'text-slate-200',
+                          level.index === snapshot.quality ? 'text-blue-300' : 'text-white/90',
                         )}
                       >
                         {level.label}
@@ -121,11 +125,11 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
             </div>
           )}
           {canUsePictureInPicture() && (
-            <IconButton label="Picture in picture" active={state.pictureInPicture} onClick={() => void togglePictureInPicture(video)} disabled={!active}>
+            <IconButton tone="onDark" label="Picture in picture" active={state.pictureInPicture} onClick={() => void togglePictureInPicture(video)} disabled={!active}>
               <PictureInPicture2 className="h-4 w-4" />
             </IconButton>
           )}
-          <IconButton label={state.fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} onClick={() => void toggleFullscreen(container, video)}>
+          <IconButton tone="onDark" label={state.fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} onClick={() => void toggleFullscreen(container, video)}>
             {state.fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
           </IconButton>
         </div>

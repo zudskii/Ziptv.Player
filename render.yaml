@@ -11,6 +11,8 @@ services:
         sync: false
       - key: STREAM_TOKEN_SECRET
         generateValue: true
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true
       # Render's proxy is one hop; use 2 if Cloudflare proxies in front of Render.
       - key: TRUST_PROXY
         value: '1'

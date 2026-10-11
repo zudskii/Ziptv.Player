@@ -2,36 +2,83 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Theme tokens (RGB triplets so Tailwind can apply opacity: bg-surface/80, ring-line/10).
+ * Dark is the default; `theme-light` on <html> switches everything except the video player.
+ */
 @layer base {
-  html {
+  :root,
+  .theme-dark {
+    --canvas: 11 17 32;
+    --surface: 15 23 42;
+    --surface-2: 20 29 51;
+    --sunken: 7 11 22;
+    --elevated: 24 34 56;
+    --fg: 241 245 249;
+    --fg-muted: 148 163 184;
+    --fg-subtle: 100 116 139;
+    --line: 255 255 255;
+    --brand-soft: 96 165 250;
     color-scheme: dark;
+  }
+
+  .theme-light {
+    --canvas: 244 246 250;
+    --surface: 255 255 255;
+    --surface-2: 236 240 246;
+    --sunken: 226 232 240;
+    --elevated: 255 255 255;
+    --fg: 15 23 42;
+    --fg-muted: 71 85 105;
+    --fg-subtle: 100 116 139;
+    --line: 15 23 42;
+    --brand-soft: 37 99 235;
+    color-scheme: light;
+  }
+
+  html {
     -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    @apply bg-ink-900 font-sans text-slate-200 antialiased;
+    @apply bg-canvas font-sans text-fg antialiased;
     min-height: 100dvh;
   }
 
   :focus-visible {
-    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-ink-900;
+    @apply outline-none ring-2 ring-brand ring-offset-2 ring-offset-canvas;
   }
 
   select option {
-    @apply bg-ink-850 text-slate-100;
+    @apply bg-surface text-fg;
   }
 }
 
 @layer components {
   .scrollbar-thin {
     scrollbar-width: thin;
-    scrollbar-color: rgb(51 65 85) transparent;
+    scrollbar-color: rgb(var(--fg-subtle) / 0.5) transparent;
   }
   .scrollbar-thin::-webkit-scrollbar {
     width: 8px;
+    height: 8px;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    @apply rounded-full bg-ink-600;
+    @apply rounded-full bg-fg-subtle/40;
+  }
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  .field {
+    @apply h-10 w-full rounded-lg bg-sunken/70 px-3 text-sm text-fg ring-1 ring-inset ring-line/10 placeholder:text-fg-subtle focus:outline-none focus:ring-2 focus:ring-brand;
+  }
+
+  .card {
+    @apply rounded-xl border border-line/5 bg-surface/80;
   }
 
   .volume-slider {
@@ -42,5 +89,15 @@
   }
   .volume-slider::-moz-range-thumb {
     @apply h-3 w-3 rounded-full border-0 bg-white;
+  }
+
+  .seek-slider {
+    @apply h-1 w-full cursor-pointer appearance-none rounded-full bg-white/25 accent-brand;
+  }
+  .seek-slider::-webkit-slider-thumb {
+    @apply h-3.5 w-3.5 appearance-none rounded-full bg-white shadow;
+  }
+  .seek-slider::-moz-range-thumb {
+    @apply h-3.5 w-3.5 rounded-full border-0 bg-white;
   }
 }

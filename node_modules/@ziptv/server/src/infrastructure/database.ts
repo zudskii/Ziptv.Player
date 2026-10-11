@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 
-import type { Logger } from './logger.js';
+import type { Logger } from '../application/ports/logger.js';
 
 export async function connectDatabase(uri: string, logger: Logger): Promise<void> {
   mongoose.set('strictQuery', true);
