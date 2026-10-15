@@ -10,6 +10,9 @@ export type ApiErrorCode =
   | 'CONFLICT'
   | 'PAYLOAD_TOO_LARGE'
   | 'RATE_LIMITED'
+  // Accounts
+  | 'EMAIL_TAKEN'
+  | 'INVALID_CREDENTIALS'
   // Sources
   | 'SOURCE_LIMIT_REACHED'
   | 'SOURCE_INVALID'

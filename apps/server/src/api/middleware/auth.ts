@@ -25,6 +25,22 @@ export function requireSession(sessions: SessionService, viewers: ViewerResolver
   };
 }
 
+/**
+ * Like `requireSession`, but a missing or invalid token is not an error: `req.user` is just
+ * left unset. For endpoints that behave differently for a signed-in guest (register, login).
+ */
+export function optionalSession(sessions: SessionService): RequestHandler {
+  return async (req, _res, next) => {
+    const header = req.headers.authorization;
+    const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
+    if (token) {
+      const user = await sessions.authenticate(token);
+      if (user) req.user = user;
+    }
+    next();
+  };
+}
+
 function headerValue(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;
   return first?.trim() || undefined;

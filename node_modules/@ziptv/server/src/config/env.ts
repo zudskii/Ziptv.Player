@@ -30,9 +30,15 @@ const EnvSchema = z
     /** all = API + background workers (one process); api / worker to scale them separately. */
     ROLE: z.enum(['all', 'api', 'worker']).default('all'),
 
-    MONGO_URI: z.string().min(1, 'MONGO_URI is required'),
-    /** Apply pending data migrations at boot (one instance at a time, lock-protected). */
+    /** PostgreSQL connection string, e.g. postgres://user:pass@host:5432/ziptv (add ?sslmode=require for managed DBs). */
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required').refine((value) => /^postgres(ql)?:\/\//.test(value), 'DATABASE_URL must start with postgres:// or postgresql://'),
+    /** Max connections in this process's pool (API + workers share it). */
+    DATABASE_POOL_MAX: z.coerce.number().int().min(2).max(100).default(10),
+    /** Apply pending schema migrations at boot (one instance at a time, lock-protected). */
     RUN_MIGRATIONS: booleanString.default(true),
+
+    /** Account sessions expire after this many days without use (guest sessions never do). */
+    SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(90),
 
     /** Comma-separated list of allowed browser origins for the JSON API. Empty = same-origin only. */
     CORS_ORIGINS: csv,
@@ -100,7 +106,8 @@ export interface AppConfig {
     clientDistDir: string | null;
   };
   log: { level: string };
-  mongo: { uri: string; runMigrations: boolean };
+  database: { url: string; poolMax: number; runMigrations: boolean };
+  auth: { sessionTtlDays: number };
   stream: {
     proxyEnabled: boolean;
     tokenSecret: Buffer;
@@ -166,7 +173,8 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       clientDistDir: env.CLIENT_DIST_DIR?.trim() || null,
     },
     log: { level: env.LOG_LEVEL },
-    mongo: { uri: env.MONGO_URI, runMigrations: env.RUN_MIGRATIONS },
+    database: { url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX, runMigrations: env.RUN_MIGRATIONS },
+    auth: { sessionTtlDays: env.SESSION_TTL_DAYS },
     stream: {
       proxyEnabled: env.STREAM_PROXY_ENABLED,
       tokenSecret: env.STREAM_TOKEN_SECRET ? Buffer.from(env.STREAM_TOKEN_SECRET, 'utf8') : randomBytes(32),

@@ -5,13 +5,13 @@ import type { PlaybackService } from '../../application/playback/playback.servic
 import { createRateLimiter } from '../middleware/rate-limit.js';
 import { currentViewer } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
-import { ContentKey, IsoInstant, ObjectIdString } from './schemas.js';
+import { ContentKey, IsoInstant, EntityId } from './schemas.js';
 
 export const ContentRef = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('channel'), sourceId: ObjectIdString, key: ContentKey }).strict(),
-  z.object({ type: z.literal('movie'), sourceId: ObjectIdString, key: ContentKey }).strict(),
-  z.object({ type: z.literal('episode'), sourceId: ObjectIdString, seriesKey: ContentKey, key: ContentKey }).strict(),
-  z.object({ type: z.literal('catchup'), sourceId: ObjectIdString, key: ContentKey, start: IsoInstant, end: IsoInstant }).strict(),
+  z.object({ type: z.literal('channel'), sourceId: EntityId, key: ContentKey }).strict(),
+  z.object({ type: z.literal('movie'), sourceId: EntityId, key: ContentKey }).strict(),
+  z.object({ type: z.literal('episode'), sourceId: EntityId, seriesKey: ContentKey, key: ContentKey }).strict(),
+  z.object({ type: z.literal('catchup'), sourceId: EntityId, key: ContentKey, start: IsoInstant, end: IsoInstant }).strict(),
 ]);
 
 const ResolveBody = z

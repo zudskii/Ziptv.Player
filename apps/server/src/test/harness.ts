@@ -2,18 +2,62 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 
 import type { Express } from 'express';
-import mongoose from 'mongoose';
+import pg from 'pg';
 import type { Response as SupertestResponse } from 'supertest';
 
 import { createApp } from '../api/app.js';
 import type { Clock } from '../application/ports/clock.js';
+import type { PasswordHasher } from '../application/ports/password-hasher.js';
+import { ScryptPasswordHasher } from '../infrastructure/crypto/password-hasher.js';
 import { loadConfig, type AppConfig } from '../config/env.js';
 import { buildContainer, type Container } from '../container.js';
 import { createLogger } from '../infrastructure/logger.js';
-import { applyMigrations, syncIndexes } from '../infrastructure/persistence/mongo/init.js';
+import { createDatabase, type DatabaseHandle } from '../infrastructure/persistence/postgres/database.js';
+import { migrateToLatest } from '../infrastructure/persistence/postgres/migrator.js';
 
-/** Real Mongo for repository/e2e tests: CI provides a mongo service; locally set TEST_MONGO_URI. */
-export const TEST_MONGO_URI = process.env.TEST_MONGO_URI;
+/**
+ * Real PostgreSQL for repository/e2e tests: CI provides a postgres service; locally set
+ * TEST_DATABASE_URL to any server where the user may CREATE DATABASE, e.g.
+ *   TEST_DATABASE_URL=postgres://postgres:postgres@localhost:5432/postgres
+ * Every test app gets its own freshly migrated database, dropped afterwards.
+ */
+export const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
+
+export interface TestDatabase {
+  database: DatabaseHandle;
+  url: string;
+  close(): Promise<void>;
+}
+
+/** A new database on the test server, migrated to the latest schema unless `migrate: false`. */
+export async function createTestDatabase(options: { migrate?: boolean } = {}): Promise<TestDatabase> {
+  const adminUrl = TEST_DATABASE_URL!;
+  const name = `ziptv_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+  const withAdmin = async (run: (client: pg.Client) => Promise<void>) => {
+    const client = new pg.Client({ connectionString: adminUrl });
+    await client.connect();
+    try {
+      await run(client);
+    } finally {
+      await client.end();
+    }
+  };
+  await withAdmin((client) => client.query(`CREATE DATABASE ${name}`).then(() => undefined));
+
+  const url = new URL(adminUrl);
+  url.pathname = `/${name}`;
+  const logger = createLogger({ log: { level: process.env.TEST_LOG_LEVEL ?? 'silent' }, env: 'test' });
+  const database = createDatabase({ url: url.toString(), poolMax: 10 }, logger);
+  if (options.migrate !== false) await migrateToLatest(database.db, logger);
+  return {
+    database,
+    url: url.toString(),
+    close: async () => {
+      await database.close();
+      await withAdmin((client) => client.query(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`).then(() => undefined));
+    },
+  };
+}
 
 export interface TestApp {
   app: Express;
@@ -22,10 +66,10 @@ export interface TestApp {
   close(): Promise<void>;
 }
 
-export async function startTestApp(env: Record<string, string> = {}, options: { clock?: Clock } = {}): Promise<TestApp> {
+export async function startTestApp(env: Record<string, string> = {}, options: { clock?: Clock; passwordHasher?: PasswordHasher } = {}): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: 'test',
-    MONGO_URI: TEST_MONGO_URI ?? 'mongodb://unused',
+    DATABASE_URL: TEST_DATABASE_URL ?? 'postgres://unused',
     STREAM_TOKEN_SECRET: 's'.repeat(40),
     DATA_ENCRYPTION_KEY: 'k'.repeat(40),
     ALLOW_PRIVATE_UPSTREAMS: 'true',
@@ -33,10 +77,13 @@ export async function startTestApp(env: Record<string, string> = {}, options: { 
     ...env,
   });
   const logger = createLogger({ log: { level: process.env.TEST_LOG_LEVEL ?? 'silent' }, env: 'test' });
-  await mongoose.connect(TEST_MONGO_URI!, { dbName: `ziptv_test_${Date.now()}_${Math.floor(Math.random() * 1e6)}` });
-  const container = buildContainer(config, logger, { clock: options.clock });
-  await syncIndexes();
-  await applyMigrations(container.secrets, logger);
+  const testDb = await createTestDatabase();
+  const container = buildContainer(config, logger, {
+    db: testDb.database.db,
+    ...(options.clock ? { clock: options.clock } : {}),
+    // Cheap scrypt: tests create many accounts; production parameters would take minutes.
+    passwordHasher: options.passwordHasher ?? new ScryptPasswordHasher({ N: 2 ** 10, r: 8, p: 1 }, 4),
+  });
   const app = createApp({ config, logger, container, isReady: () => true });
   return {
     app,
@@ -44,8 +91,7 @@ export async function startTestApp(env: Record<string, string> = {}, options: { 
     config,
     close: async () => {
       await container.dispose();
-      await mongoose.connection.dropDatabase().catch(() => undefined);
-      await mongoose.disconnect();
+      await testDb.close();
     },
   };
 }

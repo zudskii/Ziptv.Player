@@ -4,10 +4,10 @@ import type { ChannelListDto, NotificationListDto, PlaybackPlanDto, SessionDto, 
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { binaryParser, startOrigin, startTestApp, TEST_MONGO_URI, waitFor, type FakeOrigin, type TestApp } from '../test/harness.js';
+import { binaryParser, startOrigin, startTestApp, TEST_DATABASE_URL, waitFor, type FakeOrigin, type TestApp } from '../test/harness.js';
 
 /**
- * End-to-end over real HTTP with a real MongoDB: the real app, proxy, upstream client and
+ * End-to-end over real HTTP with a real PostgreSQL: the real app, proxy, upstream client and
  * background jobs talking to a fake IPTV provider on localhost.
  */
 
@@ -91,7 +91,7 @@ async function startProvider(): Promise<FakeOrigin> {
   });
 }
 
-describe.skipIf(!TEST_MONGO_URI)('Sources & Live TV end-to-end', () => {
+describe.skipIf(!TEST_DATABASE_URL)('Sources & Live TV end-to-end', () => {
   let t: TestApp;
   let token = '';
   let file: SourceDto;
@@ -347,7 +347,7 @@ describe.skipIf(!TEST_MONGO_URI)('Sources & Live TV end-to-end', () => {
   }
 });
 
-describe.skipIf(!TEST_MONGO_URI)('SSRF protection on a public deployment', () => {
+describe.skipIf(!TEST_DATABASE_URL)('SSRF protection on a public deployment', () => {
   let t: TestApp;
   beforeAll(async () => {
     t = await startTestApp({ ALLOW_PRIVATE_UPSTREAMS: 'false' });

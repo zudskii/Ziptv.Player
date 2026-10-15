@@ -1,18 +1,24 @@
-# Local / self-hosted stack: MongoDB + ZIPTV (API and client on one origin).
-#   cp .env.example .env                 # set STREAM_TOKEN_SECRET and DATA_ENCRYPTION_KEY
+# Local / self-hosted stack: PostgreSQL + ZIPTV (API and client on one origin).
+#   cp .env.example .env                 # set POSTGRES_PASSWORD, STREAM_TOKEN_SECRET, DATA_ENCRYPTION_KEY
 #   docker compose up -d --build         # → http://localhost:8080
-#   docker compose run --rm tools npm run migrate:legacy -w @ziptv/server -- --dry-run
+#   docker compose run --rm tools npm test
+# Backup:  docker compose exec postgres pg_dump -U ziptv ziptv > ziptv-$(date +%F).sql
+# Restore: docker compose exec -T postgres psql -U ziptv ziptv < ziptv-YYYY-MM-DD.sql
 services:
-  mongo:
-    image: mongo:7
+  postgres:
+    image: postgres:17-alpine
     restart: unless-stopped
+    environment:
+      POSTGRES_USER: ziptv
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ziptv
     volumes:
-      - mongo-data:/data/db
-    # Only on this machine's loopback: lets you inspect data with Compass/mongosh.
+      - pg-data:/var/lib/postgresql/data
+    # Only on this machine's loopback: lets you inspect data with psql/DBeaver/pgAdmin.
     ports:
-      - '127.0.0.1:${MONGO_PORT:-27018}:27017'
+      - '127.0.0.1:${POSTGRES_PORT:-5433}:5432'
     healthcheck:
-      test: ['CMD', 'mongosh', '--quiet', '--eval', "db.adminCommand('ping')"]
+      test: ['CMD-SHELL', 'pg_isready -U ziptv -d ziptv']
       interval: 10s
       timeout: 5s
       retries: 10
@@ -24,10 +30,10 @@ services:
     image: ziptv:local
     restart: unless-stopped
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
     environment:
-      MONGO_URI: mongodb://mongo:27017/ziptv
+      DATABASE_URL: postgres://ziptv:${POSTGRES_PASSWORD}@postgres:5432/ziptv
       STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY in .env}
       TRUST_PROXY: ${TRUST_PROXY:-0}
@@ -39,9 +45,9 @@ services:
     # Live streams get time to finish during `docker compose down` / redeploys.
     stop_grace_period: 20s
 
-  # One-off tasks (migration, tests) with dev dependencies and sources — never runs by itself.
-  #   docker compose run --rm tools npm run migrate:legacy -w @ziptv/server -- --dry-run
+  # One-off tasks (tests, migrations) with dev dependencies and sources — never runs by itself.
   #   docker compose run --rm tools npm test
+  #   docker compose run --rm tools npm run migrate -w @ziptv/server
   tools:
     profiles: ['tools']
     build:
@@ -50,18 +56,15 @@ services:
       target: build
     image: ziptv:tools
     depends_on:
-      mongo:
+      postgres:
         condition: service_healthy
     environment:
-      MONGO_URI: mongodb://mongo:27017/ziptv
+      DATABASE_URL: postgres://ziptv:${POSTGRES_PASSWORD}@postgres:5432/ziptv
       LOG_LEVEL: warn
       DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY in .env}
       STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
-      LEGACY_MONGO_URI: ${LEGACY_MONGO_URI:-}
-      LEGACY_FILES_DIR: /legacy
-      TEST_MONGO_URI: mongodb://mongo:27017
-    volumes:
-      - ${LEGACY_FILES_DIR:-./legacy-m3ulist}:/legacy:ro
+      # Tests create and drop their own throw-away databases on this server.
+      TEST_DATABASE_URL: postgres://ziptv:${POSTGRES_PASSWORD}@postgres:5432/postgres
 
 volumes:
-  mongo-data:
+  pg-data:

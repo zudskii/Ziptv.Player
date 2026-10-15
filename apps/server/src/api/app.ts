@@ -12,7 +12,7 @@ import type { Logger } from '../application/ports/logger.js';
 import type { AppConfig } from '../config/env.js';
 import type { Container } from '../container.js';
 import { API_PREFIX, MEDIA_PREFIX } from './http-paths.js';
-import { acceptBodyUnlock, requireSession } from './middleware/auth.js';
+import { acceptBodyUnlock, optionalSession, requireSession } from './middleware/auth.js';
 import { createErrorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { createRateLimiter } from './middleware/rate-limit.js';
 import { createApiRouters } from './routes/index.js';
@@ -22,7 +22,8 @@ export interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   container: Container;
-  isReady: () => boolean;
+  /** Readiness probe: should answer false while the database is unreachable. */
+  isReady: () => boolean | Promise<boolean>;
 }
 
 /** HTTP layer only: middleware order, routing and error handling. No business logic here. */
@@ -60,8 +61,8 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   app.get('/healthz', (_req, res) => {
     res.json({ status: 'ok' });
   });
-  app.get('/readyz', (_req, res) => {
-    const ready = isReady();
+  app.get('/readyz', async (_req, res) => {
+    const ready = await isReady();
     res.status(ready ? 200 : 503).json({ status: ready ? 'ready' : 'not_ready' });
   });
 
@@ -90,7 +91,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   api.use(compression());
   api.use(express.json({ limit: '256kb' }));
   api.use(createRateLimiter({ windowMs: 60 * 1000, limit: 900 }));
-  api.use(createApiRouters({ container, auth, withUnlock: acceptBodyUnlock(container.viewers), config }));
+  api.use(createApiRouters({ container, auth, optionalAuth: optionalSession(container.sessions), withUnlock: acceptBodyUnlock(container.viewers), config }));
   api.use(notFoundHandler);
   app.use(API_PREFIX, api);
 

@@ -29,7 +29,7 @@ export default tseslint.config(
         {
           patterns: [
             { group: ['**/application/**', '**/infrastructure/**', '**/api/**', '**/container*', '**/config/**'], message: 'Domain is pure: no application/infrastructure/api imports.' },
-            { group: ['mongoose', 'express', 'undici', 'pino', 'pino-http', 'multer', 'zod', 'htmlparser2', '@ziptv/contracts'], message: 'Domain must not depend on frameworks or API contracts.' },
+            { group: ['pg', 'kysely', 'express', 'undici', 'pino', 'pino-http', 'multer', 'zod', 'htmlparser2', '@ziptv/contracts'], message: 'Domain must not depend on frameworks or API contracts.' },
           ],
         },
       ],
@@ -43,7 +43,7 @@ export default tseslint.config(
         {
           patterns: [
             { group: ['**/infrastructure/**', '**/api/**', '**/container*', '**/config/**'], message: 'Application depends on ports, never on adapters or HTTP.' },
-            { group: ['mongoose', 'express', 'undici', 'pino', 'pino-http', 'multer', 'htmlparser2'], message: 'Application must not depend on frameworks; add a port instead.' },
+            { group: ['pg', 'kysely', 'express', 'undici', 'pino', 'pino-http', 'multer', 'htmlparser2'], message: 'Application must not depend on frameworks; add a port instead.' },
           ],
         },
       ],
@@ -58,7 +58,7 @@ export default tseslint.config(
         {
           patterns: [
             { group: ['**/infrastructure/**'], message: 'Routes orchestrate use cases only; wire adapters in container.ts.' },
-            { group: ['mongoose', 'undici'], message: 'Routes must not talk to the database or upstreams directly.' },
+            { group: ['pg', 'kysely', 'undici'], message: 'Routes must not talk to the database or upstreams directly.' },
           ],
         },
       ],

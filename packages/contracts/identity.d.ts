@@ -14,9 +14,61 @@ export interface SessionDto {
   migratedFromLegacy: boolean;
 }
 
+export type UserRole = 'user' | 'admin';
+
 export interface MeDto {
   userId: string;
   createdAt: string;
+  /** null for a guest (anonymous device identity that has not registered yet). */
+  email: string | null;
+  isGuest: boolean;
+  role: UserRole;
+}
+
+// ---------------------------------------------------------------------------
+// Accounts — email + password. A guest can register and keeps everything it has added.
+// ---------------------------------------------------------------------------
+
+export interface RegisterRequest {
+  email: string;
+  /** 8–128 characters. */
+  password: string;
+}
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+  /**
+   * The request carries a guest session that already has sources: move them into this account.
+   * Without it the guest data stays with the (now unused) guest identity.
+   */
+  mergeGuest?: boolean;
+}
+
+/** Result of register / login. Send `token` as `Authorization: Bearer <token>`. */
+export interface AuthSessionDto {
+  token: string;
+  /** Account sessions expire (sliding); null = does not expire. */
+  expiresAt: string | null;
+  user: MeDto;
+}
+
+export interface ChangePasswordRequest {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface DeleteAccountRequest {
+  password: string;
+}
+
+/** One signed-in device. */
+export interface SessionInfoDto {
+  id: string;
+  createdAt: string;
+  lastSeenAt: string;
+  userAgent: string | null;
+  current: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,9 +4,9 @@ import { createServer } from 'node:http';
 import { createApp } from './api/app.js';
 import { ConfigError, loadConfig } from './config/env.js';
 import { buildContainer } from './container.js';
-import { connectDatabase, disconnectDatabase, isDatabaseReady } from './infrastructure/database.js';
 import { createLogger } from './infrastructure/logger.js';
-import { applyMigrations, syncIndexes } from './infrastructure/persistence/mongo/init.js';
+import { createDatabase } from './infrastructure/persistence/postgres/database.js';
+import { migrateToLatest } from './infrastructure/persistence/postgres/migrator.js';
 
 const SHUTDOWN_GRACE_MS = 10_000;
 
@@ -33,18 +33,18 @@ async function main(): Promise<void> {
     logger.warn('DATA_ENCRYPTION_KEY is not set: using the built-in development key. Never run like this in production.');
   }
 
-  await connectDatabase(config.mongo.uri, logger);
-  const container = buildContainer(config, logger);
-  await syncIndexes();
-  if (config.mongo.runMigrations) {
-    const applied = await applyMigrations(container.secrets, logger);
+  const database = createDatabase({ url: config.database.url, poolMax: config.database.poolMax }, logger);
+  if (config.database.runMigrations) {
+    const applied = await migrateToLatest(database.db, logger);
     if (applied.length > 0) logger.info({ applied }, 'Database migrations applied');
   }
+  logger.info('PostgreSQL ready');
+  const container = buildContainer(config, logger, { db: database.db });
 
   const runsApi = config.role !== 'worker';
   const runsJobs = config.role !== 'api' && config.jobs.enabled;
 
-  const app = createApp({ config, logger, container, isReady: isDatabaseReady });
+  const app = createApp({ config, logger, container, isReady: database.ping });
   const server = createServer(app);
   // Must outlive the load balancer's idle timeout (Render/ALB: 60 s) to avoid random 502s.
   server.keepAliveTimeout = 65_000;
@@ -65,7 +65,7 @@ async function main(): Promise<void> {
     // Stop accepting; idle keep-alive sockets go now, live streams get a grace period.
     server.close(() => {
       void Promise.allSettled([container.dispose()]).then(async () => {
-        await disconnectDatabase().catch(() => undefined);
+        await database.close().catch(() => undefined);
         logger.info('Shutdown complete');
         process.exit(0);
       });

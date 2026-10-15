@@ -23,7 +23,7 @@ export function createSessionRouter(sessions: SessionService, auth: RequestHandl
 
   router.post('/', createLimiter, async (req, res) => {
     const body = parseInput(CreateSessionBody, req.body ?? {}, 'Session request');
-    const session = await sessions.createSession(body);
+    const session = await sessions.createGuestSession({ ...body, userAgent: req.get('user-agent') });
     res.status(201).json(session);
   });
 

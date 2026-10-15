@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 
 import { CatalogImages } from './application/catalog/catalog-images.js';
 import { LiveCatalogService } from './application/catalog/live.service.js';
+import { AccountService } from './application/identity/account.service.js';
 import { SessionService } from './application/identity/session.service.js';
 import { accountViewerResolver, type ViewerResolver } from './application/identity/viewer-resolver.js';
 import { JobRunner, periodicWorker } from './application/jobs/job-runner.js';
@@ -10,6 +11,7 @@ import { PlaybackService } from './application/playback/playback.service.js';
 import type { Cache } from './application/ports/cache.js';
 import { systemClock, type Clock } from './application/ports/clock.js';
 import type { Logger } from './application/ports/logger.js';
+import type { PasswordHasher } from './application/ports/password-hasher.js';
 import { noopEpgLinker } from './application/sources/hooks.js';
 import { SourceSecrets } from './application/sources/secrets.js';
 import { SourceService } from './application/sources/source.service.js';
@@ -19,6 +21,7 @@ import type { AppConfig } from './config/env.js';
 import { MEDIA_PREFIX } from './api/http-paths.js';
 import { MemoryCache } from './infrastructure/cache/memory-cache.js';
 import { MediaTokenCodec } from './infrastructure/crypto/media-token.js';
+import { ScryptPasswordHasher } from './infrastructure/crypto/password-hasher.js';
 import { AesSecretCipher, parseEncryptionKey } from './infrastructure/crypto/secret-cipher.js';
 import { assertUpstreamUrlAllowed } from './infrastructure/http/network-policy.js';
 import { UpstreamClient } from './infrastructure/http/upstream-client.js';
@@ -26,11 +29,14 @@ import { createCatalogImageHandler, createSignedImageHandler } from './infrastru
 import { SignedMediaUrls } from './infrastructure/media/media-urls.js';
 import { HttpStreamProber } from './infrastructure/media/stream-prober.js';
 import { createStreamProxyHandler, mediaCorsHeaders } from './infrastructure/media/stream-proxy.js';
-import { MongoCatalogRepository } from './infrastructure/persistence/mongo/repositories/catalog.repository.js';
-import { MongoNotificationRepository } from './infrastructure/persistence/mongo/repositories/notification.repository.js';
-import { MongoScheduleRepository } from './infrastructure/persistence/mongo/repositories/schedule.repository.js';
-import { MongoSourceRepository } from './infrastructure/persistence/mongo/repositories/source.repository.js';
-import { MongoUserRepository } from './infrastructure/persistence/mongo/repositories/user.repository.js';
+import type { Db } from './infrastructure/persistence/postgres/database.js';
+import { PgAccountDataTransfer } from './infrastructure/persistence/postgres/repositories/account-data-transfer.js';
+import { PgCatalogRepository } from './infrastructure/persistence/postgres/repositories/catalog.repository.js';
+import { PgNotificationRepository } from './infrastructure/persistence/postgres/repositories/notification.repository.js';
+import { PgScheduleRepository } from './infrastructure/persistence/postgres/repositories/schedule.repository.js';
+import { PgSessionRepository } from './infrastructure/persistence/postgres/repositories/session.repository.js';
+import { PgSourceRepository } from './infrastructure/persistence/postgres/repositories/source.repository.js';
+import { PgUserRepository } from './infrastructure/persistence/postgres/repositories/user.repository.js';
 import { M3uProvider } from './infrastructure/providers/m3u-provider.js';
 
 export interface Container {
@@ -40,6 +46,7 @@ export interface Container {
   mediaTokens: MediaTokenCodec;
   secrets: SourceSecrets;
   sessions: SessionService;
+  accounts: AccountService;
   viewers: ViewerResolver;
   sources: SourceService;
   live: LiveCatalogService;
@@ -56,7 +63,11 @@ export interface Container {
 }
 
 export interface ContainerOptions {
+  /** The database connection; owned (created and closed) by the caller — `main.ts` or the test harness. */
+  db: Db;
   clock?: Clock;
+  /** Tests use a cheap hasher; production uses scrypt with OWASP parameters. */
+  passwordHasher?: PasswordHasher;
 }
 
 /**
@@ -64,7 +75,8 @@ export interface ContainerOptions {
  * `Program.cs` service registration). Use cases receive their collaborators through
  * constructors, so tests can swap any of them.
  */
-export function buildContainer(config: AppConfig, logger: Logger, options: ContainerOptions = {}): Container {
+export function buildContainer(config: AppConfig, logger: Logger, options: ContainerOptions): Container {
+  const { db } = options;
   const clock = options.clock ?? systemClock;
   const cache = new MemoryCache();
   const cipher = new AesSecretCipher(parseEncryptionKey(config.encryption.key), config.encryption.previousKeys.map(parseEncryptionKey));
@@ -74,14 +86,21 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const mediaUrls = new SignedMediaUrls(mediaTokens, MEDIA_PREFIX);
 
   // --- persistence adapters ---------------------------------------------------------------------
-  const userRepository = new MongoUserRepository();
-  const sourceRepository = new MongoSourceRepository();
-  const catalogRepository = new MongoCatalogRepository();
-  const notificationRepository = new MongoNotificationRepository();
-  const scheduleRepository = new MongoScheduleRepository();
+  const userRepository = new PgUserRepository(db);
+  const sessionRepository = new PgSessionRepository(db);
+  const sourceRepository = new PgSourceRepository(db);
+  const catalogRepository = new PgCatalogRepository(db);
+  const notificationRepository = new PgNotificationRepository(db);
+  const scheduleRepository = new PgScheduleRepository(db);
 
   // --- use cases -----------------------------------------------------------------------------
-  const sessions = new SessionService(userRepository, logger.child({ module: 'session' }));
+  const sessions = new SessionService(
+    userRepository,
+    sessionRepository,
+    logger.child({ module: 'session' }),
+    { accountSessionTtlMs: config.auth.sessionTtlDays * 24 * 3600_000 },
+    () => clock.now(),
+  );
   const viewers = accountViewerResolver;
   const notifications = new NotificationService(notificationRepository, clock, logger.child({ module: 'notifications' }));
   const m3u = new M3uProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
@@ -117,6 +136,16 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     limits: { maxSourcesPerUser: config.limits.maxSourcesPerUser },
   });
 
+  const accounts = new AccountService({
+    users: userRepository,
+    sessions,
+    hasher: options.passwordHasher ?? new ScryptPasswordHasher(),
+    transfer: new PgAccountDataTransfer(db),
+    sources: sourceRepository,
+    limits: { maxSourcesPerUser: config.limits.maxSourcesPerUser },
+    logger: logger.child({ module: 'accounts' }),
+  });
+
   const live = new LiveCatalogService({ sources: sourceRepository, catalog: catalogRepository, cache });
   const playback = new PlaybackService({
     live,
@@ -137,7 +166,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       schedules: scheduleRepository,
       run: async () => {
         const purged = await notifications.purgeExpired();
-        logger.debug({ purged }, 'Cleanup finished');
+        const expiredSessions = await sessions.purgeExpired();
+        logger.debug({ purged, expiredSessions }, 'Cleanup finished');
       },
     }),
   );
@@ -159,6 +189,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     mediaTokens,
     secrets,
     sessions,
+    accounts,
     viewers,
     sources,
     live,

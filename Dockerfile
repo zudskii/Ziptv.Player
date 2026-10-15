@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 # One image = API + built client (same origin: no CORS, no third-party cookies).
 # Build:  docker build -t ziptv .
-# Run:    docker run -p 8080:8080 -e MONGO_URI=... -e STREAM_TOKEN_SECRET=... ziptv
+# Run:    docker run -p 8080:8080 -e DATABASE_URL=postgres://... -e STREAM_TOKEN_SECRET=... ziptv
 
 # ---- 1. Build server + client (needs dev dependencies) --------------------------
 FROM node:22-alpine AS build

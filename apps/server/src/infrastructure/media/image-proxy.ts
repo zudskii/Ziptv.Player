@@ -1,6 +1,7 @@
 import type { RequestHandler, Response } from 'express';
 
 import type { Logger } from '../../application/ports/logger.js';
+import { isEntityId } from '../../domain/shared/ids.js';
 import type { MediaTokenCodec } from '../crypto/media-token.js';
 import { firstHeader, type UpstreamClient } from '../http/upstream-client.js';
 
@@ -31,7 +32,7 @@ export function createCatalogImageHandler(deps: ImageProxyDeps): RequestHandler 
     const sourceId = String(req.params.sourceId ?? '');
     const type = String(req.params.type ?? '');
     const key = String(req.params.key ?? '');
-    if (!/^[a-f0-9]{24}$/i.test(sourceId) || !TYPES.has(type) || !KEY.test(key)) return notFound(res);
+    if (!isEntityId(sourceId) || !TYPES.has(type) || !KEY.test(key)) return notFound(res);
     const url = await deps.lookup(sourceId, type as 'channel' | 'movie' | 'series', key);
     await serve(deps, res, url);
   };
