@@ -62,7 +62,7 @@ export function formatIn(value: Date | string | number | null | undefined, now =
 /** 5400 → "1 h 30 min", 1380 → "23 min". */
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return '';
-  const minutes = Math.round(seconds / 60);
+  const minutes = Math.max(1, Math.round(seconds / 60));
   if (minutes < 60) return `${minutes} min`;
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
@@ -78,3 +78,4 @@ export function formatTimecode(seconds: number): string {
   const s = total % 60;
   return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}` : `${m}:${String(s).padStart(2, '0')}`;
 }
+

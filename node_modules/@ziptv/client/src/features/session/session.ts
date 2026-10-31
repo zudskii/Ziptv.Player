@@ -4,6 +4,7 @@ import { persist } from 'zustand/middleware';
 
 import { ApiError, apiRequest, configureAuth } from '../../lib/api-client';
 import { queryClient } from '../../lib/query-client';
+import { resetProfileSelection } from '../profiles/profile-store';
 import { persistentStorage, readRawStorage, removeRawStorage } from '../../lib/storage';
 import { needsSignIn, onUnauthorized, type SessionSnapshot } from './session-policy';
 
@@ -26,11 +27,13 @@ export const useSessionStore = create<SessionState>()(
       setGuest: (token) => set({ token, account: null }),
       setAccount: (token, email) => {
         set({ token, account: { email } });
+        resetProfileSelection();
         queryClient.clear();
       },
       dropToken: () => set({ token: null }),
       clear: () => {
         set({ token: null, account: null });
+        resetProfileSelection();
         queryClient.clear();
       },
     }),

@@ -1,7 +1,7 @@
 import Hls, { ErrorDetails, ErrorTypes, Events, type ErrorData } from 'hls.js';
 
 import { createNativeEngine } from './native-engine';
-import { EngineError, resetMediaElement, waitForCanPlay, type EngineFactory } from './types';
+import { EngineError, engineOptions, resetMediaElement, waitForCanPlay, type EngineFactory } from './types';
 
 const MAX_NETWORK_RECOVERIES = 3;
 const MAX_MEDIA_RECOVERIES = 2;
@@ -14,7 +14,7 @@ export const createHlsEngine: EngineFactory = (video, url) => {
   }
 
   const hls = new Hls({
-    enableWorker: true,
+    enableWorker: engineOptions.worker,
     backBufferLength: 30,
     maxBufferLength: 30,
     liveDurationInfinity: true,
@@ -80,6 +80,12 @@ export const createHlsEngine: EngineFactory = (video, url) => {
     mediaRecoveries = 0;
   });
 
+  const trackListeners = new Set<() => void>();
+  const tracksChanged = () => trackListeners.forEach((listener) => listener());
+  for (const event of [Events.AUDIO_TRACKS_UPDATED, Events.AUDIO_TRACK_SWITCHED, Events.SUBTITLE_TRACKS_UPDATED, Events.SUBTITLE_TRACK_SWITCH, Events.MANIFEST_PARSED] as const) {
+    hls.on(event, tracksChanged);
+  }
+
   hls.loadSource(url);
   hls.attachMedia(video);
 
@@ -104,12 +110,27 @@ export const createHlsEngine: EngineFactory = (video, url) => {
     setQuality: (index) => {
       hls.currentLevel = index;
     },
+    tracks: () => ({
+      audio: hls.audioTracks.length > 1 ? hls.audioTracks.map((track, index) => ({ index, label: track.name || track.lang || `Audio ${index + 1}`, language: track.lang ?? '' })) : [],
+      audioIndex: hls.audioTrack,
+      subtitles: hls.subtitleTracks.map((track, index) => ({ index, label: track.name || track.lang || `Subtitles ${index + 1}`, language: track.lang ?? '' })),
+      subtitleIndex: hls.subtitleDisplay ? hls.subtitleTrack : -1,
+    }),
+    setAudioTrack: (index) => {
+      hls.audioTrack = index;
+    },
+    setSubtitleTrack: (index) => {
+      hls.subtitleDisplay = index >= 0;
+      hls.subtitleTrack = index;
+    },
+    onTracksChanged: (listener) => trackListeners.add(listener),
     goLive: () => {
       if (hls.liveSyncPosition !== null && Number.isFinite(hls.liveSyncPosition)) video.currentTime = hls.liveSyncPosition;
     },
     destroy: () => {
       readiness.cancel();
       listeners.clear();
+      trackListeners.clear();
       hls.destroy();
       resetMediaElement(video);
     },

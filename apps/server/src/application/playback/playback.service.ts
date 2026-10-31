@@ -113,7 +113,9 @@ export class PlaybackService {
       );
     }
 
-    const sessionId = randomUUID();
+    // A reconnect keeps the viewing's session (and its history entry) when it is really the same one.
+    const continued = request.continueSession && this.observer.continues ? await this.observer.continues(viewer, request.continueSession, request.content) : false;
+    const sessionId = continued && request.continueSession ? request.continueSession : randomUUID();
     const content: PlaybackContentDto = {
       ...resolved.content,
       image: this.artwork.url(resolved.content.image),
@@ -124,7 +126,7 @@ export class PlaybackService {
       request.content.type === 'channel' ? this.alternates(viewer, source, resolved.nameKey) : Promise.resolve([]),
     ]);
 
-    await this.observer.onPlanIssued(viewer, { sessionId, sourceName: source.name, content, seriesTitle: resolved.seriesTitle });
+    if (!continued) await this.observer.onPlanIssued(viewer, { sessionId, sourceName: source.name, content, seriesTitle: resolved.seriesTitle, rawImage: resolved.content.image, episode: resolved.episode ?? null });
     return {
       sessionId,
       content,
@@ -200,6 +202,7 @@ export class PlaybackService {
           locked: this.deps.live.isLocked(viewer, source.id, series),
           nameKey: null,
           seriesTitle: series.name,
+          episode: { season: episode.season, episode: episode.episode },
           target: await this.target(source, { kind: episode.kind, unplayableReason: null, locator: episode.locator, xtream: episode.xtream, type: 'episode' }),
           content: {
             ref,

@@ -7,6 +7,7 @@ import type {
   GuideChannelOptionDto,
   GuideDto,
   GuideSourceDto,
+  LiveNowItemDto,
   NowNextDto,
   NowNextListDto,
   SetEpgMappingRequest,
@@ -77,7 +78,9 @@ export class EpgService {
   async nowNext(viewer: Viewer, sourceId: string): Promise<NowNextListDto> {
     const source = await this.deps.live.requireSource(viewer, sourceId);
     const now = this.deps.clock.now();
-    const [summaries, raw, shift] = await Promise.all([this.deps.live.summaries(source), this.rawNowNext(source, now), this.shift(viewer)]);
+    const shift = await this.shift(viewer);
+    // A shifted guide airs every programme `shift` later: what is on now started at now - shift.
+    const [summaries, raw] = await Promise.all([this.deps.live.summaries(source), this.rawNowNext(source, new Date(now.getTime() - shift))]);
     const items: Record<string, NowNextDto> = {};
     for (const channel of summaries) {
       const entry = raw.get(channel.key);
@@ -94,6 +97,49 @@ export class EpgService {
   /** Raw now/next of every linked channel of a source (Home "Live Now"). Cached per minute. */
   nowNextMap(source: SourceRecord): Promise<NowNextRaw> {
     return this.rawNowNext(source, this.deps.clock.now());
+  }
+
+  /**
+   * Channels on air right now across the viewer's sources (Home "Live Now" / "Sports Live"):
+   * preferred channels first (favourites, recently watched), then provider order; only channels
+   * with a current programme, visible to the viewer and playable.
+   */
+  async liveNow(
+    viewer: Viewer,
+    sources: SourceRecord[],
+    options: { preferred: { sourceId: string; key: string }[]; limit: number; match?: (channel: LiveChannelSummary, now: ProgrammeRecord) => boolean },
+  ): Promise<LiveNowItemDto[]> {
+    const now = this.deps.clock.now();
+    const shift = await this.shift(viewer);
+    const preferredRank = new Map(options.preferred.map((ref, index) => [`${ref.sourceId}|${ref.key}`, index]));
+    const candidates: { rank: number; order: number; item: LiveNowItemDto }[] = [];
+    let order = 0;
+    for (const source of sources) {
+      const [summaries, raw] = await Promise.all([this.deps.live.summaries(source), this.rawNowNext(source, new Date(now.getTime() - shift))]);
+      if (raw.size === 0) continue;
+      for (const channel of summaries) {
+        const entry = raw.get(channel.key);
+        if (!entry?.now || channel.unplayableReason || isHiddenForViewer(viewer, channel)) continue;
+        const locked = this.deps.live.isLocked(viewer, source.id, channel);
+        if (locked && viewer.kids) continue;
+        if (options.match && !options.match(channel, entry.now)) continue;
+        const context = { catchupDays: channel.catchup?.days ?? null, now, media: this.deps.media, shiftMs: shift, proxyAll: this.proxyAll };
+        candidates.push({
+          rank: preferredRank.get(`${source.id}|${channel.key}`) ?? Number.MAX_SAFE_INTEGER,
+          order: order++,
+          item: {
+            sourceId: source.id,
+            channel: toChannelDto(channel, locked, this.deps.live.artwork),
+            now: toProgrammeDto(entry.now, context),
+            next: entry.next ? toProgrammeDto(entry.next, context) : null,
+          },
+        });
+      }
+    }
+    return candidates
+      .sort((a, b) => a.rank - b.rank || a.order - b.order)
+      .slice(0, options.limit)
+      .map((candidate) => candidate.item);
   }
 
   async channelSchedule(viewer: Viewer, sourceId: string, key: string, range: { from?: Date; to?: Date }): Promise<ChannelScheduleDto> {

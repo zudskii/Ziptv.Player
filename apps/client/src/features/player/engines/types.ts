@@ -11,6 +11,24 @@ export class EngineError extends Error {
   }
 }
 
+export interface MediaTrack {
+  /** Engine-specific index. */
+  index: number;
+  label: string;
+  /** BCP-47-ish language code as announced by the stream ('' when unknown). */
+  language: string;
+}
+
+/** Audio and subtitle tracks of the current stream; subtitle index -1 = off. */
+export interface TrackState {
+  audio: MediaTrack[];
+  audioIndex: number;
+  subtitles: MediaTrack[];
+  subtitleIndex: number;
+}
+
+export const NO_TRACKS: TrackState = { audio: [], audioIndex: -1, subtitles: [], subtitleIndex: -1 };
+
 export interface QualityLevel {
   /** Engine-specific index; -1 means automatic. */
   index: number;
@@ -29,6 +47,11 @@ export interface EngineHandle {
   setQuality(index: number): void;
   /** Jump to the live edge (after a pause on a live stream). */
   goLive(): void;
+  /** Audio / subtitle tracks (optional: engines without track support report none). */
+  tracks?(): TrackState;
+  setAudioTrack?(index: number): void;
+  setSubtitleTrack?(index: number): void;
+  onTracksChanged?(listener: () => void): void;
   destroy(): void;
 }
 
@@ -86,4 +109,39 @@ export function resetMediaElement(video: HTMLVideoElement): void {
   } catch {
     /* element already detached */
   }
+}
+
+/**
+ * Subtitles through the element's own text tracks (progressive files with embedded captions,
+ * Safari native HLS). Exactly one track is "showing"; the rest stay "disabled".
+ */
+export function nativeTextTracks(video: HTMLVideoElement): { read(): Pick<TrackState, 'subtitles' | 'subtitleIndex'>; setSubtitleTrack(index: number): void } {
+  const list = () => Array.from(video.textTracks).filter((track) => track.kind === 'subtitles' || track.kind === 'captions');
+  return {
+    read: () => {
+      const tracks = list();
+      return {
+        subtitles: tracks.map((track, index) => ({ index, label: track.label || track.language || `Track ${index + 1}`, language: track.language })),
+        subtitleIndex: tracks.findIndex((track) => track.mode === 'showing'),
+      };
+    },
+    setSubtitleTrack: (index) => list().forEach((track, i) => (track.mode = i === index ? 'showing' : 'disabled')),
+  };
+}
+
+/** Picks the track matching a preferred language ('' = keep default, 'off' = none for subtitles). */
+export function preferredTrack(tracks: MediaTrack[], preference: string): number | null {
+  if (!preference) return null;
+  if (preference === 'off') return -1;
+  const wanted = preference.toLowerCase();
+  const base = wanted.split('-')[0]!;
+  const match = tracks.find((track) => track.language.toLowerCase() === wanted) ?? tracks.find((track) => track.language.toLowerCase().split('-')[0] === base);
+  return match ? match.index : null;
+}
+
+/** Device-level engine options (Settings → Playback → Hardware acceleration). */
+export const engineOptions = { worker: true };
+
+export function setEngineOptions(options: Partial<typeof engineOptions>): void {
+  Object.assign(engineOptions, options);
 }

@@ -39,6 +39,16 @@ export function configureContextHeaders(provider: () => Record<string, string>):
   contextHeaders = provider;
 }
 
+let recoverProfile: () => boolean = () => false;
+
+/**
+ * Called when the server does not know the selected profile (deleted on another device):
+ * the handler drops the selection and returns true, and the request is repeated once.
+ */
+export function configureProfileRecovery(handler: () => boolean): void {
+  recoverProfile = handler;
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** Plain objects are sent as JSON, FormData as multipart. */
@@ -52,6 +62,8 @@ export interface RequestOptions {
    * renewing a session in response would silently replace the person's identity.
    */
   renewOn401?: boolean;
+  /** Let the request outlive the page (final playback event when the tab closes). */
+  keepalive?: boolean;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -74,7 +86,7 @@ async function send(path: string, options: RequestOptions, withAuth: boolean, is
 
   let response: Response;
   try {
-    response = await fetch(resolveApiUrl(path), { method: options.method ?? 'GET', headers, body, signal: options.signal });
+    response = await fetch(resolveApiUrl(path), { method: options.method ?? 'GET', headers, body, signal: options.signal, ...(options.keepalive ? { keepalive: true } : {}) });
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') throw new ApiError(0, 'ABORTED', 'Request was cancelled.');
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the ZIPTV server. Check your connection and try again.');
@@ -84,7 +96,15 @@ async function send(path: string, options: RequestOptions, withAuth: boolean, is
     await authProvider.renewToken();
     return send(path, options, withAuth, true);
   }
-  if (!response.ok) throw await toApiError(response);
+  if (!response.ok) {
+    const error = await toApiError(response);
+    // Reads only: a write meant for a deleted profile must not land on the default profile.
+    const read = (options.method ?? 'GET') === 'GET';
+    if (read && withAuth && !isRetry && error.status === 404 && (error.details as { reason?: unknown } | undefined)?.reason === 'profile' && recoverProfile()) {
+      return send(path, options, withAuth, true);
+    }
+    throw error;
+  }
   return response;
 }
 

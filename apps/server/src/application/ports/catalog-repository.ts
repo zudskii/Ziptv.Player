@@ -55,6 +55,38 @@ export interface AddedAtIndex {
   series: Map<string, Date | null>;
 }
 
+export type VodSortOrder = 'recent' | 'name' | 'rating' | 'year';
+
+export interface VodListQuery {
+  category?: string | undefined;
+  sort: VodSortOrder;
+  offset: number;
+  limit: number;
+  /** Leave out adult items (kids profiles, "hide adult"). */
+  hideAdult: boolean;
+  /** Skip counting the matching items (rails need none); total is then -1. */
+  skipTotal?: boolean;
+}
+
+export type MovieSummary = Omit<StoredMovie, 'locator' | 'searchTokens'>;
+export type SeriesSummary = Omit<StoredSeries, 'searchTokens' | 'detailsFetchedAt'>;
+
+export interface CatalogSearchResult {
+  live: (LiveChannelSummary & { sourceId: string })[];
+  movies: (MovieSummary & { sourceId: string })[];
+  series: (SeriesSummary & { sourceId: string })[];
+}
+
+export interface RecentlyAddedRow {
+  type: 'channel' | 'movie' | 'series';
+  sourceId: string;
+  key: string;
+  name: string;
+  image: string | null;
+  addedAt: Date;
+  groups: string[];
+}
+
 export interface CatalogRepository {
   insertRevision(sourceId: string, revision: number, data: RevisionData): Promise<void>;
   deleteRevision(sourceId: string, revision: number): Promise<void>;
@@ -77,6 +109,19 @@ export interface CatalogRepository {
   findSeries(ref: SourceRevisionRef, key: string): Promise<StoredSeries | null>;
   findEpisode(ref: SourceRevisionRef, seriesKey: string, key: string): Promise<StoredEpisode | null>;
   listEpisodes(ref: SourceRevisionRef, seriesKey: string): Promise<StoredEpisode[]>;
+  listMovies(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: MovieSummary[]; total: number }>;
+  listSeries(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: SeriesSummary[]; total: number }>;
+  /** Categories in provider order with item counts. */
+  vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean): Promise<{ name: string; count: number }[]>;
+  findMoviesMany(ref: SourceRevisionRef, keys: string[]): Promise<MovieSummary[]>;
+  findSeriesMany(ref: SourceRevisionRef, keys: string[]): Promise<SeriesSummary[]>;
+  /** Newest items (provider date or first-seen date) across sources. */
+  recentlyAdded(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<RecentlyAddedRow[]>;
+  /** Newest / best-rated VOD across sources (Home rails). */
+  latestMovies(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<(MovieSummary & { sourceId: string })[]>;
+  latestSeries(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<(SeriesSummary & { sourceId: string })[]>;
+  /** Every term must prefix-match a word of the name (trigram-indexed). */
+  search(refs: SourceRevisionRef[], terms: string[], limitPerType: number, hideAdult: boolean): Promise<CatalogSearchResult>;
   /**
    * Stores episodes fetched on demand into the pinned revision (idempotent: concurrent fetches
    * of the same series insert the same keys) and stamps `detailsFetchedAt`. False = that

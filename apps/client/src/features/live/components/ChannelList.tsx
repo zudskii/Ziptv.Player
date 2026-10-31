@@ -6,6 +6,7 @@ import { useEffect, useRef } from 'react';
 import { cn } from '../../../lib/cn';
 import { formatClock, formatRange } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
+import { useDisplayPrefs } from '../../user-state/display-prefs';
 import { programmeProgress } from '../../epg/programme';
 import type { BrowsableChannel } from '../browse';
 import { ChannelLogo } from './ChannelLogo';
@@ -37,6 +38,8 @@ interface ChannelListProps {
  */
 export function ChannelList({ sourceId, channels, activeKey, favorites, showGroups, nowNext, onSelect, onToggleFavorite }: ChannelListProps) {
   const now = useNow(30_000);
+  const showProgress = useDisplayPrefs((state) => state.showProgress);
+  useDisplayPrefs((state) => state.use24h); // re-render times when the clock format changes
   const scrollRef = useRef<HTMLDivElement>(null);
   const rowHeight = (index: number) => (nowNext?.[channels[index]?.key ?? '']?.now ? ROW_HEIGHT_EPG : ROW_HEIGHT);
   // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Virtual is designed for this usage.
@@ -103,9 +106,11 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
                         <span className="truncate text-fg-muted">{current.title}</span>
                         <span className="ml-auto shrink-0 font-mono tabular-nums text-fg-subtle">{formatRange(current.start, current.end)}</span>
                       </span>
-                      <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-fg/10">
-                        <span className="block h-full rounded-full bg-live/80" style={{ width: `${Math.round(programmeProgress(current, now) * 100)}%` }} />
-                      </span>
+                      {showProgress && (
+                        <span className="mt-1 block h-0.5 overflow-hidden rounded-full bg-fg/10">
+                          <span className="block h-full rounded-full bg-live/80" style={{ width: `${Math.round(programmeProgress(current, now) * 100)}%` }} />
+                        </span>
+                      )}
                       {entry?.next && (
                         <span className="mt-0.5 block truncate text-[11px] text-fg-subtle">
                           Next: {entry.next.title} · {formatClock(entry.next.start)}

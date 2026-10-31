@@ -153,7 +153,7 @@ describe('PlaybackController', () => {
   it('reconnects with a fresh plan after a runtime failure', async () => {
     vi.useFakeTimers();
     const { controller, engines } = create(['ok', 'ok']);
-    const resolver = vi.fn(async () => plan(`http://token-${resolver.mock.calls.length}`));
+    const resolver = vi.fn(async (_signal: AbortSignal, _context: { continueSession?: string }) => plan(`http://token-${resolver.mock.calls.length}`));
     controller.play(resolver);
     await vi.advanceTimersByTimeAsync(0);
 
@@ -162,11 +162,43 @@ describe('PlaybackController', () => {
     await vi.advanceTimersByTimeAsync(1_000);
 
     expect(resolver).toHaveBeenCalledTimes(2);
+    // The reconnect continues the same viewing (one history entry).
+    expect(resolver.mock.calls.map((call) => call[1])).toEqual([{}, { continueSession: '00000000-0000-4000-8000-000000000000' }]);
     expect(engines.map((e) => [e.url, e.destroyed])).toEqual([
       ['http://token-1', true],
       ['http://token-2', false],
     ]);
     expect(controller.getSnapshot().status).toBe('playing');
+    controller.destroy();
+  });
+
+  it('VOD: resumes at the saved position, keeps the position across a reconnect, ends instead of reconnecting', async () => {
+    vi.useFakeTimers();
+    video.duration = 600;
+    const { controller, engines } = create(['ok', 'ok']);
+    const vodPlan = (): PlaybackPlanDto => ({ ...plan('http://vod'), content: { ...plan('http://vod').content, mode: 'vod', channel: null }, resumeFrom: 120 });
+    controller.play(async () => vodPlan());
+    await vi.advanceTimersByTimeAsync(0);
+    expect(video.currentTime).toBe(120);
+
+    video.currentTime = 300;
+    engines[0]!.fatal(new EngineError('network', 'network'));
+    video.currentTime = 0; // the fresh stream starts at 0
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(video.currentTime).toBe(300);
+
+    video.dispatchEvent(new Event('ended'));
+    expect(controller.getSnapshot().status).toBe('ended');
+    controller.destroy();
+  });
+
+  it('waits for Play when autoplay is off', async () => {
+    const { controller } = create(['ok']);
+    controller.setPreferences({ audio: '', subtitles: '', quality: 'auto', resume: true, autoplay: false });
+    controller.play(async () => plan('http://a'));
+    await settle();
+    expect(controller.getSnapshot().status).toBe('paused');
+    expect(video.paused).toBe(true);
     controller.destroy();
   });
 

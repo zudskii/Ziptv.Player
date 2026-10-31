@@ -66,8 +66,11 @@ export function useContentPlayback(controller: PlaybackController | null, conten
       controller.stop();
       return;
     }
-    controller.play((signal) =>
-      resolvePlayback({ content: current, secureContext: config.isSecurePage, ...(unlockToken ? { unlockToken } : {}) }, signal),
+    controller.play((signal, context) =>
+      resolvePlayback(
+        { content: current, secureContext: config.isSecurePage, ...(unlockToken ? { unlockToken } : {}), ...(context.continueSession ? { continueSession: context.continueSession } : {}) },
+        signal,
+      ),
     );
   }, [controller, key, unlockToken]);
 }

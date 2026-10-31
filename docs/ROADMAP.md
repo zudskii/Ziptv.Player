@@ -19,7 +19,7 @@
 | 2 | Enterprise საფუძველი ✅ | Opus + Sonnet |
 | 3 | EPG ✅ | Opus + Sonnet |
 | 4 | Xtream + VOD მოდელი ✅ | Opus |
-| 5 | მაყურებლის გამოცდილება | Sonnet + Opus |
+| 5 | მაყურებლის გამოცდილება ✅ | Sonnet + Opus |
 | 6 | Master Catalog და კონტენტ-ოპერაციები | Opus |
 | 7 | Stream Health და Failover | Opus |
 | 8 | Commerce და Playback Authorization | Opus |
@@ -116,7 +116,9 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 4.9 ტესტები ყალბ Xtream origin-ზე (Mongo ხაზის lab-ის გადმოტანა). *(Sonnet)*
 - **Gate:** Xtream წყარო მთლიანად სინქრონდება (live + movies + series) და უკრავს.
 
-## ფაზა 5 — მაყურებლის გამოცდილება
+## ფაზა 5 — მაყურებლის გამოცდილება · ✅ დასრულდა
+
+> **სტატუსი:** 5.1–5.12 გაკეთებულია. პროფილები (ლიმიტი 5, `X-Profile-Id`, Kids → adult დამალულია), `list_items` / `progress` / `history` (`0007-viewer`), რეალური `WatchObserver` (watch time სერვერზე ითვლება, reconnect იმავე history ჩანაწერს აგრძელებს), `GET /home`, Movies/Series (overview, კატეგორიები, სორტირება, დეტალები, resume), VOD player (seek, resume, audio/subtitles, შემდეგი ეპიზოდი autoplay-ით), My List, History, ძიება `pg_trgm`-ით (არხები, ფილმები, სერიალები, პროგრამები), Settings (General, Playback, Appearance, TV guide, Profiles, Data & Storage), ლოკალური ფავორიტების ერთჯერადი იმპორტი, სრული ნავიგაცია. Gate შემოწმებულია e2e-ით: progress sync-ს გადარჩება, წყაროს წაშლა user-state-ს შლის. ღია საკითხები: ძიება სახელის სიტყვის დასაწყისზეა (full-text აღწერებზე — მოგვიანებით); ეპიზოდების ცალკე ძიება contract-ში არ არის; პროფილის PIN — ფაზა 10.
 
 - 5.1 **პროფილები:** სქემა, ლიმიტი, `X-Profile-Id`; არსებული `viewer-resolver` გაფართოება. *(Opus)*
 - 5.2 **user-state სქემა:** `list_items` (My List), `progress` (Continue Watching), `history` (ცალკე), უნიკალურობა profile + content ref-ზე. *(Opus)*

@@ -7,11 +7,13 @@ export interface PlayerShortcutHandlers {
   volume: (delta: number) => void;
   nextChannel: () => void;
   previousChannel: () => void;
+  /** VOD: ←/→ seek by ±10 s (absent for live, where ←/→ keep their default). */
+  seek?: (delta: number) => void;
 }
 
 /**
  * TV-remote friendly shortcuts. Ignored while typing in inputs.
- *   Space/K play-pause · M mute · F fullscreen · ↑/↓ volume
+ *   Space/K play-pause · M mute · F fullscreen · ↑/↓ volume · ←/→ seek (VOD)
  *   PageDown/ChannelDown/N next · PageUp/ChannelUp/P previous
  */
 export function usePlayerShortcuts(handlers: PlayerShortcutHandlers, enabled = true): void {
@@ -50,6 +52,11 @@ export function usePlayerShortcuts(handlers: PlayerShortcutHandlers, enabled = t
         case 'ArrowDown':
           if (isListTarget(event.target)) return;
           actions.volume(-0.05);
+          break;
+        case 'ArrowLeft':
+        case 'ArrowRight':
+          if (!actions.seek || isListTarget(event.target) || event.target instanceof HTMLInputElement) return;
+          actions.seek(event.key === 'ArrowLeft' ? -10 : 10);
           break;
         case 'PageDown':
         case 'ChannelDown':

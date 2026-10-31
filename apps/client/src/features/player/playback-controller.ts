@@ -4,9 +4,9 @@ import { resolveApiUrl } from '../../config';
 import { ApiError, errorMessage } from '../../lib/api-client';
 import { problemOf } from '../../lib/problems';
 import { loadEngine as defaultLoadEngine, type EngineLoader } from './engines';
-import { EngineError, type EngineHandle, type QualityLevel } from './engines/types';
+import { EngineError, NO_TRACKS, preferredTrack, type EngineHandle, type QualityLevel, type TrackState } from './engines/types';
 
-export type PlaybackStatus = 'idle' | 'resolving' | 'connecting' | 'playing' | 'buffering' | 'paused' | 'reconnecting' | 'blocked' | 'error';
+export type PlaybackStatus = 'idle' | 'resolving' | 'connecting' | 'playing' | 'buffering' | 'paused' | 'reconnecting' | 'blocked' | 'ended' | 'error';
 
 export interface PlaybackAttempt {
   index: number;
@@ -38,7 +38,23 @@ export interface PlaybackSnapshot {
   mutedByAutoplayPolicy: boolean;
   /** The plan being played (content info, resume position, next episode, alternates). */
   plan: PlaybackPlanDto | null;
+  tracks: TrackState;
 }
+
+/** Settings → Playback, applied when a stream starts. */
+export interface PlaybackPreferences {
+  /** '' = stream default. */
+  audio: string;
+  /** '' = stream default, 'off' = none. */
+  subtitles: string;
+  quality: 'auto' | 'highest' | 'lowest' | '1080' | '720' | '480';
+  /** Start VOD at the saved position. */
+  resume: boolean;
+  /** Off: the stream is prepared but waits for Play. */
+  autoplay: boolean;
+}
+
+const DEFAULT_PREFERENCES: PlaybackPreferences = { audio: '', subtitles: '', quality: 'auto', resume: true, autoplay: true };
 
 export const IDLE_SNAPSHOT: PlaybackSnapshot = {
   status: 'idle',
@@ -48,9 +64,11 @@ export const IDLE_SNAPSHOT: PlaybackSnapshot = {
   quality: -1,
   mutedByAutoplayPolicy: false,
   plan: null,
+  tracks: NO_TRACKS,
 };
 
-export type PlanResolver = (signal: AbortSignal) => Promise<PlaybackPlanDto>;
+/** `continueSession`: a reconnect of the current viewing (keeps one history entry). */
+export type PlanResolver = (signal: AbortSignal, context: { continueSession?: string }) => Promise<PlaybackPlanDto>;
 
 interface ControllerOptions {
   loadEngine?: EngineLoader;
@@ -86,6 +104,10 @@ export class PlaybackController {
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private stallTimer: ReturnType<typeof setInterval> | null = null;
   private lastProgress = { time: -1, at: 0 };
+  private preferences: PlaybackPreferences = DEFAULT_PREFERENCES;
+  /** VOD: where to continue after a reconnect (the fresh stream starts at 0). */
+  private continueAt: number | null = null;
+  private tracksApplied = false;
   private readonly detachVideoListeners: () => void;
 
   constructor(
@@ -129,6 +151,31 @@ export class PlaybackController {
     this.setSnapshot(IDLE_SNAPSHOT);
   }
 
+  setPreferences(preferences: PlaybackPreferences): void {
+    this.preferences = preferences;
+  }
+
+  setAudioTrack(index: number): void {
+    this.engine?.setAudioTrack?.(index);
+    this.refreshTracks();
+  }
+
+  setSubtitleTrack(index: number): void {
+    this.engine?.setSubtitleTrack?.(index);
+    this.refreshTracks();
+  }
+
+  /** VOD seeking (seconds); clamped to the media. */
+  seekTo(seconds: number): void {
+    const duration = this.video.duration;
+    if (!Number.isFinite(duration)) return;
+    this.video.currentTime = Math.min(Math.max(0, seconds), Math.max(0, duration - 0.5));
+  }
+
+  seekBy(delta: number): void {
+    this.seekTo(this.video.currentTime + delta);
+  }
+
   setQuality(index: number): void {
     this.engine?.setQuality(index);
     this.update({ quality: index });
@@ -151,11 +198,14 @@ export class PlaybackController {
     this.cancelPending();
     this.teardownEngine();
     this.abort = new AbortController();
-    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1, ...(status === 'resolving' ? { plan: null } : {}) });
+    if (status === 'resolving') this.continueAt = null;
+    this.tracksApplied = false;
+    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1, tracks: NO_TRACKS, ...(status === 'resolving' ? { plan: null } : {}) });
 
     let plan: PlaybackPlanDto;
     try {
-      plan = await this.resolver!(this.abort.signal);
+      const previous = status === 'reconnecting' ? this.snapshot.plan?.sessionId : undefined;
+      plan = await this.resolver!(this.abort.signal, previous ? { continueSession: previous } : {});
     } catch (error) {
       if (generation !== this.generation) return;
       if (error instanceof ApiError && error.code === 'ABORTED') return;
@@ -178,7 +228,11 @@ export class PlaybackController {
         if (generation !== this.generation) return;
 
         engine.onFatal((error) => this.onRuntimeFailure(generation, error));
+        engine.onTracksChanged?.(() => generation === this.generation && this.refreshTracks());
+        this.applyQualityPreference(engine);
         this.update({ qualities: engine.qualityLevels(), quality: engine.currentQuality() });
+        this.refreshTracks();
+        this.seekToStart(plan);
         await this.startPlayback(generation);
         this.startStallWatchdog(generation);
         return;
@@ -203,6 +257,11 @@ export class PlaybackController {
   }
 
   private async startPlayback(generation: number): Promise<void> {
+    // Autoplay off applies to the first start only; reconnects continue playing.
+    if (!this.preferences.autoplay && this.snapshot.status === 'connecting') {
+      this.update({ status: 'paused' });
+      return;
+    }
     try {
       await this.video.play();
     } catch (error) {
@@ -237,6 +296,7 @@ export class PlaybackController {
     }
     const delay = Math.min(8_000, 1_000 * 2 ** this.reconnects);
     this.reconnects++;
+    if (this.snapshot.plan && this.snapshot.plan.content.mode !== 'live' && this.video.currentTime > 0) this.continueAt = this.video.currentTime;
     this.teardownEngine();
     this.update({ status: 'reconnecting' });
     this.reconnectTimer = setTimeout(() => void this.start('reconnecting'), delay);
@@ -271,11 +331,59 @@ export class PlaybackController {
       on('pause', () => this.engine && this.snapshot.status !== 'error' && this.update({ status: 'paused' })),
       on('volumechange', () => !this.video.muted && this.snapshot.mutedByAutoplayPolicy && this.update({ mutedByAutoplayPolicy: false })),
       on('ended', () => {
+        if (!this.engine) return;
         // Live streams "end" when the upstream closes the connection: reconnect.
-        if (this.engine && !Number.isFinite(this.video.duration)) this.onRuntimeFailure(this.generation, new Error('The live stream ended unexpectedly.'));
+        if (!Number.isFinite(this.video.duration) || this.snapshot.plan?.content.mode === 'live') {
+          this.onRuntimeFailure(this.generation, new Error('The live stream ended unexpectedly.'));
+          return;
+        }
+        this.stopStallWatchdog();
+        this.update({ status: 'ended' });
       }),
     ];
     return () => offs.forEach((off) => off());
+  }
+
+  private stopStallWatchdog(): void {
+    if (this.stallTimer) clearInterval(this.stallTimer);
+    this.stallTimer = null;
+  }
+
+  /** VOD: continue where a reconnect interrupted, else the saved resume position. */
+  private seekToStart(plan: PlaybackPlanDto): void {
+    if (plan.content.mode === 'live') return;
+    const target = this.continueAt ?? (this.preferences.resume ? plan.resumeFrom : null);
+    if (target && target > 0) {
+      try {
+        this.video.currentTime = target;
+      } catch {
+        /* not seekable yet: start from the beginning */
+      }
+    }
+  }
+
+  private applyQualityPreference(engine: EngineHandle): void {
+    const levels = engine.qualityLevels().filter((level) => level.index >= 0);
+    const wanted = this.preferences.quality;
+    if (levels.length === 0 || wanted === 'auto') return;
+    const pick = wanted === 'highest' ? levels[0] : wanted === 'lowest' ? levels.at(-1) : (levels.find((level) => level.label.startsWith(wanted)) ?? levels.find((level) => Number.parseInt(level.label, 10) <= Number(wanted)));
+    if (pick) engine.setQuality(pick.index);
+  }
+
+  private refreshTracks(): void {
+    const engine = this.engine;
+    if (!engine?.tracks) return;
+    let tracks = engine.tracks();
+    // Language preferences apply once per stream, as soon as the tracks are known.
+    if (!this.tracksApplied && (tracks.audio.length > 0 || tracks.subtitles.length > 0)) {
+      this.tracksApplied = true;
+      const audio = preferredTrack(tracks.audio, this.preferences.audio);
+      if (audio !== null && audio >= 0 && audio !== tracks.audioIndex) engine.setAudioTrack?.(audio);
+      const subtitles = tracks.subtitles.length > 0 ? preferredTrack(tracks.subtitles, this.preferences.subtitles) : null;
+      if (subtitles !== null && subtitles !== tracks.subtitleIndex) engine.setSubtitleTrack?.(subtitles);
+      tracks = engine.tracks();
+    }
+    this.update({ tracks });
   }
 
   private fail(failure: PlaybackFailure): void {

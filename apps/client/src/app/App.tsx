@@ -23,6 +23,13 @@ import { SourcesPage } from '../pages/SourcesPage';
 const LivePage = lazy(() => import('../pages/live/LivePage').then((module) => ({ default: module.LivePage })));
 const GuidePage = lazy(() => import('../pages/guide/GuidePage').then((module) => ({ default: module.GuidePage })));
 const PlaylistEditorPage = lazy(() => import('../pages/playlists/PlaylistEditorPage').then((module) => ({ default: module.PlaylistEditorPage })));
+const VodBrowsePage = lazy(() => import('../pages/vod/VodBrowsePage').then((module) => ({ default: module.VodBrowsePage })));
+const MovieDetailsPage = lazy(() => import('../pages/vod/MovieDetailsPage').then((module) => ({ default: module.MovieDetailsPage })));
+const SeriesDetailsPage = lazy(() => import('../pages/vod/SeriesDetailsPage').then((module) => ({ default: module.SeriesDetailsPage })));
+const PlayPage = lazy(() => import('../pages/PlayPage').then((module) => ({ default: module.PlayPage })));
+const SearchPage = lazy(() => import('../pages/SearchPage').then((module) => ({ default: module.SearchPage })));
+const MyListPage = lazy(() => import('../pages/MyListPage').then((module) => ({ default: module.MyListPage })));
+const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
   useEffect(() => installThemeSync(), []);
@@ -44,6 +51,15 @@ export function App() {
             <Route index element={<HomePage />} />
             <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />
             <Route path="guide/:sourceId?" element={<Lazy><GuidePage /></Lazy>} />
+            <Route path="movies/:sourceId?" element={<Lazy><VodBrowsePage key="movies" kind="movies" /></Lazy>} />
+            <Route path="movies/:sourceId/:key" element={<Lazy><MovieDetailsPage /></Lazy>} />
+            <Route path="series/:sourceId?" element={<Lazy><VodBrowsePage key="series" kind="series" /></Lazy>} />
+            <Route path="series/:sourceId/:key" element={<Lazy><SeriesDetailsPage /></Lazy>} />
+            <Route path="play/movie/:sourceId/:key" element={<Lazy><PlayPage type="movie" /></Lazy>} />
+            <Route path="play/episode/:sourceId/:seriesKey/:key" element={<Lazy><PlayPage type="episode" /></Lazy>} />
+            <Route path="my-list" element={<Lazy><MyListPage /></Lazy>} />
+            <Route path="history" element={<Lazy><HistoryPage /></Lazy>} />
+            <Route path="search" element={<Lazy><SearchPage /></Lazy>} />
             <Route path="playlists" element={<PlaylistsPage />} />
             <Route path="playlists/:playlistId" element={<Lazy><PlaylistEditorPage /></Lazy>} />
             <Route path="sources" element={<SourcesPage />} />
