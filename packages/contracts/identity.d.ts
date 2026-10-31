@@ -21,6 +21,8 @@ export interface MeDto {
   createdAt: string;
   /** null for a guest (anonymous device identity that has not registered yet). */
   email: string | null;
+  /** The person confirmed they own the address (by opening the link in the email we sent). Always false for a guest. */
+  emailVerified: boolean;
   isGuest: boolean;
   role: UserRole;
 }
@@ -111,4 +113,29 @@ export interface ProfileAccessRequest {
 
 export interface ProfileAccessDto {
   profile: ProfileDto;
+}
+
+// ---------------------------------------------------------------------------
+// Email: forgotten passwords and address confirmation. Available only when the server can send mail.
+// ---------------------------------------------------------------------------
+
+export interface AuthFeaturesDto {
+  /** "Forgot password" works (the server can send email). */
+  passwordReset: boolean;
+  /** New accounts are asked to confirm their address. */
+  emailVerification: boolean;
+}
+
+export interface ForgotPasswordRequest {
+  email: string;
+}
+
+/** `token` comes from the link in the email (its URL fragment). */
+export interface ResetPasswordRequest {
+  token: string;
+  password: string;
+}
+
+export interface VerifyEmailRequest {
+  token: string;
 }

@@ -232,8 +232,11 @@ describe.skipIf(!TEST_DATABASE_URL)('Sources & Live TV end-to-end', () => {
       .expect(422);
     expect(response.body.error).toMatchObject({ code: 'UNPLAYABLE', details: { reason: 'unsupported_protocol' } });
 
-    const forged = t.container.mediaTokens.issue(`${origin.url}/live/master.m3u8`, undefined, Math.floor(Date.now() / 1000) + 60);
+    const expiry = Math.floor(Date.now() / 1000) + 60;
+    const forged = t.container.mediaTokens.issue(`${origin.url}/live/master.m3u8`, undefined, expiry, { kind: 'session', id: 'no-such-session' });
     await request(t.app).get(`/api/v1/media/stream/${forged.slice(0, -2)}xx`).expect(403);
+    // A well-formed token for a device that is not signed in (any more) is refused too.
+    expect((await request(t.app).get(`/api/v1/media/stream/${forged}`).expect(403)).body.error.message).toMatch(/revoked/);
     // An image token cannot be used as a stream token.
     await request(t.app).get(`/api/v1/media/stream/${t.container.mediaTokens.issueImage(`${origin.url}/logo.png`)}`).expect(403);
   });

@@ -25,8 +25,11 @@ export default defineConfig(({ mode }) => {
       chunkSizeWarningLimit: 1200,
     },
     test: {
-      include: ['src/**/*.test.ts'],
+      include: ['src/**/*.test.{ts,tsx}'],
       environment: 'node',
+      // UI tests go through a real server and database; a loaded machine needs more than the 5 s default.
+      testTimeout: 20_000,
+      hookTimeout: 30_000,
     },
   };
 });

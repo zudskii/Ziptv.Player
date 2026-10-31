@@ -10,14 +10,22 @@ export interface CatalogEpgLinker {
   linkBuild(source: SourceRecord, live: LiveChannelEntry[]): Promise<void>;
   /** After the revision is live: create/attach guides for announced URLs, sync what is missing. */
   afterCommit(source: SourceRecord, epgUrls: string[]): Promise<void>;
-  /** Number of guides attached to each source (for the source list). */
-  guideCounts(ownerId: string): Promise<Map<string, number>>;
+  /** Guide state per source (count, programme version, syncing) for the source list. */
+  guideSummaries(ownerId: string): Promise<Map<string, SourceGuideSummary>>;
 }
+
+export interface SourceGuideSummary {
+  guides: number;
+  version: string;
+  syncing: boolean;
+}
+
+export const NO_GUIDES: SourceGuideSummary = { guides: 0, version: '0', syncing: false };
 
 export const noopEpgLinker: CatalogEpgLinker = {
   linkBuild: async () => undefined,
   afterCommit: async () => undefined,
-  guideCounts: async () => new Map(),
+  guideSummaries: async () => new Map(),
 };
 
 /** Modules that keep data about a source (guides, My List, progress) clean up through this. */
@@ -28,4 +36,9 @@ export interface SourceRemovalListener {
 /** Wakes the background job runner so a queued sync starts now instead of at the next tick. */
 export interface JobKicker {
   kick(job: string): void;
+}
+
+/** Told after a new catalog revision of a source went live (playlists re-attach renamed channels). */
+export interface SourceRevisionListener {
+  onRevisionCommitted(source: SourceRecord): Promise<void>;
 }

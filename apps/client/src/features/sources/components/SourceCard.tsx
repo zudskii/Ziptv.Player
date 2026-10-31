@@ -10,7 +10,7 @@ import { Popover } from '../../../components/ui/Popover';
 import { errorMessage } from '../../../lib/api-client';
 import { formatAgo, formatIn } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
-import { isSyncing, useDeleteSource, useSyncSource } from '../api';
+import { isSyncing, useConvertToXtream, useDeleteSource, useSyncSource } from '../api';
 import { describeLibrary, describeSync, HEALTH_LABELS, SOURCE_TYPE_LABELS } from '../source-status';
 import { SourceProblemNotice } from './SourceProblemNotice';
 import { SyncProgress } from './SyncProgress';
@@ -21,6 +21,7 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
   const now = useNow(30_000);
   const sync = useSyncSource();
   const remove = useDeleteSource();
+  const convert = useConvertToXtream();
   const [showWarnings, setShowWarnings] = useState(false);
   const Icon = TYPE_ICONS[source.type];
   const syncing = isSyncing(source);
@@ -31,6 +32,15 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
       await sync.mutateAsync(source.id);
     } catch (error) {
       toast.error('Sync failed to start', { description: errorMessage(error) });
+    }
+  };
+
+  const convertToXtream = async () => {
+    try {
+      await convert.mutateAsync(source.id);
+      toast.success('Switched to the Xtream API', { description: 'Your favourites and progress stay where they are. Syncing now…' });
+    } catch (error) {
+      toast.error('Could not switch to Xtream', { description: errorMessage(error) });
     }
   };
 
@@ -63,7 +73,7 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
           <p className="mt-0.5 text-xs text-fg-subtle">
             {describeSync(source, now)}
             {source.sync.autoSync && source.sync.nextSyncAt && !syncing && ` · next ${formatIn(source.sync.nextSyncAt, now)}`}
-            {source.epg.guides > 0 && ` · ${source.stats.epgMapped.toLocaleString()} channels with guide`}
+            {source.epg.guides > 0 && ` · ${source.stats.epgMapped.toLocaleString()} channel${source.stats.epgMapped === 1 ? '' : 's'} with guide`}
           </p>
           {source.account && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle">
@@ -134,11 +144,23 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
         </div>
       )}
 
+      {source.type === 'm3u_url' && source.xtreamCandidate && source.revision > 0 && source.sync.status !== 'failed' && (
+        <div className="mt-3 flex flex-col gap-2 rounded-md border border-brand/20 bg-brand/5 p-3 text-sm sm:flex-row sm:items-center">
+          <p className="flex-1 text-fg-muted">
+            This link comes from an Xtream Codes panel. Switch to the Xtream API for movie and series details, account status and archive.
+          </p>
+          <Button size="sm" icon={<KeyRound className="h-3.5 w-3.5" />} onClick={() => void convertToXtream()} loading={convert.isPending} disabled={syncing}>
+            Switch to Xtream
+          </Button>
+        </div>
+      )}
+
       {showWarnings && (
         <ul className="mt-3 max-h-40 space-y-0.5 overflow-y-auto rounded-md bg-sunken/60 p-2 font-mono text-xs text-amber-500/90">
           {source.warnings.map((warning) => (
             <li key={`${warning.line}-${warning.code}-${warning.message}`}>
-              line {warning.line}: {warning.message}
+              {warning.line > 0 && `line ${warning.line}: `}
+              {warning.message}
             </li>
           ))}
           {source.warningCount > source.warnings.length && <li className="text-fg-subtle">…and {source.warningCount - source.warnings.length} more</li>}

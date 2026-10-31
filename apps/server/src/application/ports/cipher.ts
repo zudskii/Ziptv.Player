@@ -2,7 +2,7 @@
  * Encryption at rest for secrets stored in the database (provider credentials, stream URLs
  * with embedded tokens, guide URLs). Each purpose uses its own derived key.
  */
-export type CipherPurpose = 'source-credential' | 'stream-locator' | 'guide-url';
+export type CipherPurpose = 'source-credential' | 'stream-locator' | 'guide-url' | 'playlist-export-token' | 'staff-mfa' | 'staff-challenge' | 'operator-secret';
 
 export interface SecretCipher {
   encrypt(purpose: CipherPurpose, plaintext: string): string;

@@ -11,10 +11,11 @@ import { pinoHttp } from 'pino-http';
 import type { Logger } from '../application/ports/logger.js';
 import type { AppConfig } from '../config/env.js';
 import type { Container } from '../container.js';
-import { API_PREFIX, MEDIA_PREFIX } from './http-paths.js';
+import { API_PREFIX, MEDIA_PREFIX, PLAYLIST_EXPORT_PREFIX } from './http-paths.js';
 import { acceptBodyUnlock, optionalSession, requireSession } from './middleware/auth.js';
+import { createPlaylistExportRouter } from './routes/playlist-export.routes.js';
 import { createErrorHandler, notFoundHandler } from './middleware/error-handler.js';
-import { createRateLimiter } from './middleware/rate-limit.js';
+import { rateLimiterFactory } from './middleware/rate-limit.js';
 import { createApiRouters } from './routes/index.js';
 import { createMediaRouter } from './routes/media.routes.js';
 
@@ -31,6 +32,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   const app = express();
   app.disable('x-powered-by');
   app.set('trust proxy', config.http.trustProxy);
+  const limit = rateLimiterFactory(container.rateLimitStores);
 
   app.use(
     pinoHttp({
@@ -53,7 +55,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   app.use(
     helmet({
       crossOriginResourcePolicy: { policy: 'cross-origin' },
-      contentSecurityPolicy: { useDefaults: false, directives: CONTENT_SECURITY_POLICY },
+      contentSecurityPolicy: { useDefaults: false, directives: contentSecurityPolicy(config.stream.delivery) },
     }),
   );
 
@@ -74,8 +76,12 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
       streamProxy: config.stream.proxyEnabled ? container.media.streamProxy : null,
       catalogImages: container.media.catalogImages,
       signedImages: container.media.signedImages,
+      limit,
     }),
   );
+
+  // --- Public playlist links: the token in the URL is the credential ----------------------------
+  app.use(PLAYLIST_EXPORT_PREFIX, createPlaylistExportRouter(container.playlistExport, { publicUrl: config.publicUrl, limit }));
 
   // --- JSON API ------------------------------------------------------------------------------
   const auth = requireSession(container.sessions, container.viewers);
@@ -90,8 +96,8 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   );
   api.use(compression());
   api.use(express.json({ limit: '256kb' }));
-  api.use(createRateLimiter({ windowMs: 60 * 1000, limit: 900 }));
-  api.use(createApiRouters({ container, auth, optionalAuth: optionalSession(container.sessions), withUnlock: acceptBodyUnlock(container.viewers), config }));
+  api.use(limit({ name: 'api', windowMs: 60 * 1000, limit: 900 }));
+  api.use(createApiRouters({ container, auth, optionalAuth: optionalSession(container.sessions), withUnlock: acceptBodyUnlock(container.viewers), config, limit }));
   api.use(notFoundHandler);
   app.use(API_PREFIX, api);
 
@@ -103,24 +109,29 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
 }
 
 /**
- * The player loads media, images and manifests from arbitrary provider hosts, so those
- * directives are open while scripts stay same-origin. No `upgrade-insecure-requests`: it would
- * silently rewrite direct http:// stream URLs to https and break them.
+ * `auto` delivery: the player loads media, images and manifests from arbitrary provider hosts,
+ * so those directives are open while scripts stay same-origin. No `upgrade-insecure-requests`:
+ * it would silently rewrite direct http:// stream URLs to https and break them.
+ * `proxy` delivery: every stream and image comes from this origin, so the page may not talk to
+ * anything else (an injected script could not exfiltrate to, or a stream leak to, another host).
  */
-const CONTENT_SECURITY_POLICY = {
+function contentSecurityPolicy(delivery: 'auto' | 'proxy') {
+  const open = delivery === 'auto';
+  return {
   defaultSrc: ["'self'"],
   scriptSrc: ["'self'"],
   styleSrc: ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
-  imgSrc: ['*', 'data:', 'blob:'],
-  mediaSrc: ['*', 'data:', 'blob:'],
-  connectSrc: ['*'],
+  imgSrc: open ? ['*', 'data:', 'blob:'] : ["'self'", 'data:', 'blob:'],
+  mediaSrc: open ? ['*', 'data:', 'blob:'] : ["'self'", 'data:', 'blob:'],
+  connectSrc: open ? ['*'] : ["'self'"],
   workerSrc: ["'self'", 'blob:'],
   fontSrc: ["'self'", 'data:', 'https://fonts.gstatic.com'],
   objectSrc: ["'none'"],
   baseUri: ["'self'"],
   formAction: ["'self'"],
   frameAncestors: ["'none'"],
-};
+  };
+}
 
 /** Optional single-origin deployment: static client + SPA fallback for non-API routes. */
 function serveClient(app: Express, directory: string, logger: Logger): void {
@@ -142,5 +153,5 @@ function serveClient(app: Express, directory: string, logger: Logger): void {
 
 /** Keeps tokens out of access logs. */
 function redactUrl(url: string): string {
-  return url.replace(/(\/media\/(?:stream|images\/t)\/)[^/?]+/, '$1[token]');
+  return url.replace(/(\/media\/(?:stream|images\/t)\/)[^/?]+/, '$1[token]').replace(new RegExp(`^${PLAYLIST_EXPORT_PREFIX}/[^/?]+`), `${PLAYLIST_EXPORT_PREFIX}/[token]`);
 }

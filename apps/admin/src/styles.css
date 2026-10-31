@@ -1,0 +1,36 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --canvas: 9 12 20;
+    --surface: 15 20 32;
+    --surface-2: 22 29 45;
+    --sunken: 6 9 15;
+    --fg: 238 242 247;
+    --fg-muted: 152 164 184;
+    --fg-subtle: 100 112 135;
+    --line: 255 255 255;
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-canvas font-sans text-fg antialiased;
+    min-height: 100dvh;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-accent ring-offset-2 ring-offset-canvas;
+  }
+  select option {
+    @apply bg-surface text-fg;
+  }
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded-lg border border-line/10 bg-sunken px-3 py-2 text-sm text-fg placeholder:text-fg-subtle focus:border-accent/60 focus:outline-none;
+  }
+  .card {
+    @apply rounded-xl border border-line/[0.07] bg-surface;
+  }
+}

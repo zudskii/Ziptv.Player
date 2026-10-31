@@ -2,7 +2,7 @@ import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
 import type { PlaybackService } from '../../application/playback/playback.service.js';
-import { createRateLimiter } from '../middleware/rate-limit.js';
+import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentViewer } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import { ContentKey, IsoInstant, EntityId } from './schemas.js';
@@ -35,10 +35,10 @@ const EventBody = z
   .strict();
 
 /** StartPlayback (plan with candidates) and playback events (progress, history, health). */
-export function createPlaybackRouter(deps: { playback: PlaybackService; auth: RequestHandler; withUnlock: RequestHandler }): Router {
+export function createPlaybackRouter(deps: { playback: PlaybackService; auth: RequestHandler; withUnlock: RequestHandler; limit: RateLimiterFactory }): Router {
   const router = Router();
-  const planLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 120, perUser: true });
-  const eventLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 240, perUser: true });
+  const planLimiter = deps.limit({ name: 'playback:plan', windowMs: 60 * 1000, limit: 120, perUser: true });
+  const eventLimiter = deps.limit({ name: 'playback:event', windowMs: 60 * 1000, limit: 240, perUser: true });
 
   router.post('/', deps.auth, planLimiter, deps.withUnlock, async (req, res) => {
     const body = parseInput(ResolveBody, req.body, 'Playback request');

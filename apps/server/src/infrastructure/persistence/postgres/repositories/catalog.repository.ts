@@ -14,6 +14,7 @@ import type {
 } from '../../../../application/ports/catalog-repository.js';
 import type { EpgLink } from '../../../../domain/catalog/model.js';
 import type { Db } from '../database.js';
+import { analyzeAfterBulkLoad } from '../maintenance.js';
 import { jsonOrNull, type EpisodesTable, type LiveChannelsTable, type MoviesTable, type SeriesTable } from '../schema.js';
 
 /** The wire protocol allows 65 535 bind parameters per statement; stay well below. */
@@ -110,6 +111,7 @@ function toStoredSeries(row: Selectable<SeriesTable>): StoredSeries {
     xtream: row.xtream,
     addedAt: row.added_at,
     searchTokens: row.search_tokens,
+    detailsFetchedAt: row.details_fetched_at,
   };
 }
 
@@ -186,7 +188,7 @@ export class PgCatalogRepository implements CatalogRepository {
               xtream: jsonOrNull(item.xtream),
               added_at: item.addedAt,
               search_tokens: item.searchTokens,
-              details_fetched_at: null,
+              details_fetched_at: item.detailsFetchedAt,
             })),
           )
           .execute(),
@@ -215,6 +217,11 @@ export class PgCatalogRepository implements CatalogRepository {
           .execute(),
       );
     });
+    // Committed: refresh planner statistics so reads through joins are planned for the real size.
+    await analyzeAfterBulkLoad(this.db, 'live_channels', data.live.length);
+    await analyzeAfterBulkLoad(this.db, 'movies', data.movies.length);
+    await analyzeAfterBulkLoad(this.db, 'series', data.series.length);
+    await analyzeAfterBulkLoad(this.db, 'episodes', data.episodes.length);
   }
 
   async deleteRevision(sourceId: string, revision: number): Promise<void> {
@@ -301,7 +308,7 @@ export class PgCatalogRepository implements CatalogRepository {
   async liveLinkTargets(ref: SourceRevisionRef): Promise<LiveLinkTarget[]> {
     const rows = await this.db
       .selectFrom('live_channels')
-      .select(['key', 'name', 'name_key', 'tvg_id', 'xtream', 'epg'])
+      .select(['key', 'name', 'name_key', 'tvg_id', 'xtream', 'epg', 'catchup'])
       .where('source_id', '=', ref.sourceId)
       .where('revision', '=', ref.revision)
       .execute();
@@ -311,6 +318,7 @@ export class PgCatalogRepository implements CatalogRepository {
       nameKey: row.name_key,
       tvgId: row.tvg_id,
       xtreamEpgId: row.xtream?.epgChannelId ?? null,
+      catchupDays: row.catchup?.days ?? null,
       epg: row.epg?.guideId ? row.epg : null,
     }));
   }
@@ -367,4 +375,52 @@ export class PgCatalogRepository implements CatalogRepository {
       .execute();
     return rows.map(toStoredEpisode);
   }
+  async storeSeriesDetails(ref: SourceRevisionRef, seriesKey: string, details: { episodes: StoredEpisode[]; plot: string | null }, fetchedAt: Date): Promise<boolean> {
+    return this.db.transaction().execute(async (trx) => {
+      // Row lock: serialises with a concurrent GC of this revision (deleteOtherRevisions), so
+      // episodes are never written into a revision that is being dropped.
+      const series = await trx
+        .selectFrom('series')
+        .select('key')
+        .where('source_id', '=', ref.sourceId)
+        .where('revision', '=', ref.revision)
+        .where('key', '=', seriesKey)
+        .forUpdate()
+        .executeTakeFirst();
+      if (!series) return false;
+      await insertChunked(details.episodes, 14, (chunk) =>
+        trx
+          .insertInto('episodes')
+          .values(
+            chunk.map((item) => ({
+              source_id: ref.sourceId,
+              revision: ref.revision,
+              series_key: seriesKey,
+              key: item.key,
+              season: item.season,
+              episode: item.episode,
+              title: item.title,
+              plot: item.plot,
+              duration_secs: item.durationSecs,
+              still: item.still,
+              air_date: item.airDate,
+              kind: item.kind,
+              locator: item.locator,
+              xtream: jsonOrNull(item.xtream),
+            })),
+          )
+          .onConflict((oc) => oc.columns(['source_id', 'revision', 'series_key', 'key']).doNothing())
+          .execute(),
+      );
+      await trx
+        .updateTable('series')
+        .set({ details_fetched_at: fetchedAt, plot: sql<string | null>`coalesce(plot, ${details.plot})` })
+        .where('source_id', '=', ref.sourceId)
+        .where('revision', '=', ref.revision)
+        .where('key', '=', seriesKey)
+        .execute();
+      return true;
+    });
+  }
+
 }

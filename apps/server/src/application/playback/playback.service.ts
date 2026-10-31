@@ -10,8 +10,10 @@ import type {
 } from '@ziptv/contracts';
 
 import type { StreamKind, StreamLocator, UnplayableReason } from '../../domain/catalog/model.js';
-import { planCandidates } from '../../domain/playback/plan.js';
+import { planCandidates, type DeliveryPolicy } from '../../domain/playback/plan.js';
+import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { toChannelDto } from '../catalog/catalog-mapper.js';
+import type { SeriesEpisodes } from '../catalog/series-episodes.js';
 import type { LiveCatalogService } from '../catalog/live.service.js';
 import { AppError } from '../errors.js';
 import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
@@ -30,8 +32,13 @@ export interface PlaybackServiceDeps {
   media: MediaUrls;
   prober: StreamProber;
   proxyEnabled: boolean;
+  /** `proxy`: never return upstream URLs (direct candidates, web-page links) to the client. */
+  delivery?: DeliveryPolicy;
+  artwork?: ArtworkUrls;
   /** Builds URLs of provider-API sources (Xtream) — M3U sources carry their own locators. */
   streamUrls?: StreamUrlResolver;
+  /** Episodes incl. on-demand loading of provider-API series; defaults to stored episodes only. */
+  episodes?: Pick<SeriesEpisodes, 'list'>;
   observer?: PlaybackObserver;
 }
 
@@ -50,9 +57,13 @@ const MAX_ALTERNATES = 5;
  */
 export class PlaybackService {
   private readonly observer: PlaybackObserver;
+  private readonly delivery: DeliveryPolicy;
+  private readonly artwork: ArtworkUrls;
 
   constructor(private readonly deps: PlaybackServiceDeps) {
     this.observer = deps.observer ?? noopPlaybackObserver;
+    this.delivery = deps.delivery ?? 'auto';
+    this.artwork = deps.artwork ?? directArtwork;
   }
 
   async resolve(viewer: Viewer, request: ResolvePlaybackRequest): Promise<PlaybackPlanDto> {
@@ -66,7 +77,7 @@ export class PlaybackService {
       const reason = resolved.target.unplayableReason;
       throw new AppError('UNPLAYABLE', 422, UNPLAYABLE_MESSAGES[reason], {
         reason,
-        ...(reason === 'web_page' ? { url: resolved.target.locator?.url } : {}),
+        ...(reason === 'web_page' && this.delivery === 'auto' ? { url: resolved.target.locator?.url } : {}),
       });
     }
 
@@ -74,16 +85,24 @@ export class PlaybackService {
     if (!locator) throw new AppError('UNPLAYABLE', 422, 'This item has no stream address.', { reason: 'unsupported_format' });
 
     const kind: StreamKind = resolved.target.kind === 'unknown' ? await this.deps.prober.probe(locator.url, locator.headers) : resolved.target.kind;
-    const expiresAt = this.deps.media.newStreamExpiry();
+    if (!viewer.sessionId) throw new AppError('UNAUTHORIZED', 401, 'Sign in again to play this.');
+    const grant = { kind: 'session' as const, id: viewer.sessionId };
+    const expiresAt = this.deps.media.newStreamExpiry('playback');
     const candidates = planCandidates({
       kind,
       url: locator.url,
       headers: locator.headers,
       secureContext: request.secureContext,
       proxyEnabled: this.deps.proxyEnabled,
-      proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt),
+      policy: this.delivery,
+      proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt, grant),
     });
     if (candidates.length === 0) {
+      if (this.delivery === 'proxy') {
+        throw new AppError('UNPLAYABLE', 422, kind === 'dash' ? 'MPEG-DASH streams cannot be delivered through the ZIPTV stream proxy yet.' : 'The stream proxy is disabled.', {
+          reason: 'unsupported_format',
+        });
+      }
       throw new AppError(
         'UNPLAYABLE',
         422,
@@ -97,6 +116,7 @@ export class PlaybackService {
     const sessionId = randomUUID();
     const content: PlaybackContentDto = {
       ...resolved.content,
+      image: this.artwork.url(resolved.content.image),
       channel: resolved.content.channel ? { ...resolved.content.channel, kind } : null,
     };
     const [resumeFrom, alternates] = await Promise.all([
@@ -141,7 +161,7 @@ export class PlaybackService {
             subtitle: channel.groups[0] ?? null,
             image: channel.logo,
             durationSecs: null,
-            channel: toChannelDto(channel, locked),
+            channel: toChannelDto(channel, locked, this.artwork),
             programme: null,
           },
           next: null,
@@ -171,7 +191,7 @@ export class PlaybackService {
       case 'episode': {
         const series = await this.deps.catalog.findSeries(pin, ref.seriesKey);
         if (!series || isHiddenForViewer(viewer, series)) throw AppError.notFound('Series');
-        const episodes = await this.deps.catalog.listEpisodes(pin, ref.seriesKey);
+        const episodes = this.deps.episodes ? await this.deps.episodes.list(source, series) : await this.deps.catalog.listEpisodes(pin, ref.seriesKey);
         const index = episodes.findIndex((episode) => episode.key === ref.key);
         const episode = episodes[index];
         if (!episode) throw AppError.notFound('Episode');

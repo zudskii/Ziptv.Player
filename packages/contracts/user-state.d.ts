@@ -264,7 +264,9 @@ export type NotificationType =
   | 'epg_updated'
   | 'epg_failed'
   | 'streams_unavailable'
-  | 'account_expiring';
+  | 'account_expiring'
+  /** Sign-outs or other security actions taken on the account (e.g. by support). */
+  | 'account_security';
 
 export interface NotificationDto {
   id: string;

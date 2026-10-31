@@ -9,9 +9,10 @@ import {
   nextSyncAt,
   type SourceCredential,
 } from '../../domain/sources/source.js';
+import { parseXtreamPlaylistUrl } from '../../domain/sources/xtream.js';
 import { AppError } from '../errors.js';
 import type { Cache } from '../ports/cache.js';
-import { SourceFetchError, type PlaylistFileParser } from '../ports/catalog-provider.js';
+import { SourceFetchError, type AccountVerifier, type PlaylistFileParser } from '../ports/catalog-provider.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
 import type { Logger } from '../ports/logger.js';
@@ -31,6 +32,8 @@ export interface SourceServiceDeps {
   secrets: SourceSecrets;
   pipeline: SourceSyncPipeline;
   fileParser: PlaylistFileParser;
+  /** Verifies Xtream credentials before an M3U source is switched to them. */
+  xtreamVerifier?: AccountVerifier;
   epg: CatalogEpgLinker;
   jobs: JobKicker;
   removalListeners: SourceRemovalListener[];
@@ -50,8 +53,8 @@ export class SourceService {
   constructor(private readonly deps: SourceServiceDeps) {}
 
   async list(ownerId: string): Promise<SourceDto[]> {
-    const [sources, guides] = await Promise.all([this.deps.sources.listByOwner(ownerId), this.deps.epg.guideCounts(ownerId)]);
-    return sources.map((source) => toSourceDto(source, guides.get(source.id) ?? 0));
+    const [sources, guides] = await Promise.all([this.deps.sources.listByOwner(ownerId), this.deps.epg.guideSummaries(ownerId)]);
+    return sources.map((source) => toSourceDto(source, guides.get(source.id)));
   }
 
   async get(ownerId: string, sourceId: string): Promise<SourceDto> {
@@ -159,6 +162,37 @@ export class SourceService {
     return this.toDto(updated);
   }
 
+  /**
+   * M3U link of an Xtream panel (`get.php?username=…&password=…`) → Xtream API source: same
+   * account, but Movies/Series metadata, account status and archive. Live and movie keys are
+   * computed exactly like the M3U import, so favourites, history and progress carry over.
+   */
+  async convertToXtream(ownerId: string, sourceId: string): Promise<SourceDto> {
+    const source = await this.requireOwned(ownerId, sourceId);
+    if (source.type !== 'm3u_url') throw new AppError('CONFLICT', 409, 'Only M3U URL sources can be converted to Xtream.');
+    const credential = this.deps.secrets.openCredential(source.credential);
+    const account = credential.type === 'm3u_url' ? parseXtreamPlaylistUrl(credential.url) : null;
+    if (!account) {
+      throw new AppError('CONFLICT', 409, 'This playlist link is not an Xtream Codes link (…/get.php?username=…&password=…).');
+    }
+    const server = normalizeXtreamServer(new URL(account.server));
+    this.assertUrlAllowed(server);
+    const xtream: SourceCredential = { type: 'xtream', server: server.href, username: account.username, password: account.password };
+    // The M3U link is replaced (there is no way back), so the API must work on this panel first:
+    // some resellers serve get.php but block player_api.php.
+    await this.verifyXtream(xtream);
+    const updated = await this.deps.sources.updateSettings(source.id, ownerId, {
+      ifType: 'm3u_url',
+      type: 'xtream',
+      xtreamCandidate: false,
+      credential: this.deps.secrets.sealCredential(xtream),
+      origin: { kind: 'xtream', host: server.host, username: account.username },
+    });
+    if (!updated) throw new AppError('CONFLICT', 409, 'This source was changed meanwhile. Reload and try again.');
+    this.deps.logger.info({ sourceId: source.id }, 'Source converted from M3U to Xtream');
+    return this.syncNow(ownerId, sourceId);
+  }
+
   async syncNow(ownerId: string, sourceId: string): Promise<SourceDto> {
     const source = await this.requireOwned(ownerId, sourceId);
     if (!isSyncable(source.type)) {
@@ -234,9 +268,20 @@ export class SourceService {
     }
   }
 
+  private async verifyXtream(credential: SourceCredential): Promise<void> {
+    if (!this.deps.xtreamVerifier) return;
+    try {
+      await this.deps.xtreamVerifier.verifyAccount(credential, AbortSignal.timeout(30_000));
+    } catch (error) {
+      const { problem, message } = classifyFailure(error);
+      const code = problem === 'auth_failed' ? 'SOURCE_AUTH_FAILED' : problem === 'expired' ? 'SOURCE_EXPIRED' : problem === 'blocked' ? 'UPSTREAM_BLOCKED' : 'SOURCE_UNAVAILABLE';
+      throw new AppError(code, 422, `The Xtream API of this panel cannot be used: ${message} The playlist link was kept.`);
+    }
+  }
+
   private async toDto(source: SourceRecord): Promise<SourceDto> {
-    const guides = await this.deps.epg.guideCounts(source.ownerId);
-    return toSourceDto(source, guides.get(source.id) ?? 0);
+    const guides = await this.deps.epg.guideSummaries(source.ownerId);
+    return toSourceDto(source, guides.get(source.id));
   }
 
   private assertUrlAllowed(url: URL): void {

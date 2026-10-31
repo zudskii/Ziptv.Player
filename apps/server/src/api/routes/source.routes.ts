@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 import { AppError } from '../../application/errors.js';
 import type { SourceService } from '../../application/sources/source.service.js';
-import { createRateLimiter } from '../middleware/rate-limit.js';
+import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentUser, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 
@@ -44,7 +44,7 @@ const UpdateSourceBody = z
   .strict();
 
 /** Settings → Sources. */
-export function createSourceRouter(deps: { sources: SourceService; auth: RequestHandler; maxSourceBytes: number }): Router {
+export function createSourceRouter(deps: { sources: SourceService; auth: RequestHandler; maxSourceBytes: number; limit: RateLimiterFactory }): Router {
   const { sources, auth } = deps;
   const router = Router();
 
@@ -54,7 +54,7 @@ export function createSourceRouter(deps: { sources: SourceService; auth: Request
     storage: multer.memoryStorage(),
     limits: { fileSize: deps.maxSourceBytes, files: 1, fields: 4, fieldSize: 1024 },
   });
-  const writeLimiter = createRateLimiter({ windowMs: 10 * 60 * 1000, limit: 30, perUser: true });
+  const writeLimiter = deps.limit({ name: 'sources:write', windowMs: 10 * 60 * 1000, limit: 30, perUser: true });
 
   router.use(auth);
 
@@ -102,6 +102,10 @@ export function createSourceRouter(deps: { sources: SourceService; auth: Request
 
   router.post('/:sourceId/sync', writeLimiter, async (req, res) => {
     res.status(202).json(await sources.syncNow(currentUser(req).id, routeParam(req, 'sourceId')));
+  });
+
+  router.post('/:sourceId/convert-to-xtream', writeLimiter, async (req, res) => {
+    res.status(202).json(await sources.convertToXtream(currentUser(req).id, routeParam(req, 'sourceId')));
   });
 
   router.post('/:sourceId/file', writeLimiter, upload.single('file'), async (req, res) => {

@@ -2,13 +2,14 @@ import type { SourceDto } from '@ziptv/contracts';
 
 import { maskUsername } from '../../domain/sources/source.js';
 import type { SourceRecord } from '../ports/source-repository.js';
+import { NO_GUIDES, type SourceGuideSummary } from './hooks.js';
 
 /** Cache key of everything derived from a source revision (lists, now/next links, library). */
 export function catalogVersion(source: Pick<SourceRecord, 'revision' | 'epgVersion'>): string {
   return `${source.revision}.${source.epgVersion}`;
 }
 
-export function toSourceDto(source: SourceRecord, guides = 0): SourceDto {
+export function toSourceDto(source: SourceRecord, guides: SourceGuideSummary = NO_GUIDES): SourceDto {
   const iso = (date: Date | null | undefined) => (date ? date.toISOString() : null);
   return {
     id: source.id,
@@ -48,7 +49,7 @@ export function toSourceDto(source: SourceRecord, guides = 0): SourceDto {
           trial: source.account.trial,
         }
       : null,
-    epg: { guides },
+    epg: { guides: guides.guides, version: guides.version, syncing: guides.syncing },
     warnings: source.warnings,
     warningCount: source.warningCount,
     xtreamCandidate: source.xtreamCandidate,

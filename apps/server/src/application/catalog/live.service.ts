@@ -7,6 +7,7 @@ import type { CatalogRepository, LiveChannelSummary } from '../ports/catalog-rep
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
 import { catalogVersion } from '../sources/source-mapper.js';
 import { sourceCachePrefix } from '../sources/source-sync.pipeline.js';
+import { directArtwork, type ArtworkUrls } from './artwork.js';
 import { toChannelDto } from './catalog-mapper.js';
 
 const LIST_TTL_MS = 10 * 60_000;
@@ -18,8 +19,13 @@ export class LiveCatalogService {
       sources: SourceRepository;
       catalog: CatalogRepository;
       cache: Cache;
+      artwork?: ArtworkUrls;
     },
   ) {}
+
+  get artwork(): ArtworkUrls {
+    return this.deps.artwork ?? directArtwork;
+  }
 
   async requireSource(viewer: Viewer, sourceId: string): Promise<SourceRecord> {
     if (!this.deps.sources.isValidId(sourceId)) throw AppError.notFound('Source');
@@ -48,7 +54,7 @@ export class LiveCatalogService {
     const source = await this.requireSource(viewer, sourceId);
     const [channel] = await this.deps.catalog.findLiveMany({ sourceId: source.id, revision: source.revision }, [key]);
     if (!channel || isHiddenForViewer(viewer, channel)) throw AppError.notFound('Channel');
-    return toChannelDto(channel, this.isLocked(viewer, source.id, channel));
+    return toChannelDto(channel, this.isLocked(viewer, source.id, channel), this.artwork);
   }
 
   /** Cached raw summaries of the current revision (shared by every profile of the user). */
@@ -64,7 +70,7 @@ export class LiveCatalogService {
       if (isHiddenForViewer(viewer, channel)) continue;
       const locked = this.isLocked(viewer, sourceId, channel);
       if (locked && viewer.kids) continue;
-      result.push(toChannelDto(channel, locked));
+      result.push(toChannelDto(channel, locked, this.artwork));
     }
     return result;
   }

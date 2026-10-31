@@ -9,6 +9,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { FullscreenMessage } from '../components/ui/FullscreenMessage';
 import { Spinner } from '../components/ui/Spinner';
 import { errorMessage } from '../lib/api-client';
+import { GuideManager } from '../features/epg/components/GuideManager';
 import { useSources } from '../features/sources/api';
 import { AddSourceForm } from '../features/sources/components/AddSourceForm';
 import { SourceCard } from '../features/sources/components/SourceCard';
@@ -55,6 +56,8 @@ export function SourcesPage({ children }: { children?: ReactNode }) {
           ))}
         </div>
       )}
+
+      {sources.length > 0 && <GuideManager sources={sources} />}
 
       {children}
 

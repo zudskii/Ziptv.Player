@@ -1,6 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 
-import { createRateLimiter } from '../middleware/rate-limit.js';
+import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 
 /**
  * Public media routes (stream proxy + images). No session: `<video>`/`<img>` and hls.js cannot
@@ -11,11 +11,12 @@ export function createMediaRouter(deps: {
   streamProxy: RequestHandler | null;
   catalogImages: RequestHandler;
   signedImages: RequestHandler;
+  limit: RateLimiterFactory;
 }): Router {
   const router = Router();
   // Generous: one viewer fetches a segment (and sometimes a playlist) every 2–6 s per rendition.
-  const streamLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 1500 });
-  const imageLimiter = createRateLimiter({ windowMs: 60 * 1000, limit: 1200 });
+  const streamLimiter = deps.limit({ name: 'media:stream', windowMs: 60 * 1000, limit: 1500 });
+  const imageLimiter = deps.limit({ name: 'media:image', windowMs: 60 * 1000, limit: 1200 });
 
   router.use(deps.cors);
   router.options('/{*any}', (_req, res) => {

@@ -3,6 +3,7 @@ import { Monitor, Moon, Server, Sun } from 'lucide-react';
 import { Link } from 'react-router';
 
 import { Segmented } from '../components/ui/Segmented';
+import { AccountSection } from '../features/auth/components/AccountSection';
 import { useThemeStore } from '../features/theme/theme-store';
 
 /** Settings (Appearance, Sources, About); the remaining sections arrive with their phases. */
@@ -12,6 +13,8 @@ export function SettingsPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
       <h1 className="text-2xl font-bold text-fg">Settings</h1>
+
+      <AccountSection />
 
       <section className="card space-y-3 p-4" aria-labelledby="appearance">
         <h2 id="appearance" className="font-semibold text-fg">

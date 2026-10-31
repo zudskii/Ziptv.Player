@@ -15,6 +15,7 @@ export interface AuthUser {
   createdAt: Date;
   /** null = guest. */
   email: string | null;
+  emailVerified: boolean;
   role: UserRole;
   /** The session (device) this request came in with. */
   sessionId: string;
@@ -40,6 +41,8 @@ const MAX_USER_AGENT = 200;
  * of inactivity (the expiry slides forward while the device is in use).
  */
 export class SessionService {
+  private readonly revocationListeners: ((sessionIds: string[]) => void)[] = [];
+
   constructor(
     private readonly users: UserRepository,
     private readonly sessions: SessionRepository,
@@ -93,32 +96,53 @@ export class SessionService {
       // Fire-and-forget: activity tracking must never fail a request.
       this.sessions.touch(session.id, user.id, now, slid).catch((error: unknown) => this.logger.warn({ err: error }, 'Failed to update session activity'));
     }
-    return { id: user.id, createdAt: user.createdAt, email: user.email, role: user.role, sessionId: session.id };
+    return { id: user.id, createdAt: user.createdAt, email: user.email, emailVerified: user.emailVerifiedAt !== null, role: user.role, sessionId: session.id };
   }
 
   list(userId: string): Promise<SessionRecord[]> {
     return this.sessions.listForUser(userId);
   }
 
-  revoke(sessionId: string): Promise<void> {
-    return this.sessions.delete(sessionId);
+  /** Told which sessions were signed out (e.g. so their stream links stop at once, not after a cache TTL). */
+  onRevoked(listener: (sessionIds: string[]) => void): void {
+    this.revocationListeners.push(listener);
   }
 
-  revokeOwned(userId: string, sessionId: string): Promise<boolean> {
-    return this.sessions.deleteOwned(userId, sessionId);
+  async revoke(sessionId: string): Promise<void> {
+    await this.sessions.delete(sessionId);
+    this.emitRevoked([sessionId]);
+  }
+
+  async revokeOwned(userId: string, sessionId: string): Promise<boolean> {
+    const deleted = await this.sessions.deleteOwned(userId, sessionId);
+    if (deleted) this.emitRevoked([sessionId]);
+    return deleted;
   }
 
   /** Signs the user out everywhere, optionally keeping the device that asked. */
-  revokeAll(userId: string, keepSessionId?: string): Promise<void> {
-    return this.sessions.deleteForUser(userId, keepSessionId);
+  async revokeAll(userId: string, keepSessionId?: string): Promise<void> {
+    const ids = (await this.sessions.listForUser(userId)).map((session) => session.id).filter((id) => id !== keepSessionId);
+    await this.sessions.deleteForUser(userId, keepSessionId);
+    this.emitRevoked(ids);
+  }
+
+  private emitRevoked(sessionIds: string[]): void {
+    if (sessionIds.length === 0) return;
+    for (const listener of this.revocationListeners) {
+      try {
+        listener(sessionIds);
+      } catch (error) {
+        this.logger.warn({ err: error }, 'Session revocation listener failed');
+      }
+    }
   }
 
   purgeExpired(): Promise<number> {
     return this.sessions.purgeExpired(this.now());
   }
 
-  toMe(user: Pick<AuthUser, 'id' | 'createdAt' | 'email' | 'role'>): MeDto {
-    return { userId: user.id, createdAt: user.createdAt.toISOString(), email: user.email, isGuest: isGuest(user), role: user.role };
+  toMe(user: Pick<AuthUser, 'id' | 'createdAt' | 'email' | 'emailVerified' | 'role'>): MeDto {
+    return { userId: user.id, createdAt: user.createdAt.toISOString(), email: user.email, emailVerified: user.emailVerified, isGuest: isGuest(user), role: user.role };
   }
 }
 

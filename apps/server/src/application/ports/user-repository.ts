@@ -5,6 +5,8 @@ export interface UserRecord {
   /** null = guest. Stored normalised (see `normalizeEmail`). */
   email: string | null;
   role: UserRole;
+  /** When the person confirmed the address through the emailed link; null = not confirmed. */
+  emailVerifiedAt: Date | null;
   createdAt: Date;
   lastSeenAt: Date;
 }
@@ -24,6 +26,7 @@ export interface UserRepository {
   findById(id: string): Promise<UserRecord | null>;
   findByEmail(email: string): Promise<UserWithPassword | null>;
   setPassword(userId: string, passwordHash: string): Promise<void>;
+  markEmailVerified(userId: string, at: Date): Promise<void>;
   /** One-time exchange of a pre-2.0 secret id for its user. Returns null if unknown/used. */
   claimLegacy(legacySecretId: string): Promise<UserRecord | null>;
   /** Deletes the user and, through cascades, everything it owns. */

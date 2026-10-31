@@ -28,6 +28,8 @@ export interface SessionRepository {
   /** Marks activity; `expiresAt` slides the expiry of account sessions (undefined = leave as is). */
   touch(sessionId: string, userId: string, at: Date, expiresAt?: Date): Promise<void>;
   listForUser(userId: string): Promise<SessionRecord[]>;
+  /** The session exists and has not expired at `now` (media proxies re-check their grant with this). */
+  isActive(sessionId: string, now: Date): Promise<boolean>;
   delete(sessionId: string): Promise<void>;
   deleteOwned(userId: string, sessionId: string): Promise<boolean>;
   /** Signs out every device of the user, except `keepSessionId` when given. */

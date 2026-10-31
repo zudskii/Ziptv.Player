@@ -36,8 +36,10 @@ export class AesSecretCipher implements SecretCipher {
   }
 
   decrypt(purpose: CipherPurpose, ciphertext: string): string {
-    const [version, keyId, ivPart, bodyPart] = ciphertext.split('.');
-    if (version !== VERSION || !keyId || !ivPart || !bodyPart) throw new Error('Unrecognised ciphertext format');
+    const parts = ciphertext.split('.');
+    const [version, keyId, ivPart, bodyPart] = parts;
+    // Exactly four parts: anything appended would otherwise be ignored (and change the string's identity).
+    if (parts.length !== 4 || version !== VERSION || !keyId || !ivPart || !bodyPart) throw new Error('Unrecognised ciphertext format');
     const key = this.keys.get(keyId);
     if (!key) throw new Error(`Unknown encryption key ${keyId} (was DATA_ENCRYPTION_KEY rotated without keeping the old key?)`);
     const iv = Buffer.from(ivPart, 'base64url');
