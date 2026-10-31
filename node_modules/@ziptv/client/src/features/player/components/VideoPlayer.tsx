@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cn } from '../../../lib/cn';
 import { changeVolume, restoreAudio, setMuted, toggleFullscreen, toggleMute, togglePlay } from '../media-actions';
 import { usePlayerPrefs } from '../player-prefs';
+import { useSettings } from '../../user-state/api';
 import { useContentPlayback, usePlaybackController } from '../use-playback';
+import { usePlaybackReporting } from '../use-playback-reporting';
 import { usePlayerShortcuts } from '../use-player-shortcuts';
 import { useVideoState } from '../use-video-state';
 import { PlayerControls } from './PlayerControls';
@@ -24,13 +26,29 @@ interface VideoPlayerProps {
   /** Drawn over the video while controls are visible (channel logo, now/next, timeline). */
   infoOverlay?: ReactNode;
   className?: string;
+  /** "Next channel" (live, default) or "Next episode". */
+  nextLabel?: string;
+  /** VOD finished: what comes next (episode autoplay countdown) — null shows "Watch again". */
+  upNext?: { title: string; subtitle: string | null; autoplay: boolean } | null;
 }
 
-export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, onAlternate, onBack, infoOverlay, className }: VideoPlayerProps) {
+export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, onAlternate, onBack, infoOverlay, className, nextLabel, upNext }: VideoPlayerProps) {
   const { videoRef, video, controller, snapshot } = usePlaybackController();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const state = useVideoState(video, container);
-  useContentPlayback(controller, content);
+  const settingsQuery = useSettings();
+  const settings = settingsQuery.data?.playback;
+  // Declared before useContentPlayback: effects run in order, so the preferences are in place
+  // before the stream starts (tracks, quality, resume).
+  useEffect(() => {
+    if (controller && settings) {
+      controller.setPreferences({ audio: settings.preferredAudio, subtitles: settings.preferredSubtitles, quality: settings.preferredQuality, resume: settings.resumePlayback, autoplay: settings.autoplay });
+    }
+  }, [controller, settings]);
+  // Settings decide autoplay/resume/tracks: start once they are known (cached after the first load).
+  useContentPlayback(controller, settingsQuery.isPending ? undefined : content);
+  usePlaybackReporting(video, snapshot);
+  const vod = snapshot.plan ? snapshot.plan.content.mode !== 'live' : false;
 
   // --- persisted volume ------------------------------------------------------------------
   const saveVolume = usePlayerPrefs((prefs) => prefs.setVolume);
@@ -71,6 +89,7 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
     volume: (delta) => changeVolume(video, delta),
     nextChannel: () => onNext?.(),
     previousChannel: () => onPrevious?.(),
+    ...(vod ? { seek: (delta: number) => controller?.seekBy(delta) } : {}),
   });
 
   return (
@@ -104,6 +123,12 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
         onAlternate={onAlternate}
         onStart={() => void video?.play().catch(() => undefined)}
         onUnmute={() => setMuted(video, false)}
+        nextLabel={nextLabel}
+        upNext={upNext}
+        onReplay={() => {
+          controller?.seekTo(0);
+          void video?.play().catch(() => undefined);
+        }}
       />
 
       {content && (
@@ -116,6 +141,7 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
           visible={showControls}
           onNext={onNext}
           onPrevious={onPrevious}
+          nextLabel={nextLabel}
         />
       )}
     </div>

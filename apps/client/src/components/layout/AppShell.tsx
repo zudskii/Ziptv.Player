@@ -5,7 +5,11 @@ import { NavLink, Outlet, useLocation } from 'react-router';
 import { isActivePath, navItems, type NavItem } from '../../app/navigation';
 import { UserMenu } from '../../features/auth/components/UserMenu';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
+import { ProfileSwitcher } from '../../features/profiles/ProfileSwitcher';
+import { SearchBox } from '../../features/search/SearchBox';
+import { useImportLocalLibrary } from '../../features/library/use-import-local';
 import { useRefreshOnSyncCompletion, useSources } from '../../features/sources/api';
+import { useApplySettings } from '../../features/user-state/use-apply-settings';
 import { useThemeStore } from '../../features/theme/theme-store';
 import { cn } from '../../lib/cn';
 import { IconButton } from '../ui/Button';
@@ -19,6 +23,8 @@ export function AppShell({ topBarExtra }: { topBarExtra?: ReactNode }) {
   const items = navItems();
   // Background syncs finishing refresh Home rails and the notification center.
   useRefreshOnSyncCompletion(useSources().data);
+  useApplySettings();
+  useImportLocalLibrary();
   return (
     <div className="flex min-h-dvh">
       <Sidebar items={items} />
@@ -74,9 +80,13 @@ function TopBar({ extra }: { extra?: ReactNode }) {
         <div className="lg:hidden">
           <Brand compact />
         </div>
-        <div className="min-w-0 flex-1">{extra}</div>
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <SearchBox />
+          {extra}
+        </div>
         <ThemeToggle />
         <NotificationBell />
+        <ProfileSwitcher />
         <UserMenu />
       </div>
     </header>
@@ -89,7 +99,7 @@ function ThemeToggle() {
   const next = preference === 'dark' ? 'light' : preference === 'light' ? 'system' : 'dark';
   const Icon = preference === 'dark' ? Moon : preference === 'light' ? Sun : SunMoon;
   return (
-    <IconButton label={`Theme: ${preference} (switch to ${next})`} onClick={() => setPreference(next)}>
+    <IconButton className="hidden sm:inline-flex" label={`Theme: ${preference} (switch to ${next})`} onClick={() => setPreference(next)}>
       <Icon className="h-5 w-5" />
     </IconButton>
   );

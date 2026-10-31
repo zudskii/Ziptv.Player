@@ -1,8 +1,14 @@
-import { sql, type Insertable, type Selectable } from 'kysely';
+import { sql, type Insertable, type Selectable, type SelectQueryBuilder } from 'kysely';
 
 import type {
   AddedAtIndex,
   CatalogRepository,
+  CatalogSearchResult,
+  MovieSummary,
+  RecentlyAddedRow,
+  SeriesSummary,
+  VodListQuery,
+  VodSortOrder,
   LiveChannelSummary,
   LiveLinkTarget,
   RevisionData,
@@ -15,7 +21,8 @@ import type {
 import type { EpgLink } from '../../../../domain/catalog/model.js';
 import type { Db } from '../database.js';
 import { analyzeAfterBulkLoad } from '../maintenance.js';
-import { jsonOrNull, type EpisodesTable, type LiveChannelsTable, type MoviesTable, type SeriesTable } from '../schema.js';
+import { likeTerm, tokensText } from '../search-sql.js';
+import { jsonOrNull, type Database, type EpisodesTable, type LiveChannelsTable, type MoviesTable, type SeriesTable } from '../schema.js';
 
 /** The wire protocol allows 65 535 bind parameters per statement; stay well below. */
 const MAX_BIND_PARAMETERS = 60_000;
@@ -72,6 +79,7 @@ function toLiveRow(sourceId: string, revision: number, item: StoredLiveChannel):
     epg: jsonOrNull(item.epg),
     name_key: item.nameKey,
     search_tokens: item.searchTokens,
+    search: tokensText(item.searchTokens),
   };
 }
 
@@ -138,10 +146,10 @@ export class PgCatalogRepository implements CatalogRepository {
   async insertRevision(sourceId: string, revision: number, data: RevisionData): Promise<void> {
     // One transaction: a failed insert leaves no half-written revision behind.
     await this.db.transaction().execute(async (trx) => {
-      await insertChunked(data.live, 19, (chunk) =>
+      await insertChunked(data.live, 20, (chunk) =>
         trx.insertInto('live_channels').values(chunk.map((item) => toLiveRow(sourceId, revision, item))).execute(),
       );
-      await insertChunked(data.movies, 18, (chunk) =>
+      await insertChunked(data.movies, 19, (chunk) =>
         trx
           .insertInto('movies')
           .values(
@@ -164,11 +172,12 @@ export class PgCatalogRepository implements CatalogRepository {
               xtream: jsonOrNull(item.xtream),
               added_at: item.addedAt,
               search_tokens: item.searchTokens,
+              search: tokensText(item.searchTokens),
             })),
           )
           .execute(),
       );
-      await insertChunked(data.series, 16, (chunk) =>
+      await insertChunked(data.series, 17, (chunk) =>
         trx
           .insertInto('series')
           .values(
@@ -188,6 +197,7 @@ export class PgCatalogRepository implements CatalogRepository {
               xtream: jsonOrNull(item.xtream),
               added_at: item.addedAt,
               search_tokens: item.searchTokens,
+              search: tokensText(item.searchTokens),
               details_fetched_at: item.detailsFetchedAt,
             })),
           )
@@ -423,4 +433,175 @@ export class PgCatalogRepository implements CatalogRepository {
     });
   }
 
+  // --- VOD browsing -------------------------------------------------------------------------
+
+  async listMovies(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: MovieSummary[]; total: number }> {
+    let base = this.db.selectFrom('movies').where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision);
+    if (query.hideAdult) base = base.where('adult', '=', false);
+    if (query.category) base = base.where('groups', '@>', sql<string[]>`ARRAY[${query.category}]::text[]`);
+    const [rows, count] = await Promise.all([
+      vodOrder(base.select(MOVIE_SUMMARY_COLUMNS), query.sort).limit(query.limit).offset(query.offset).execute(),
+      query.skipTotal ? Promise.resolve({ total: '-1' }) : base.select((eb) => eb.fn.countAll<string>().as('total')).executeTakeFirstOrThrow(),
+    ]);
+    return { items: rows.map(toMovieSummary), total: Number(count.total) };
+  }
+
+  async listSeries(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: SeriesSummary[]; total: number }> {
+    let base = this.db.selectFrom('series').where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision);
+    if (query.hideAdult) base = base.where('adult', '=', false);
+    if (query.category) base = base.where('groups', '@>', sql<string[]>`ARRAY[${query.category}]::text[]`);
+    const [rows, count] = await Promise.all([
+      vodOrder(base.select(SERIES_SUMMARY_COLUMNS), query.sort).limit(query.limit).offset(query.offset).execute(),
+      query.skipTotal ? Promise.resolve({ total: '-1' }) : base.select((eb) => eb.fn.countAll<string>().as('total')).executeTakeFirstOrThrow(),
+    ]);
+    return { items: rows.map(toSeriesSummary), total: Number(count.total) };
+  }
+
+  async vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean): Promise<{ name: string; count: number }[]> {
+    const table = sql.table(type);
+    const rows = await sql<{ name: string; count: string }>`
+      SELECT g.name, count(*) AS count, min(t.position) AS first
+        FROM ${table} AS t, unnest(t.groups) AS g (name)
+       WHERE t.source_id = ${ref.sourceId} AND t.revision = ${ref.revision} ${hideAdult ? sql`AND t.adult = false` : sql``}
+       GROUP BY g.name
+       ORDER BY first
+       LIMIT 500`.execute(this.db);
+    return rows.rows.map((row) => ({ name: row.name, count: Number(row.count) }));
+  }
+
+  async findMoviesMany(ref: SourceRevisionRef, keys: string[]): Promise<MovieSummary[]> {
+    if (keys.length === 0) return [];
+    const rows = await this.db.selectFrom('movies').select(MOVIE_SUMMARY_COLUMNS).where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision).where('key', 'in', keys).execute();
+    return rows.map(toMovieSummary);
+  }
+
+  async findSeriesMany(ref: SourceRevisionRef, keys: string[]): Promise<SeriesSummary[]> {
+    if (keys.length === 0) return [];
+    const rows = await this.db.selectFrom('series').select(SERIES_SUMMARY_COLUMNS).where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision).where('key', 'in', keys).execute();
+    return rows.map(toSeriesSummary);
+  }
+
+  async recentlyAdded(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<RecentlyAddedRow[]> {
+    if (refs.length === 0) return [];
+    const pinned = (alias: string) => sql.join(refs.map((ref) => sql`(${sql.ref(`${alias}.source_id`)} = ${ref.sourceId} AND ${sql.ref(`${alias}.revision`)} = ${ref.revision})`), sql` OR `);
+    const adult = (alias: string) => (hideAdult ? sql`AND ${sql.ref(`${alias}.adult`)} = false` : sql``);
+    const rows = await sql<{ type: RecentlyAddedRow['type']; source_id: string; key: string; name: string; image: string | null; added_at: Date; groups: string[] }>`
+      (SELECT 'channel' AS type, l.source_id, l.key, l.name, l.logo AS image, l.added_at, l.groups FROM live_channels l
+        WHERE (${pinned('l')}) AND l.added_at IS NOT NULL AND l.unplayable_reason IS NULL ${adult('l')} ORDER BY l.added_at DESC LIMIT ${limit})
+      UNION ALL
+      (SELECT 'movie', m.source_id, m.key, m.name, m.poster, m.added_at, m.groups FROM movies m
+        WHERE (${pinned('m')}) AND m.added_at IS NOT NULL ${adult('m')} ORDER BY m.added_at DESC LIMIT ${limit})
+      UNION ALL
+      (SELECT 'series', s.source_id, s.key, s.name, s.cover, s.added_at, s.groups FROM series s
+        WHERE (${pinned('s')}) AND s.added_at IS NOT NULL ${adult('s')} ORDER BY s.added_at DESC LIMIT ${limit})
+      ORDER BY added_at DESC
+      LIMIT ${limit}`.execute(this.db);
+    return rows.rows.map((row) => ({ type: row.type, sourceId: row.source_id, key: row.key, name: row.name, image: row.image, addedAt: row.added_at, groups: row.groups }));
+  }
+
+  async latestMovies(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<(MovieSummary & { sourceId: string })[]> {
+    if (refs.length === 0) return [];
+    let query = this.db.selectFrom('movies').select([...MOVIE_SUMMARY_COLUMNS, 'source_id']).where(pinnedSql(refs));
+    if (hideAdult) query = query.where('adult', '=', false);
+    const rows = await query.orderBy(sql`added_at DESC NULLS LAST`).orderBy(sql`rating DESC NULLS LAST`).orderBy('position').limit(limit).execute();
+    return rows.map((row) => ({ ...toMovieSummary(row), sourceId: row.source_id }));
+  }
+
+  async latestSeries(refs: SourceRevisionRef[], limit: number, hideAdult: boolean): Promise<(SeriesSummary & { sourceId: string })[]> {
+    if (refs.length === 0) return [];
+    let query = this.db.selectFrom('series').select([...SERIES_SUMMARY_COLUMNS, 'source_id']).where(pinnedSql(refs));
+    if (hideAdult) query = query.where('adult', '=', false);
+    const rows = await query.orderBy(sql`added_at DESC NULLS LAST`).orderBy(sql`rating DESC NULLS LAST`).orderBy('position').limit(limit).execute();
+    return rows.map((row) => ({ ...toSeriesSummary(row), sourceId: row.source_id }));
+  }
+
+  async search(refs: SourceRevisionRef[], terms: string[], limitPerType: number, hideAdult: boolean): Promise<CatalogSearchResult> {
+    if (refs.length === 0 || terms.length === 0) return { live: [], movies: [], series: [] };
+    // Shortest names first: "BBC One" before "BBC One Scotland HD" for the query "bbc one".
+    const live = this.db.selectFrom('live_channels').select([...LIVE_SUMMARY_COLUMNS, 'source_id']).where(pinnedSql(refs)).where('unplayable_reason', 'is', null);
+    const movies = this.db.selectFrom('movies').select([...MOVIE_SUMMARY_COLUMNS, 'source_id']).where(pinnedSql(refs));
+    const series = this.db.selectFrom('series').select([...SERIES_SUMMARY_COLUMNS, 'source_id']).where(pinnedSql(refs));
+    let [liveQuery, movieQuery, seriesQuery] = [live, movies, series];
+    for (const term of terms) {
+      liveQuery = liveQuery.where('search', 'like', likeTerm(term));
+      movieQuery = movieQuery.where('search', 'like', likeTerm(term));
+      seriesQuery = seriesQuery.where('search', 'like', likeTerm(term));
+    }
+    if (hideAdult) {
+      liveQuery = liveQuery.where('adult', '=', false);
+      movieQuery = movieQuery.where('adult', '=', false);
+      seriesQuery = seriesQuery.where('adult', '=', false);
+    }
+    const [liveRows, movieRows, seriesRows] = await Promise.all([
+      liveQuery.orderBy(sql`length(name)`).orderBy('position').limit(limitPerType).execute(),
+      movieQuery.orderBy(sql`length(name)`).orderBy(sql`rating DESC NULLS LAST`).limit(limitPerType).execute(),
+      seriesQuery.orderBy(sql`length(name)`).orderBy(sql`rating DESC NULLS LAST`).limit(limitPerType).execute(),
+    ]);
+    return {
+      live: liveRows.map((row) => ({ ...toLiveSummary(row), sourceId: row.source_id })),
+      movies: movieRows.map((row) => ({ ...toMovieSummary(row), sourceId: row.source_id })),
+      series: seriesRows.map((row) => ({ ...toSeriesSummary(row), sourceId: row.source_id })),
+    };
+  }
+}
+
+const MOVIE_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'poster', 'rating', 'genres', 'duration_secs', 'plot', 'kind', 'adult', 'xtream', 'added_at'] as const;
+const SERIES_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'cover', 'rating', 'genres', 'plot', 'adult', 'xtream', 'added_at'] as const;
+
+function toMovieSummary(row: Pick<Selectable<MoviesTable>, (typeof MOVIE_SUMMARY_COLUMNS)[number]>): MovieSummary {
+  return {
+    key: row.key,
+    position: row.position,
+    name: row.name,
+    year: row.year,
+    groups: row.groups,
+    poster: row.poster,
+    rating: row.rating,
+    genres: row.genres,
+    durationSecs: row.duration_secs,
+    plot: row.plot,
+    kind: row.kind,
+    adult: row.adult,
+    xtream: row.xtream,
+    addedAt: row.added_at,
+  };
+}
+
+function toSeriesSummary(row: Pick<Selectable<SeriesTable>, (typeof SERIES_SUMMARY_COLUMNS)[number]>): SeriesSummary {
+  return {
+    key: row.key,
+    position: row.position,
+    name: row.name,
+    year: row.year,
+    groups: row.groups,
+    cover: row.cover,
+    rating: row.rating,
+    genres: row.genres,
+    plot: row.plot,
+    adult: row.adult,
+    xtream: row.xtream,
+    addedAt: row.added_at,
+  };
+}
+
+/** `recent`: provider/first-seen date, then provider order (stable paging: position is unique). */
+function vodOrder<Q extends SelectQueryBuilder<Database, 'movies' | 'series', object>>(query: Q, sort: VodSortOrder): Q {
+  switch (sort) {
+    case 'name':
+      return query.orderBy(sql`lower(name)`).orderBy('position') as Q;
+    case 'rating':
+      return query.orderBy(sql`rating DESC NULLS LAST`).orderBy('position') as Q;
+    case 'year':
+      return query.orderBy(sql`year DESC NULLS LAST`).orderBy('position') as Q;
+    default:
+      return query.orderBy(sql`added_at DESC NULLS LAST`).orderBy('position') as Q;
+  }
+}
+
+/** `(source_id, revision)` is one of the pinned revisions (unqualified columns: single-table queries). */
+function pinnedSql(refs: SourceRevisionRef[]) {
+  return sql<boolean>`(${sql.join(
+    refs.map((ref) => sql`(source_id = ${ref.sourceId} AND revision = ${ref.revision})`),
+    sql` OR `,
+  )})`;
 }

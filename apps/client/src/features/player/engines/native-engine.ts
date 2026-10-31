@@ -3,6 +3,7 @@ import {
   resetMediaElement,
   seekToLiveEdge,
   waitForCanPlay,
+  nativeTextTracks,
   type EngineError,
   type EngineFactory,
 } from './types';
@@ -16,6 +17,10 @@ export const createNativeEngine: EngineFactory = (video, url) => {
   };
 
   const readiness = waitForCanPlay(video);
+  const text = nativeTextTracks(video);
+  const trackListeners = new Set<() => void>();
+  const onTracks = () => trackListeners.forEach((listener) => listener());
+  video.textTracks.addEventListener('addtrack', onTracks);
   video.addEventListener('error', onError);
   video.src = url;
   video.load();
@@ -29,8 +34,16 @@ export const createNativeEngine: EngineFactory = (video, url) => {
     currentQuality: () => -1,
     setQuality: () => undefined,
     goLive: () => seekToLiveEdge(video),
+    tracks: () => ({ audio: [], audioIndex: -1, ...text.read() }),
+    setSubtitleTrack: (index) => {
+      text.setSubtitleTrack(index);
+      onTracks();
+    },
+    onTracksChanged: (listener) => trackListeners.add(listener),
     destroy: () => {
       readiness.cancel();
+      video.textTracks.removeEventListener('addtrack', onTracks);
+      trackListeners.clear();
       video.removeEventListener('error', onError);
       listeners.clear();
       resetMediaElement(video);

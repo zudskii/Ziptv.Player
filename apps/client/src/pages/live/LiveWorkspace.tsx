@@ -1,6 +1,7 @@
 import type { ContentRefDto, ProgrammeDto, SourceDto } from '@ziptv/contracts';
 import { CalendarDays, List, Server } from 'lucide-react';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
 
 import { Segmented } from '../../components/ui/Segmented';
@@ -13,7 +14,8 @@ import { MiniGuide } from '../../features/epg/components/MiniGuide';
 import { ProgrammeDialog } from '../../features/epg/components/ProgrammeDialog';
 import { buildGroupOptions, neighbourChannel, selectChannels, toBrowsable, type BrowsableChannel, type GroupFilterValue } from '../../features/live/browse';
 import { ChannelBrowser } from '../../features/live/components/ChannelBrowser';
-import { useFavorites, useLibraryStore, useRecents } from '../../features/library/library-store';
+import { useLibraryStore, useRecents } from '../../features/library/library-store';
+import { useListKeys, useToggleListItem } from '../../features/user-state/api';
 import { VideoPlayer } from '../../features/player/components/VideoPlayer';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
 import { useChannelList } from '../../features/sources/api';
@@ -32,9 +34,18 @@ interface LiveWorkspaceProps {
 export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: LiveWorkspaceProps) {
   const navigate = useNavigate();
   const channelsQuery = useChannelList(source);
-  const favoriteKeys = useFavorites(source.id);
+  // Favourites are My List channels (per profile, on the server); "Recent" stays per device.
+  const favorites = useListKeys(source.id, 'channel');
+  const toggleList = useToggleListItem();
+  const toggleFavorite = useCallback(
+    (key: string) =>
+      toggleList.mutate(
+        { item: { type: 'channel', sourceId: source.id, key }, add: !favorites.has(key) },
+        { onError: (error) => toast.error('My List was not updated', { description: errorMessage(error) }) },
+      ),
+    [toggleList, source.id, favorites],
+  );
   const recentKeys = useRecents(source.id);
-  const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const pushRecent = useLibraryStore((state) => state.pushRecent);
   const rememberChannel = usePlayerPrefs((state) => state.rememberChannel);
 
@@ -51,9 +62,8 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
 
   const channels = useMemo(() => toBrowsable(channelsQuery.data?.channels ?? []), [channelsQuery.data]);
   const byKey = useMemo(() => new Map(channels.map((channel) => [channel.key, channel])), [channels]);
-  const favorites = useMemo(() => new Set(favoriteKeys), [favoriteKeys]);
   const recentCount = useMemo(() => recentKeys.filter((key) => byKey.has(key)).length, [recentKeys, byKey]);
-  const favoriteCount = useMemo(() => favoriteKeys.filter((key) => byKey.has(key)).length, [favoriteKeys, byKey]);
+  const favoriteCount = useMemo(() => [...favorites].filter((key) => byKey.has(key)).length, [favorites, byKey]);
 
   const groupOptions = useMemo(() => buildGroupOptions(channels, favoriteCount, recentCount), [channels, favoriteCount, recentCount]);
   const visible = useMemo(
@@ -108,7 +118,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
               channel={current}
               entry={nowNext?.[current.key]}
               favorite={favorites.has(current.key)}
-              onToggleFavorite={() => toggleFavorite(source.id, current.key)}
+              onToggleFavorite={() => toggleFavorite(current.key)}
               onOpenMapping={() => setMappingOpen(true)}
               onSelectProgramme={setProgramme}
             />
@@ -177,7 +187,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
             onGroupChange={setGroup}
             onSearchChange={setSearch}
             onSelect={select}
-            onToggleFavorite={(channel) => toggleFavorite(source.id, channel.key)}
+            onToggleFavorite={(channel) => toggleFavorite(channel.key)}
             onRetry={() => void channelsQuery.refetch()}
           />
         </div>

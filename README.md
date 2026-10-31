@@ -81,7 +81,11 @@ Native Rollup/esbuild packages are platform-specific.
 | `POST /sources/:sourceId/convert-to-xtream` | Switch an Xtream `get.php` M3U link to the Xtream API (keys kept) |
 | `GET /live/:sourceId/channels` | Live catalog with ETag revalidation |
 | `GET /live/:sourceId/channels/:key` | Channel details |
-| `GET /vod/:sourceId/series/:seriesKey` | Series details with seasons/episodes (Xtream episodes load on first open) |
+| `GET /vod/:sourceId/{movies,series}[/overview]` | Paged VOD lists (`category`, `sort`, `cursor`) and per-source rails + categories |
+| `GET /vod/:sourceId/movies/:key`, `GET /vod/:sourceId/series/:seriesKey` | Details with My List / progress / resume (Xtream episodes load on first open) |
+| `GET/POST /profiles`, `PATCH/DELETE /profiles/:id` | Profiles of the account; send `X-Profile-Id` to act as one |
+| `GET /home`, `GET /search?q=` | Every Home rail in one response; unified search |
+| `/me/list`, `/me/progress`, `/me/history`, `/me/settings`, `/me/storage`, `/me/data/:kind`, `/me/import-local` | The active profile's My List, Continue Watching, History, Settings, Data & Storage |
 | `POST /playback` | Playback candidates and signed proxy URLs |
 | `POST /playback/events` | Playback event reporting |
 | `GET /notifications`, `POST /notifications/read`, `DELETE /notifications/:id` | Notifications |
@@ -153,6 +157,24 @@ POST /playback → stream URL built at play time from the encrypted account (nev
 - Live-only accounts whose panel errors on VOD/series actions still sync; a VOD/series list over
   twice `MAX_SOURCE_BYTES` is skipped with a warning instead of failing the sync.
 - A series the provider returns without episodes is asked again after 10 minutes.
+
+## Profiles and viewer state
+
+Every account has a default profile; others are chosen with `X-Profile-Id` (an unknown id is a
+404 — never a fallback to someone else's data). Kids profiles never see adult content.
+My List, Continue Watching, History and Settings are per profile and keyed by stable catalog keys,
+so they survive syncs; removing a source removes its user state (`ON DELETE CASCADE`).
+
+```
+POST /playback        → history row (id = playback session id)
+POST /playback/events → start (no credit) · heartbeat/stop (time since last event, ≤ 60 s)
+                        movie/episode position → progress: ignored < 30 s, completed near the end
+reconnect             → `continueSession` keeps the same viewing (one history entry)
+```
+
+History older than the profile's retention (default 180 days) and zapping leftovers (< 10 s)
+are pruned by the hourly cleanup job. Search matches the start of every word of a name
+(`pg_trgm`-indexed `search` columns on channels, movies, series and programmes).
 
 ## Operator console (`apps/admin`)
 

@@ -28,6 +28,11 @@ export interface ResolvePlaybackRequest {
   secureContext: boolean;
   /** Parental unlock token, required for locked content. */
   unlockToken?: string;
+  /**
+   * Reconnect of the same viewing: the previous plan's `sessionId`. When it belongs to this
+   * profile and the same content, the new plan keeps it (one history entry per viewing).
+   */
+  continueSession?: string;
 }
 
 export interface PlaybackContentDto {

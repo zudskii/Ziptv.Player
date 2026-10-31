@@ -33,6 +33,8 @@ export class AccountService {
       logger: Logger;
       /** Runs after an account was created (the confirmation email goes out from here); must not throw. */
       afterRegister?: (user: { id: string; email: string }) => void;
+      /** Profiles moved by a guest merge: checked against the limit, caches refreshed after. */
+      profiles?: { listByUser(userId: string): Promise<{ isDefault: boolean }[]>; max: number; afterMerge(accountId: string): Promise<void> };
     },
   ) {}
 
@@ -140,8 +142,22 @@ export class AccountService {
         `Merging would exceed the limit of ${limits.maxSourcesPerUser} sources (${accountCount} in your account + ${guestCount} on this device). Remove some first, or log in without merging.`,
       );
     }
+    const profiles = this.deps.profiles;
+    if (profiles) {
+      const [guestProfiles, accountProfiles] = await Promise.all([profiles.listByUser(guestId), profiles.listByUser(accountId)]);
+      // The guest's default profile merges into the account's default; its other profiles move.
+      const merged = accountProfiles.length > 0 ? accountProfiles.length + guestProfiles.filter((profile) => !profile.isDefault).length : guestProfiles.length;
+      if (merged > profiles.max) {
+        throw new AppError(
+          'PROFILE_LIMIT_REACHED',
+          409,
+          `Merging would exceed the limit of ${profiles.max} profiles. Delete some profiles on this device first, or log in without merging.`,
+        );
+      }
+    }
     if (await this.deps.transfer.mergeGuestInto(guestId, accountId)) {
       this.deps.logger.info({ guestId, accountId, sources: guestCount }, 'Guest data merged into account');
+      await profiles?.afterMerge(accountId).catch((error: unknown) => this.deps.logger.warn({ err: error }, 'Refreshing profile caches after a merge failed'));
     }
   }
 

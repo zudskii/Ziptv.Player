@@ -24,11 +24,8 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: Settings, group: 4 },
 ];
 
-/** Screens that exist so far (the navigation grows with each phase). */
-const AVAILABLE = new Set(['/', '/live', '/guide', '/playlists', '/sources', '/settings']);
-
 export function navItems(): NavItem[] {
-  return NAV_ITEMS.filter((item) => AVAILABLE.has(item.to));
+  return NAV_ITEMS;
 }
 
 export function isActivePath(item: NavItem, pathname: string): boolean {

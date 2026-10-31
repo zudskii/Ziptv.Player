@@ -7,6 +7,7 @@ import { ProgressBar } from '../../../components/ui/ProgressBar';
 import { cn } from '../../../lib/cn';
 import { formatClock, formatRange } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
+import { useDisplayPrefs } from '../../user-state/display-prefs';
 import { ChannelLogo } from '../../live/components/ChannelLogo';
 import { minutesLeft, programmeProgress } from '../programme';
 
@@ -25,6 +26,7 @@ interface LiveNowCardProps {
  */
 export function LiveNowCard({ sourceId, channel, entry, favorite, onToggleFavorite, onOpenMapping, onSelectProgramme }: LiveNowCardProps) {
   const now = useNow(30_000);
+  const showProgress = useDisplayPrefs((state) => state.showProgress);
   const current = entry?.now ?? null;
   const next = entry?.next ?? null;
 
@@ -55,7 +57,7 @@ export function LiveNowCard({ sourceId, channel, entry, favorite, onToggleFavori
             <span className="shrink-0 font-mono text-xs tabular-nums text-fg-muted">{formatRange(current.start, current.end)}</span>
           </p>
           <div className="mt-2 flex items-center gap-3">
-            <ProgressBar value={programmeProgress(current, now)} tone="live" className="flex-1" label={`${current.title} progress`} />
+            {showProgress && <ProgressBar value={programmeProgress(current, now)} tone="live" className="flex-1" label={`${current.title} progress`} />}
             <span className="w-24 shrink-0 text-right text-xs text-fg-subtle">
               {Math.round(programmeProgress(current, now) * 100)}% · {minutesLeft(current, now)} min left
             </span>

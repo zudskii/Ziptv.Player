@@ -19,6 +19,7 @@ const ResolveBody = z
     content: ContentRef,
     secureContext: z.boolean(),
     unlockToken: z.string().max(512).optional(),
+    continueSession: z.string().uuid().optional(),
   })
   .strict();
 

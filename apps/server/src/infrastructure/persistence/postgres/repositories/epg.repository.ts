@@ -15,26 +15,17 @@ import type {
   ProgrammeRepository,
 } from '../../../../application/ports/epg-repository.js';
 import { isEntityId, newEntityId } from '../../../../domain/shared/ids.js';
-import { searchTokens } from '../../../../domain/shared/text.js';
 import type { Db } from '../database.js';
+import { likeTerm, searchText } from '../search-sql.js';
 import { json, type GuidesTable, type ProgrammesTable, type StoredGuideStats } from '../schema.js';
 
 /** Rows per INSERT: 13 columns × 2 000 stays far below PostgreSQL's 65 535 parameters. */
 const INSERT_BATCH = 2_000;
 
 /** ' token token ' — a term matches a token prefix with LIKE '% term%'. */
-function searchText(...values: (string | null | undefined)[]): string {
-  const tokens = searchTokens(...values);
-  return tokens.length ? ` ${tokens.join(' ')} ` : '';
-}
-
 /** The generation a guide currently shows (sub-select for "never delete the live rows"). */
 function liveGeneration(guideId: string) {
   return sql<number>`(SELECT generation FROM guides WHERE id = ${guideId}::uuid)`;
-}
-
-function likeTerm(term: string): string {
-  return `% ${term.replace(/[\\%_]/g, (char) => `\\${char}`)}%`;
 }
 
 // ---------------------------------------------------------------------------------------------

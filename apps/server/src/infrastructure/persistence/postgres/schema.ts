@@ -1,4 +1,4 @@
-import type { GuideOrigin } from '@ziptv/contracts';
+import type { GuideOrigin, HistoryContentType, ListItemType, ProfileKind, ProgressContentType } from '@ziptv/contracts';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { CatalogStats, CatalogWarning, EpgLink, CatchupInfo, StreamKind, UnplayableReason } from '../../../domain/catalog/model.js';
@@ -6,6 +6,7 @@ import type { StaffRole } from '../../../domain/admin/rbac.js';
 import type { UserRole } from '../../../domain/identity/credentials.js';
 import type { HealthState, SourceProblem, SourceType, SyncStage, SyncStatus } from '../../../domain/sources/source.js';
 import type { SourceOrigin } from '../../../application/ports/source-repository.js';
+import type { StoredProfileSettings } from '../../../domain/viewer/settings.js';
 
 /**
  * Typed view of the database. This file is the single place where table and column names
@@ -117,6 +118,8 @@ export interface LiveChannelsTable {
   epg: NullableJson<EpgLink>;
   name_key: string;
   search_tokens: string[];
+  /** ' token token ' for LIKE '% term%' (pg_trgm index). */
+  search: Generated<string>;
 }
 
 export interface MoviesTable {
@@ -138,6 +141,7 @@ export interface MoviesTable {
   xtream: NullableJson<{ id: number; ext: string }>;
   added_at: Date | null;
   search_tokens: string[];
+  search: Generated<string>;
 }
 
 export interface SeriesTable {
@@ -156,6 +160,7 @@ export interface SeriesTable {
   xtream: NullableJson<{ id: number }>;
   added_at: Date | null;
   search_tokens: string[];
+  search: Generated<string>;
   /** Xtream: when seasons/episodes were last loaded (lazily, on first open). */
   details_fetched_at: Date | null;
 }
@@ -378,6 +383,66 @@ export interface EpgMappingsTable {
   updated_at: Generated<Date>;
 }
 
+export interface ProfilesTable {
+  id: string;
+  user_id: string;
+  name: string;
+  color: string;
+  kind: ProfileKind;
+  is_default: Generated<boolean>;
+  settings: JsonDefault<StoredProfileSettings>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ListItemsTable {
+  profile_id: string;
+  source_id: string;
+  type: ListItemType;
+  key: string;
+  title: string;
+  subtitle: string | null;
+  image: string | null;
+  added_at: Generated<Date>;
+}
+
+export interface ProgressTable {
+  profile_id: string;
+  source_id: string;
+  content_type: ProgressContentType;
+  series_key: Generated<string>;
+  key: string;
+  season: number | null;
+  episode: number | null;
+  title: string;
+  series_title: string | null;
+  image: string | null;
+  position: number;
+  duration: number;
+  completed: Generated<boolean>;
+  updated_at: Generated<Date>;
+}
+
+export interface HistoryTable {
+  id: string;
+  profile_id: string;
+  source_id: string;
+  content_type: HistoryContentType;
+  key: string;
+  series_key: string | null;
+  season: number | null;
+  episode: number | null;
+  title: string;
+  subtitle: string | null;
+  series_title: string | null;
+  image: string | null;
+  started_at: Generated<Date>;
+  watched_at: Generated<Date>;
+  watched_secs: Generated<number>;
+  programme_start: Date | null;
+  programme_end: Date | null;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
@@ -401,6 +466,10 @@ export interface Database {
   guide_channels: GuideChannelsTable;
   programmes: ProgrammesTable;
   epg_mappings: EpgMappingsTable;
+  profiles: ProfilesTable;
+  list_items: ListItemsTable;
+  progress: ProgressTable;
+  history: HistoryTable;
 }
 
 /** Serialises a value for a JSON column. */

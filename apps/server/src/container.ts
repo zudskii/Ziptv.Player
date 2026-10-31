@@ -20,7 +20,21 @@ import { PlaylistEntryService, PlaylistRelinker } from './application/playlists/
 import { PlaylistExportService } from './application/playlists/playlist-export.service.js';
 import { PlaylistService } from './application/playlists/playlist.service.js';
 import { SessionService } from './application/identity/session.service.js';
-import { accountViewerResolver, type ViewerResolver } from './application/identity/viewer-resolver.js';
+import { ProfileViewerResolver } from './application/identity/profile-viewer-resolver.js';
+import { ProfileService } from './application/identity/profile.service.js';
+import type { ViewerResolver } from './application/identity/viewer-resolver.js';
+import { SearchService } from './application/catalog/search.service.js';
+import { invalidateHome } from './application/user-state/cache-keys.js';
+import { HomeService } from './application/user-state/home.service.js';
+import { MyListService } from './application/user-state/my-list.service.js';
+import { ViewerDataService } from './application/user-state/viewer-data.service.js';
+import { WatchObserver } from './application/user-state/watch-observer.js';
+import { WatchStateService } from './application/user-state/watch-state.service.js';
+import { MAX_PROFILES } from './domain/viewer/profile.js';
+import { HISTORY_MIN_SECS } from './domain/viewer/progress.js';
+import { DEFAULT_SETTINGS } from './domain/viewer/settings.js';
+import { PgProfileRepository } from './infrastructure/persistence/postgres/repositories/profile.repository.js';
+import { PgHistoryRepository, PgListRepository, PgProgressRepository } from './infrastructure/persistence/postgres/repositories/user-state.repository.js';
 import { JobRunner, periodicWorker } from './application/jobs/job-runner.js';
 import { NotificationService } from './application/notifications/notification.service.js';
 import { MediaGrantChecker } from './application/playback/media-grants.js';
@@ -112,6 +126,12 @@ export interface Container {
   playlistEntries: PlaylistEntryService;
   playlistExport: PlaylistExportService;
   viewers: ViewerResolver;
+  profiles: ProfileService;
+  myList: MyListService;
+  watch: WatchStateService;
+  viewerData: ViewerDataService;
+  home: HomeService;
+  search: SearchService;
   sources: SourceService;
   live: LiveCatalogService;
   vod: VodCatalogService;
@@ -178,7 +198,12 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     { accountSessionTtlMs: config.auth.sessionTtlDays * 24 * 3600_000 },
     () => clock.now(),
   );
-  const viewers = accountViewerResolver;
+  const profileRepository = new PgProfileRepository(db);
+  const listRepository = new PgListRepository(db);
+  const progressRepository = new PgProgressRepository(db);
+  const historyRepository = new PgHistoryRepository(db);
+  const profiles = new ProfileService({ profiles: profileRepository, cache, limits: { maxProfiles: MAX_PROFILES } });
+  const viewers: ViewerResolver = new ProfileViewerResolver(profiles);
   const notifications = new NotificationService(notificationRepository, clock, logger.child({ module: 'notifications' }));
   const m3u = new M3uProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
   const xtream = new XtreamProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
@@ -275,11 +300,21 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     limits: { maxSourcesPerUser: config.limits.maxSourcesPerUser, maxPlaylistsPerUser: config.limits.maxPlaylistsPerUser },
     logger: logger.child({ module: 'accounts' }),
     afterRegister: (user) => emailFlow.sendVerificationTo(user),
+    profiles: {
+      listByUser: (userId) => profileRepository.listByUser(userId),
+      max: MAX_PROFILES,
+      afterMerge: async (accountId) => {
+        profiles.forget(accountId);
+        for (const profile of await profiles.records(accountId)) invalidateHome(cache, profile.id);
+      },
+    },
   });
 
   const live = new LiveCatalogService({ sources: sourceRepository, catalog: catalogRepository, cache, artwork });
   const seriesEpisodes = new SeriesEpisodes({ catalog: catalogRepository, secrets, details: xtream, cache, clock, logger: logger.child({ module: 'series-episodes' }) });
-  const vod = new VodCatalogService({ live, catalog: catalogRepository, episodes: seriesEpisodes, artwork });
+  const vod = new VodCatalogService({ live, catalog: catalogRepository, episodes: seriesEpisodes, list: listRepository, progress: progressRepository, cache, artwork });
+  const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork });
+  const watch = new WatchStateService({ progress: progressRepository, history: historyRepository, cache, artwork });
   const epg = new EpgService({
     live,
     sources: sourceRepository,
@@ -295,6 +330,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     cache,
     clock,
     delivery: config.stream.delivery,
+    timeShift: async (viewer) => (await profiles.settingsOf(viewer)).epg.timeShiftMinutes * 60_000,
   });
   const epgPipeline = new EpgSyncPipeline({
     guides: guideRepository,
@@ -325,7 +361,29 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     artwork,
     streamUrls: new ProviderStreamUrls(secrets),
     episodes: seriesEpisodes,
+    observer: new WatchObserver({
+      history: historyRepository,
+      progress: progressRepository,
+      cache,
+      clock,
+      logger: logger.child({ module: 'watch' }),
+      resumeEnabled: async (viewer) => (await profiles.settingsOf(viewer)).playback.resumePlayback,
+    }),
   });
+  const home = new HomeService({
+    sources: sourceRepository,
+    sourceService: sources,
+    catalog: catalogRepository,
+    live,
+    epg,
+    myList,
+    watch,
+    cache,
+    logger: logger.child({ module: 'home' }),
+    artwork,
+  });
+  const search = new SearchService({ sources: sourceRepository, catalog: catalogRepository, live, epg, logger: logger.child({ module: 'search' }), artwork });
+  const viewerData = new ViewerDataService({ sources: sourceRepository, catalog: catalogRepository, list: listRepository, progress: progressRepository, history: historyRepository, epg, cache, clock });
 
   // --- operator console -------------------------------------------------------------------------
   const staffRepository = new PgStaffRepository(db);
@@ -392,6 +450,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         const expiredStaffSessions = await admin.auth.purgeExpiredSessions();
         await outboxRepository.purgeProcessed(new Date(clock.now().getTime() - 30 * 86_400_000));
         // Programmes that ended before the longest archive (30 days) are useless.
+        const prunedHistory = await historyRepository.prune(clock.now(), DEFAULT_SETTINGS.data.historyRetentionDays, HISTORY_MIN_SECS);
+        if (prunedHistory > 0) logger.debug({ prunedHistory }, 'Pruned watch history');
         const endedProgrammes = await programmeRepository.deleteEndedBefore(new Date(clock.now().getTime() - 31 * 86_400_000));
         if (endedProgrammes > 0) logger.debug({ endedProgrammes }, 'Pruned ended programmes');
         logger.debug({ purged, expiredSessions, expiredEmailTokens, expiredStaffSessions }, 'Cleanup finished');
@@ -443,6 +503,12 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       logger: logger.child({ module: 'playlist-export' }),
     }),
     viewers,
+    profiles,
+    myList,
+    watch,
+    viewerData,
+    home,
+    search,
     sources,
     live,
     vod,

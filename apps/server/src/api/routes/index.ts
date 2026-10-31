@@ -12,6 +12,9 @@ import { createPlaybackRouter } from './playback.routes.js';
 import { createSessionRouter } from './session.routes.js';
 import { createSourceRouter } from './source.routes.js';
 import { createVodRouter } from './vod.routes.js';
+import { createDiscoverRouter } from './discover.routes.js';
+import { createMeRouter } from './me.routes.js';
+import { createProfileRouter } from './profile.routes.js';
 
 /** Every JSON API router under /api/v1. Routes only validate input and call use cases. */
 export function createApiRouters(deps: { container: Container; auth: RequestHandler; optionalAuth: RequestHandler; withUnlock: RequestHandler; config: AppConfig; limit: RateLimiterFactory }): Router {
@@ -21,6 +24,9 @@ export function createApiRouters(deps: { container: Container; auth: RequestHand
   router.use('/auth', createAuthRouter({ accounts: container.accounts, emailFlow: container.emailFlow, auth, optionalAuth: deps.optionalAuth, limit }));
   router.use('/sources', createSourceRouter({ sources: container.sources, auth, maxSourceBytes: config.limits.maxSourceBytes, limit }));
   router.use('/live', createLiveRouter({ live: container.live, auth }));
+  router.use('/profiles', createProfileRouter({ profiles: container.profiles, auth, limit }));
+  router.use('/me', createMeRouter({ myList: container.myList, watch: container.watch, data: container.viewerData, profiles: container.profiles, auth, limit }));
+  router.use('/', createDiscoverRouter({ home: container.home, search: container.search, auth, limit }));
   router.use('/vod', createVodRouter({ vod: container.vod, auth, limit }));
   router.use('/epg', createEpgRouter({ epg: container.epg, auth, limit }));
   router.use('/playback', createPlaybackRouter({ playback: container.playback, auth, withUnlock: deps.withUnlock, limit }));

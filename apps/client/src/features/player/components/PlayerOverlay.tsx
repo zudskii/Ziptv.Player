@@ -1,6 +1,6 @@
 import type { AlternateStreamDto, ContentRefDto } from '@ziptv/contracts';
-import { ArrowLeft, ExternalLink, LoaderCircle, Lock, Play, RefreshCw, Shuffle, SkipForward, Tv, VolumeX } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ArrowLeft, ExternalLink, LoaderCircle, Lock, Play, RefreshCw, Shuffle, SkipForward, Tv, VolumeX, X } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { PROBLEMS } from '../../../lib/problems';
 import type { PlaybackSnapshot } from '../playback-controller';
@@ -16,10 +16,13 @@ interface PlayerOverlayProps {
   onUnlock?: () => void;
   onStart: () => void;
   onUnmute: () => void;
+  nextLabel?: string;
+  upNext?: { title: string; subtitle: string | null; autoplay: boolean } | null;
+  onReplay?: () => void;
 }
 
 /** Everything drawn on top of the video: empty state, progress, autoplay prompts and error screens. */
-export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNext, onBack, onAlternate, onUnlock, onStart, onUnmute }: PlayerOverlayProps) {
+export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNext, onBack, onAlternate, onUnlock, onStart, onUnmute, nextLabel = 'Next channel', upNext, onReplay }: PlayerOverlayProps) {
   if (!hasContent) {
     return (
       <Centered>
@@ -95,7 +98,7 @@ export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNex
               )}
               {onNext && (
                 <OverlayButton icon={<SkipForward className="h-3.5 w-3.5" />} onClick={onNext}>
-                  Next channel
+                  {nextLabel}
                 </OverlayButton>
               )}
             </div>
@@ -115,6 +118,23 @@ export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNex
         </Centered>
       );
     }
+    case 'ended':
+      return (
+        <Centered>
+          {upNext && onNext ? (
+            <UpNext upNext={upNext} onNext={onNext} onReplay={onReplay} />
+          ) : (
+            <div className="flex flex-col items-center gap-3 text-white">
+              <p className="text-base font-semibold">Finished</p>
+              {onReplay && (
+                <OverlayButton primary icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onReplay}>
+                  Watch again
+                </OverlayButton>
+              )}
+            </div>
+          )}
+        </Centered>
+      );
     default:
       return snapshot.mutedByAutoplayPolicy ? (
         <button
@@ -129,6 +149,56 @@ export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNex
         </button>
       ) : null;
   }
+}
+
+const AUTOPLAY_SECONDS = 8;
+
+/** End of an episode: the next one, with an autoplay countdown when enabled in Settings. */
+function UpNext({ upNext, onNext, onReplay }: { upNext: NonNullable<PlayerOverlayProps['upNext']>; onNext: () => void; onReplay?: () => void }) {
+  const [left, setLeft] = useState(AUTOPLAY_SECONDS);
+  const [cancelled, setCancelled] = useState(!upNext.autoplay);
+  // Fire exactly once: the parent's onNext changes identity after navigating, and must not
+  // be called again for the episode after next.
+  const fired = useRef(false);
+  const next = useRef(onNext);
+  useEffect(() => {
+    next.current = onNext;
+  });
+  useEffect(() => {
+    if (cancelled || fired.current) return;
+    if (left <= 0) {
+      fired.current = true;
+      next.current();
+      return;
+    }
+    const timer = setTimeout(() => setLeft((value) => value - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [left, cancelled]);
+  return (
+    <div className="max-w-sm rounded-xl border border-white/10 bg-ink-900/90 p-5 text-left text-white shadow-2xl backdrop-blur">
+      {/* Static live region: the ticking countdown (button text) is not announced every second. */}
+      <p className="text-xs font-semibold uppercase tracking-wide text-white/60" role="status">
+        Up next<span className="sr-only">: {upNext.title}</span>
+      </p>
+      <p className="mt-1 text-base font-semibold">{upNext.title}</p>
+      {upNext.subtitle && <p className="text-sm text-white/70">{upNext.subtitle}</p>}
+      <div className="mt-4 flex flex-wrap gap-2">
+        <OverlayButton primary icon={<Play className="h-3.5 w-3.5 fill-current" />} onClick={onNext}>
+          {cancelled ? 'Play next episode' : `Playing in ${left}s`}
+        </OverlayButton>
+        {!cancelled && (
+          <OverlayButton icon={<X className="h-3.5 w-3.5" />} onClick={() => setCancelled(true)}>
+            Cancel
+          </OverlayButton>
+        )}
+        {cancelled && onReplay && (
+          <OverlayButton icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onReplay}>
+            Watch again
+          </OverlayButton>
+        )}
+      </div>
+    </div>
+  );
 }
 
 function AlternateButton({ alternates, onAlternate }: { alternates: AlternateStreamDto[]; onAlternate: (ref: ContentRefDto) => void }) {

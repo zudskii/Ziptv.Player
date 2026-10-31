@@ -19,6 +19,7 @@ export interface ResolvedContent {
   nameKey: string | null;
   seriesTitle: string | null;
   next: PlaybackPlanDto['next'];
+  episode?: { season: number; episode: number };
 }
 
 /** Stream URLs of provider-API sources (Xtream) and catch-up URLs. */
@@ -32,6 +33,9 @@ export interface IssuedSession {
   sourceName: string;
   content: PlaybackContentDto;
   seriesTitle: string | null;
+  /** Provider image URL as stored (`content.image` may already be a proxy path). */
+  rawImage: string | null;
+  episode: { season: number; episode: number } | null;
 }
 
 /**
@@ -42,6 +46,8 @@ export interface PlaybackObserver {
   onPlanIssued(viewer: Viewer, session: IssuedSession): Promise<void>;
   onEvent(viewer: Viewer, event: PlaybackEventRequest): Promise<void>;
   resumePosition(viewer: Viewer, ref: ContentRefDto): Promise<number | null>;
+  /** True when `sessionId` is this profile's viewing of the same content (reconnects). */
+  continues?(viewer: Viewer, sessionId: string, ref: ContentRefDto): Promise<boolean>;
 }
 
 export const noopPlaybackObserver: PlaybackObserver = {
