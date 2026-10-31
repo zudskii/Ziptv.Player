@@ -132,17 +132,26 @@ describe('playback planning', () => {
   const proxyUrl = () => '/proxy';
 
   it('direct first, proxy as CORS fallback', () => {
-    expect(planCandidates({ kind: 'hls', url: 'https://h/a.m3u8', headers: {}, secureContext: true, proxyEnabled: true, proxyUrl })).toEqual([
+    expect(planCandidates({ kind: 'hls', url: 'https://h/a.m3u8', headers: {}, secureContext: true, proxyEnabled: true, policy: 'auto', proxyUrl })).toEqual([
       { engine: 'hls', url: 'https://h/a.m3u8', via: 'direct' },
       { engine: 'hls', url: '/proxy', via: 'proxy' },
     ]);
   });
 
   it('proxy only for mixed content; proxy first when headers are needed', () => {
-    expect(planCandidates({ kind: 'mpegts', url: 'http://h/1.ts', headers: {}, secureContext: true, proxyEnabled: true, proxyUrl }).map((c) => c.via)).toEqual(['proxy']);
-    expect(planCandidates({ kind: 'hls', url: 'https://h/a', headers: { 'user-agent': 'X' }, secureContext: true, proxyEnabled: true, proxyUrl }).map((c) => c.via)).toEqual(['proxy', 'direct']);
-    expect(planCandidates({ kind: 'dash', url: 'http://h/a.mpd', headers: {}, secureContext: true, proxyEnabled: true, proxyUrl })).toEqual([]);
-    expect(planCandidates({ kind: 'unknown', url: 'https://h/x', headers: {}, secureContext: false, proxyEnabled: false, proxyUrl }).map((c) => c.engine)).toEqual(['hls', 'mpegts', 'native']);
+    expect(planCandidates({ kind: 'mpegts', url: 'http://h/1.ts', headers: {}, secureContext: true, proxyEnabled: true, policy: 'auto', proxyUrl }).map((c) => c.via)).toEqual(['proxy']);
+    expect(planCandidates({ kind: 'hls', url: 'https://h/a', headers: { 'user-agent': 'X' }, secureContext: true, proxyEnabled: true, policy: 'auto', proxyUrl }).map((c) => c.via)).toEqual(['proxy', 'direct']);
+    expect(planCandidates({ kind: 'dash', url: 'http://h/a.mpd', headers: {}, secureContext: true, proxyEnabled: true, policy: 'auto', proxyUrl })).toEqual([]);
+    expect(planCandidates({ kind: 'unknown', url: 'https://h/x', headers: {}, secureContext: false, proxyEnabled: false, policy: 'auto', proxyUrl }).map((c) => c.engine)).toEqual(['hls', 'mpegts', 'native']);
+  });
+
+  it('proxy policy never hands out the upstream URL', () => {
+    const plan = (kind: 'hls' | 'mpegts' | 'dash' | 'unknown', url: string, secureContext: boolean) =>
+      planCandidates({ kind, url, headers: {}, secureContext, proxyEnabled: true, policy: 'proxy', proxyUrl });
+    expect(plan('hls', 'https://h/a.m3u8', false)).toEqual([{ engine: 'hls', url: '/proxy', via: 'proxy' }]);
+    expect(plan('unknown', 'https://h/x', true).map((c) => c.via)).toEqual(['proxy', 'proxy', 'proxy']);
+    expect(plan('dash', 'https://h/a.mpd', false)).toEqual([]);
+    expect(JSON.stringify(plan('mpegts', 'https://secret.example/u/p/1.ts', false))).not.toContain('secret.example');
   });
 
   it('maps VOD container extensions', () => {

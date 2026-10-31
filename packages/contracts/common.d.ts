@@ -12,7 +12,14 @@ export type ApiErrorCode =
   | 'RATE_LIMITED'
   // Accounts
   | 'EMAIL_TAKEN'
+  // Playlists
+  | 'PLAYLIST_LIMIT_REACHED'
+  | 'PLAYLIST_FULL'
+  | 'GROUP_EXISTS'
   | 'INVALID_CREDENTIALS'
+  // Email links
+  | 'INVALID_TOKEN'
+  | 'FEATURE_DISABLED'
   // Sources
   | 'SOURCE_LIMIT_REACHED'
   | 'SOURCE_INVALID'
@@ -35,6 +42,10 @@ export type ApiErrorCode =
   | 'PARENTAL_LOCKED'
   | 'PIN_REQUIRED'
   | 'PIN_INVALID'
+  // Operator console
+  | 'MFA_INVALID'
+  | 'PASSWORD_CHANGE_REQUIRED'
+  | 'LAST_SUPER_ADMIN'
   | 'INTERNAL_ERROR'
   | 'SERVICE_UNAVAILABLE';
 

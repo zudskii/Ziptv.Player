@@ -8,5 +8,5 @@ export interface ViewerResolver {
 
 /** Single-profile resolver (no profiles/parental controls configured). */
 export const accountViewerResolver: ViewerResolver = {
-  resolve: async (user) => unrestrictedViewer(user.id),
+  resolve: async (user) => unrestrictedViewer(user.id, user.id, user.sessionId),
 };

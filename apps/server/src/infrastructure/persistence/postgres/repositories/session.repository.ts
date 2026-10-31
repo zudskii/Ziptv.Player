@@ -43,6 +43,7 @@ export class PgSessionRepository implements SessionRepository {
         'users.id as user_id',
         'users.email as user_email',
         'users.role as user_role',
+        'users.email_verified_at as user_email_verified_at',
         'users.created_at as user_created_at',
         'users.last_seen_at as user_last_seen_at',
       ])
@@ -58,7 +59,7 @@ export class PgSessionRepository implements SessionRepository {
         expiresAt: row.session_expires_at,
         userAgent: row.session_user_agent,
       },
-      user: { id: row.user_id, email: row.user_email, role: row.user_role, createdAt: row.user_created_at, lastSeenAt: row.user_last_seen_at },
+      user: { id: row.user_id, email: row.user_email, role: row.user_role, emailVerifiedAt: row.user_email_verified_at, createdAt: row.user_created_at, lastSeenAt: row.user_last_seen_at },
     };
   }
 
@@ -74,6 +75,16 @@ export class PgSessionRepository implements SessionRepository {
   async listForUser(userId: string): Promise<SessionRecord[]> {
     const rows = await this.db.selectFrom('sessions').selectAll().where('user_id', '=', userId).orderBy('last_seen_at', 'desc').execute();
     return rows.map(toRecord);
+  }
+
+  async isActive(sessionId: string, now: Date): Promise<boolean> {
+    const row = await this.db
+      .selectFrom('sessions')
+      .select('id')
+      .where('id', '=', sessionId)
+      .where((eb) => eb.or([eb('expires_at', 'is', null), eb('expires_at', '>', now)]))
+      .executeTakeFirst();
+    return row !== undefined;
   }
 
   async delete(sessionId: string): Promise<void> {

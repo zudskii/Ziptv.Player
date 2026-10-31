@@ -6,6 +6,9 @@ const booleanString = z
   .enum(['true', 'false', '1', '0', 'yes', 'no'])
   .transform((value) => value === 'true' || value === '1' || value === 'yes');
 
+/** docker-compose passes unset optional variables as empty strings; an empty value means "not set". */
+const optional = <T extends z.ZodType>(schema: T) => z.preprocess((value) => (value === '' ? undefined : value), schema.optional());
+
 const csv = z
   .string()
   .default('')
@@ -37,8 +40,44 @@ const EnvSchema = z
     /** Apply pending schema migrations at boot (one instance at a time, lock-protected). */
     RUN_MIGRATIONS: booleanString.default(true),
 
+    /** Playlists a user may build (see /playlists). Not the same as sources: MAX_PLAYLISTS_PER_USER is the legacy name of MAX_SOURCES_PER_USER. */
+    MAX_CUSTOM_PLAYLISTS_PER_USER: z.coerce.number().int().min(1).max(500).default(20),
+    MAX_ENTRIES_PER_CUSTOM_PLAYLIST: z.coerce.number().int().min(100).max(1_000_000).default(50_000),
+    /** Public origin used in export links, e.g. https://tv.example.com (default: the request's own origin). */
+    PUBLIC_URL: optional(z.string().url()),
+
+    /**
+     * Outgoing mail (password reset, address confirmation). Any SMTP provider works, e.g.
+     * smtps://user:password@smtp.example.com:465 or smtp://user:password@host:587.
+     * Needs MAIL_FROM and PUBLIC_URL: links in emails are built from PUBLIC_URL, never from a request.
+     */
+    SMTP_URL: optional(z.string().url()),
+    MAIL_FROM: optional(z.string().min(3)),
+    /** Development only: print emails (with their links) to the log instead of sending them. */
+    MAIL_LOG_ONLY: booleanString.default(false),
+
     /** Account sessions expire after this many days without use (guest sessions never do). */
     SESSION_TTL_DAYS: z.coerce.number().int().min(1).max(365).default(90),
+
+    /**
+     * Operator console listener: its own port = its own origin, firewall it or keep it on a VPN.
+     * 0 disables the console on this instance.
+     */
+    ADMIN_PORT: z.coerce.number().int().min(0).max(65535).default(8081),
+    /** Interface for the console listener (default: HOST). 127.0.0.1 = reachable only through a tunnel/reverse proxy. */
+    ADMIN_HOST: optional(z.string().min(1)),
+    /** Built operator console (apps/admin/dist) served by the console listener. */
+    ADMIN_DIST_DIR: optional(z.string().min(1)),
+    /**
+     * Express `trust proxy` for the console listener only (default 0). The console is often reached
+     * directly (SSH tunnel/VPN) even when the public app sits behind a proxy; trusting
+     * X-Forwarded-For there would let anyone spoof the IP that rate limits and the audit log use.
+     */
+    ADMIN_TRUST_PROXY: z.string().default('0'),
+    ADMIN_SESSION_IDLE_MINUTES: z.coerce.number().int().min(5).max(240).default(30),
+    ADMIN_SESSION_MAX_HOURS: z.coerce.number().int().min(1).max(24).default(12),
+    /** Name shown in authenticator apps. */
+    ADMIN_MFA_ISSUER: z.string().min(1).max(40).default('ZIPTV Console'),
 
     /** Comma-separated list of allowed browser origins for the JSON API. Empty = same-origin only. */
     CORS_ORIGINS: csv,
@@ -48,7 +87,23 @@ const EnvSchema = z
     CLIENT_DIST_DIR: z.string().optional(),
 
     STREAM_PROXY_ENABLED: booleanString.default(true),
-    /** HMAC key for media proxy URLs and unlock tokens. Required in production (>= 32 chars). */
+    /**
+     * auto  = direct playback when the browser can, proxy as fallback (users' own sources);
+     * proxy = upstream URLs never reach clients: no direct candidates, artwork proxied (operator / licensed content).
+     */
+    STREAM_DELIVERY: z.enum(['auto', 'proxy']).default('auto'),
+    /** Playlist export links: direct = upstream URLs, proxied = ZIPTV proxy URLs bound to the link, off = disabled. Default: direct (proxied with STREAM_DELIVERY=proxy). */
+    PLAYLIST_EXPORT_MODE: optional(z.enum(['direct', 'proxied', 'off'])),
+    /** Lifetime of proxy URLs written into an exported playlist (players re-download the playlist). */
+    PLAYLIST_EXPORT_LINK_TTL_HOURS: z.coerce.number().int().min(1).max(30 * 24).default(7 * 24),
+    /**
+     * Shared state for more than one instance: rate limits, cache invalidation, leases.
+     * e.g. redis://:password@redis:6379/0 (rediss:// for TLS). Unset = per-instance memory.
+     */
+    /** Namespace of every Redis key/channel (lets staging and production share one Redis). */
+    REDIS_KEY_PREFIX: z.string().regex(/^[\w:.-]{1,40}$/, 'REDIS_KEY_PREFIX: letters, digits, _ : . - (max 40)').default('ziptv:'),
+    REDIS_URL: optional(z.string().refine((value) => /^rediss?:\/\//.test(value), 'REDIS_URL must start with redis:// or rediss://')),
+    /** Key for media proxy tokens (encrypted, AES-256-GCM via HKDF). Required in production (>= 32 chars). */
     STREAM_TOKEN_SECRET: z.string().min(32, 'STREAM_TOKEN_SECRET must be at least 32 characters').optional(),
     STREAM_TOKEN_TTL_SECONDS: z.coerce.number().int().min(300).max(7 * 24 * 3600).default(6 * 3600),
 
@@ -85,7 +140,27 @@ const EnvSchema = z
     MAX_PROFILES_PER_USER: z.coerce.number().int().min(1).max(20).default(6),
   })
   .superRefine((env, ctx) => {
+    if (env.SMTP_URL && !env.MAIL_FROM) ctx.addIssue({ code: 'custom', path: ['MAIL_FROM'], message: 'MAIL_FROM is required when SMTP_URL is set, e.g. "ZIPTV <no-reply@example.com>"' });
+    if (env.SMTP_URL && !env.PUBLIC_URL) {
+      ctx.addIssue({ code: 'custom', path: ['PUBLIC_URL'], message: 'PUBLIC_URL is required when SMTP_URL is set (links in emails must not depend on the request)' });
+    }
+    if (env.MAIL_LOG_ONLY && env.NODE_ENV === 'production') {
+      ctx.addIssue({ code: 'custom', path: ['MAIL_LOG_ONLY'], message: 'MAIL_LOG_ONLY would write password-reset links to the log; it is for development only' });
+    }
+    if (env.STREAM_DELIVERY === 'proxy' && !env.STREAM_PROXY_ENABLED) {
+      ctx.addIssue({ code: 'custom', path: ['STREAM_DELIVERY'], message: 'STREAM_DELIVERY=proxy needs STREAM_PROXY_ENABLED=true' });
+    }
+    if ((env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct')) === 'proxied' && !env.STREAM_PROXY_ENABLED) {
+      ctx.addIssue({ code: 'custom', path: ['PLAYLIST_EXPORT_MODE'], message: 'PLAYLIST_EXPORT_MODE=proxied needs STREAM_PROXY_ENABLED=true' });
+    }
+    if (env.STREAM_DELIVERY === 'proxy' && env.PLAYLIST_EXPORT_MODE === 'direct') {
+      ctx.addIssue({ code: 'custom', path: ['PLAYLIST_EXPORT_MODE'], message: 'PLAYLIST_EXPORT_MODE=direct would publish upstream URLs that STREAM_DELIVERY=proxy hides; use proxied or off' });
+    }
     if (env.NODE_ENV !== 'production') return;
+    if ((env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct')) === 'proxied' && !env.PUBLIC_URL) {
+      // Proxied exports write absolute stream URLs; without PUBLIC_URL they would come from the request (Host, X-Forwarded-Proto).
+      ctx.addIssue({ code: 'custom', path: ['PUBLIC_URL'], message: 'PUBLIC_URL (https://…) is required in production when playlist exports are proxied' });
+    }
     if (!env.STREAM_TOKEN_SECRET) {
       ctx.addIssue({ code: 'custom', path: ['STREAM_TOKEN_SECRET'], message: 'STREAM_TOKEN_SECRET is required in production' });
     }
@@ -106,15 +181,20 @@ export interface AppConfig {
     clientDistDir: string | null;
   };
   log: { level: string };
+  admin: { port: number; host: string; trustProxy: boolean | number | string; distDir: string | null; idleTimeoutMs: number; absoluteTimeoutMs: number; mfaIssuer: string };
   database: { url: string; poolMax: number; runMigrations: boolean };
   auth: { sessionTtlDays: number };
+  mail: { smtpUrl: string | null; from: string | null; logOnly: boolean };
   stream: {
     proxyEnabled: boolean;
+    delivery: 'auto' | 'proxy';
     tokenSecret: Buffer;
     tokenTtlSeconds: number;
     /** True when the secret was generated at boot (dev only) — tokens die on restart. */
     ephemeralSecret: boolean;
   };
+  playlistExport: { mode: 'direct' | 'proxied' | 'off'; linkTtlSeconds: number };
+  redis: { url: string | null; keyPrefix: string };
   encryption: {
     key: string;
     previousKeys: string[];
@@ -143,7 +223,11 @@ export interface AppConfig {
     maxEntriesPerSource: number;
     maxSourcesPerUser: number;
     maxProfilesPerUser: number;
+    maxPlaylistsPerUser: number;
+    maxEntriesPerPlaylist: number;
   };
+  /** Origin for links handed to users (export URLs); null = derive from the request. */
+  publicUrl: string | null;
 }
 
 export class ConfigError extends Error {
@@ -173,14 +257,27 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       clientDistDir: env.CLIENT_DIST_DIR?.trim() || null,
     },
     log: { level: env.LOG_LEVEL },
+    admin: {
+      port: env.ADMIN_PORT,
+      host: env.ADMIN_HOST ?? env.HOST,
+      trustProxy: parseTrustProxy(env.ADMIN_TRUST_PROXY),
+      distDir: env.ADMIN_DIST_DIR?.trim() || null,
+      idleTimeoutMs: env.ADMIN_SESSION_IDLE_MINUTES * 60_000,
+      absoluteTimeoutMs: env.ADMIN_SESSION_MAX_HOURS * 3600_000,
+      mfaIssuer: env.ADMIN_MFA_ISSUER,
+    },
     database: { url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX, runMigrations: env.RUN_MIGRATIONS },
     auth: { sessionTtlDays: env.SESSION_TTL_DAYS },
+    mail: { smtpUrl: env.SMTP_URL ?? null, from: env.MAIL_FROM ?? null, logOnly: env.MAIL_LOG_ONLY },
     stream: {
       proxyEnabled: env.STREAM_PROXY_ENABLED,
+      delivery: env.STREAM_DELIVERY,
       tokenSecret: env.STREAM_TOKEN_SECRET ? Buffer.from(env.STREAM_TOKEN_SECRET, 'utf8') : randomBytes(32),
       tokenTtlSeconds: env.STREAM_TOKEN_TTL_SECONDS,
       ephemeralSecret: !env.STREAM_TOKEN_SECRET,
     },
+    playlistExport: { mode: env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct'), linkTtlSeconds: env.PLAYLIST_EXPORT_LINK_TTL_HOURS * 3600 },
+    redis: { url: env.REDIS_URL ?? null, keyPrefix: env.REDIS_KEY_PREFIX },
     encryption: {
       key: env.DATA_ENCRYPTION_KEY ?? DEV_ENCRYPTION_KEY,
       previousKeys: env.DATA_ENCRYPTION_PREVIOUS_KEYS,
@@ -208,7 +305,10 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       maxEntriesPerSource: env.MAX_ENTRIES_PER_SOURCE ?? env.MAX_CHANNELS_PER_PLAYLIST ?? 150_000,
       maxSourcesPerUser: env.MAX_SOURCES_PER_USER ?? env.MAX_PLAYLISTS_PER_USER ?? 30,
       maxProfilesPerUser: env.MAX_PROFILES_PER_USER,
+      maxPlaylistsPerUser: env.MAX_CUSTOM_PLAYLISTS_PER_USER,
+      maxEntriesPerPlaylist: env.MAX_ENTRIES_PER_CUSTOM_PLAYLIST,
     },
+    publicUrl: env.PUBLIC_URL ? env.PUBLIC_URL.replace(/\/+$/, '') : null,
   });
 }
 

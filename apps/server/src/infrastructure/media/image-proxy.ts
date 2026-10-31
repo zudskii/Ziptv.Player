@@ -40,8 +40,8 @@ export function createCatalogImageHandler(deps: ImageProxyDeps): RequestHandler 
 
 export function createSignedImageHandler(deps: ImageProxyDeps): RequestHandler {
   return async (req, res) => {
-    const payload = deps.tokens.verify(String(req.params.token ?? ''), 'image');
-    await serve(deps, res, payload?.u ?? null);
+    const token = deps.tokens.verify(String(req.params.token ?? ''), 'image');
+    await serve(deps, res, token?.url ?? null);
   };
 }
 

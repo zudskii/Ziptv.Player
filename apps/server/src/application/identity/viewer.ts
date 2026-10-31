@@ -5,6 +5,8 @@
  */
 export interface Viewer {
   userId: string;
+  /** The signed-in device the request came from (null for background work). Stream links are bound to it. */
+  sessionId: string | null;
   profileId: string;
   /** Kids profile: adult content is never shown, locked content is hidden. */
   kids: boolean;
@@ -36,9 +38,10 @@ export function isLockedForViewer(viewer: Viewer, sourceId: string, item: { key:
 }
 
 /** A viewer without any restriction (tests, background jobs). */
-export function unrestrictedViewer(userId: string, profileId = userId): Viewer {
+export function unrestrictedViewer(userId: string, profileId = userId, sessionId: string | null = null): Viewer {
   return {
     userId,
+    sessionId,
     profileId,
     kids: false,
     hideAdult: false,

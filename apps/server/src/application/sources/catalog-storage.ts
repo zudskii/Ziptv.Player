@@ -17,7 +17,7 @@ export function toStoredRevision(build: Pick<CatalogBuild, 'live' | 'movies' | '
       locator: secrets.sealLocator(movie.locator),
       searchTokens: searchTokens(movie.name, movie.year ? String(movie.year) : null),
     })),
-    series: build.series.map((series) => ({ ...series, searchTokens: searchTokens(series.name, series.year ? String(series.year) : null) })),
+    series: build.series.map((series) => ({ ...series, detailsFetchedAt: null, searchTokens: searchTokens(series.name, series.year ? String(series.year) : null) })),
     episodes: build.episodes.map((episode) => ({ ...episode, locator: secrets.sealLocator(episode.locator) })),
   };
 }

@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, History, Home, LayoutGrid, MonitorPlay, Server, Settings, Tv } from 'lucide-react';
+import { Bookmark, Clapperboard, History, Home, LayoutGrid, ListVideo, MonitorPlay, Server, Settings, Tv } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -19,12 +19,13 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/series', label: 'Series', icon: MonitorPlay, group: 2 },
   { to: '/my-list', label: 'My List', icon: Bookmark, group: 3 },
   { to: '/history', label: 'History', icon: History, group: 3 },
+  { to: '/playlists', label: 'Playlists', icon: ListVideo, group: 4 },
   { to: '/sources', label: 'Sources', icon: Server, group: 4 },
   { to: '/settings', label: 'Settings', icon: Settings, group: 4 },
 ];
 
 /** Screens that exist so far (the navigation grows with each phase). */
-const AVAILABLE = new Set(['/', '/live', '/sources', '/settings']);
+const AVAILABLE = new Set(['/', '/live', '/guide', '/playlists', '/sources', '/settings']);
 
 export function navItems(): NavItem[] {
   return NAV_ITEMS.filter((item) => AVAILABLE.has(item.to));

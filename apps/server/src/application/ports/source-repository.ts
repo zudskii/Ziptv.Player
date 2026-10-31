@@ -97,6 +97,11 @@ export interface SyncOutcome {
 
 export interface SourceSettingsPatch {
   name?: string;
+  /** M3U URL → Xtream conversion (together with credential + origin). */
+  type?: SourceType;
+  xtreamCandidate?: boolean;
+  /** Apply only while the source still has this type (guards a conversion against a racing edit). */
+  ifType?: SourceType;
   autoSync?: boolean;
   intervalHours?: number;
   nextSyncAt?: Date | null;

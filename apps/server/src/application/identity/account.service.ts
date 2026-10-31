@@ -5,6 +5,7 @@ import { AppError } from '../errors.js';
 import type { AccountDataTransfer } from '../ports/account-data-transfer.js';
 import type { Logger } from '../ports/logger.js';
 import type { PasswordHasher } from '../ports/password-hasher.js';
+import type { PlaylistRepository } from '../ports/playlist-repository.js';
 import type { SourceRepository } from '../ports/source-repository.js';
 import type { UserRecord, UserRepository } from '../ports/user-repository.js';
 import type { AuthUser, SessionService } from './session.service.js';
@@ -27,8 +28,11 @@ export class AccountService {
       hasher: PasswordHasher;
       transfer: AccountDataTransfer;
       sources: SourceRepository;
-      limits: { maxSourcesPerUser: number };
+      playlists: Pick<PlaylistRepository, 'countByOwner'>;
+      limits: { maxSourcesPerUser: number; maxPlaylistsPerUser: number };
       logger: Logger;
+      /** Runs after an account was created (the confirmation email goes out from here); must not throw. */
+      afterRegister?: (user: { id: string; email: string }) => void;
     },
   ) {}
 
@@ -51,6 +55,7 @@ export class AccountService {
 
     if (guest) await this.deps.sessions.revokeAll(user.id); // the guest token(s)
     this.deps.logger.info({ userId: user.id, upgradedGuest: guest !== null }, 'Account registered');
+    this.deps.afterRegister?.({ id: user.id, email });
     return this.start(user, context.userAgent);
   }
 
@@ -114,11 +119,19 @@ export class AccountService {
 
   private async start(user: UserRecord, userAgent: string | null): Promise<AuthSessionDto> {
     const issued = await this.deps.sessions.issue(user, userAgent);
-    return { token: issued.token, expiresAt: issued.expiresAt ? issued.expiresAt.toISOString() : null, user: this.deps.sessions.toMe(user) };
+    return { token: issued.token, expiresAt: issued.expiresAt ? issued.expiresAt.toISOString() : null, user: this.deps.sessions.toMe({ ...user, emailVerified: user.emailVerifiedAt !== null }) };
   }
 
   private async mergeGuest(guestId: string, accountId: string): Promise<void> {
-    const { sources, limits } = this.deps;
+    const { sources, playlists, limits } = this.deps;
+    const [guestPlaylists, accountPlaylists] = await Promise.all([playlists.countByOwner(guestId), playlists.countByOwner(accountId)]);
+    if (guestPlaylists + accountPlaylists > limits.maxPlaylistsPerUser) {
+      throw new AppError(
+        'PLAYLIST_LIMIT_REACHED',
+        409,
+        `Merging would exceed the limit of ${limits.maxPlaylistsPerUser} playlists (${accountPlaylists} in your account + ${guestPlaylists} on this device). Remove some first, or log in without merging.`,
+      );
+    }
     const [guestCount, accountCount] = await Promise.all([sources.countByOwner(guestId), sources.countByOwner(accountId)]);
     if (guestCount + accountCount > limits.maxSourcesPerUser) {
       throw new AppError(

@@ -12,3 +12,5 @@ export * from './catalog';
 export * from './epg';
 export * from './playback';
 export * from './user-state';
+export * from './playlists';
+export * from './admin';

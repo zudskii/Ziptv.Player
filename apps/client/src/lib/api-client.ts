@@ -46,6 +46,12 @@ export interface RequestOptions {
   signal?: AbortSignal;
   /** Default true. */
   auth?: boolean;
+  /**
+   * Default true: a 401 means "my token is dead", so a new session is obtained and the request is
+   * repeated. Sign-in requests must turn this off: for them a 401 means "wrong password", and
+   * renewing a session in response would silently replace the person's identity.
+   */
+  renewOn401?: boolean;
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
@@ -74,7 +80,7 @@ async function send(path: string, options: RequestOptions, withAuth: boolean, is
     throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the ZIPTV server. Check your connection and try again.');
   }
 
-  if (response.status === 401 && withAuth && !isRetry && authProvider) {
+  if (response.status === 401 && withAuth && options.renewOn401 !== false && !isRetry && authProvider) {
     await authProvider.renewToken();
     return send(path, options, withAuth, true);
   }

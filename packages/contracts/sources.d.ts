@@ -92,7 +92,13 @@ export interface SourceDto {
   health: SourceHealthDto;
   account: SourceAccountDto | null;
   /** Guides (XMLTV) attached to this source. */
-  epg: { guides: number };
+  epg: {
+    guides: number;
+    /** Changes whenever one of the source's guides loaded new programmes (cache key of now/next, schedules). */
+    version: string;
+    /** A guide of this source is being (re)loaded. */
+    syncing: boolean;
+  };
   /** First N parser warnings of the latest import. */
   warnings: ParseWarningDto[];
   warningCount: number;

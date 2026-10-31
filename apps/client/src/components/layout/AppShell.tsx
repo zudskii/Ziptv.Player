@@ -3,6 +3,7 @@ import { Fragment, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router';
 
 import { isActivePath, navItems, type NavItem } from '../../app/navigation';
+import { UserMenu } from '../../features/auth/components/UserMenu';
 import { NotificationBell } from '../../features/notifications/NotificationBell';
 import { useRefreshOnSyncCompletion, useSources } from '../../features/sources/api';
 import { useThemeStore } from '../../features/theme/theme-store';
@@ -76,6 +77,7 @@ function TopBar({ extra }: { extra?: ReactNode }) {
         <div className="min-w-0 flex-1">{extra}</div>
         <ThemeToggle />
         <NotificationBell />
+        <UserMenu />
       </div>
     </header>
   );

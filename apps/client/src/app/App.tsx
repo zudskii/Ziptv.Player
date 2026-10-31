@@ -1,31 +1,28 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router';
 import { Toaster } from 'sonner';
 
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
-import { ApiError } from '../lib/api-client';
+import { queryClient } from '../lib/query-client';
 import { SessionGate } from '../features/session/SessionGate';
 import { installThemeSync, resolveTheme, useThemeStore } from '../features/theme/theme-store';
 import { HomePage } from '../pages/HomePage';
 import { NotFoundPage } from '../pages/NotFoundPage';
+import { AuthPage } from '../pages/auth/AuthPage';
+import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
+import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
+import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { OnboardingPage } from '../pages/onboarding/OnboardingPage';
+import { PlaylistsPage } from '../pages/playlists/PlaylistsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { SourcesPage } from '../pages/SourcesPage';
 
 // Player-heavy screens are only downloaded when opened.
 const LivePage = lazy(() => import('../pages/live/LivePage').then((module) => ({ default: module.LivePage })));
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      refetchOnWindowFocus: false,
-      // Retrying 4xx never helps (not found, validation...); network/5xx may.
-      retry: (failureCount, error) => failureCount < 2 && !(error instanceof ApiError && error.status >= 400 && error.status < 500),
-    },
-  },
-});
+const GuidePage = lazy(() => import('../pages/guide/GuidePage').then((module) => ({ default: module.GuidePage })));
+const PlaylistEditorPage = lazy(() => import('../pages/playlists/PlaylistEditorPage').then((module) => ({ default: module.PlaylistEditorPage })));
 
 export function App() {
   useEffect(() => installThemeSync(), []);
@@ -35,10 +32,20 @@ export function App() {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter>
         <Routes>
+          {/* Sign-in pages live outside the gate: they must open without (or after losing) a session. */}
+          <Route path="/login" element={<AuthPage mode="login" />} />
+          <Route path="/register" element={<AuthPage mode="register" />} />
+          {/* Opened from emails, on devices that may have no session: no gate, and none is created. */}
+          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+          <Route path="/reset-password" element={<ResetPasswordPage />} />
+          <Route path="/verify-email" element={<VerifyEmailPage />} />
           <Route path="/welcome" element={<Gate><OnboardingPage /></Gate>} />
           <Route element={<Gate><AppShell /></Gate>}>
             <Route index element={<HomePage />} />
             <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />
+            <Route path="guide/:sourceId?" element={<Lazy><GuidePage /></Lazy>} />
+            <Route path="playlists" element={<PlaylistsPage />} />
+            <Route path="playlists/:playlistId" element={<Lazy><PlaylistEditorPage /></Lazy>} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="settings" element={<SettingsPage />} />
           </Route>

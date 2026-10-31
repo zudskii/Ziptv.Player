@@ -31,8 +31,14 @@ export function Dialog({ open, onClose, title, description, children, className 
   return (
     <dialog
       ref={ref}
-      onClose={onClose}
+      // React runs these handlers for events of *nested* dialogs too (it bubbles them through the
+      // component tree although the browser does not). Without the target check, closing a
+      // confirmation inside a dialog would close the outer dialog as well.
+      onClose={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
       onCancel={(event) => {
+        if (event.target !== event.currentTarget) return;
         event.preventDefault();
         onClose();
       }}

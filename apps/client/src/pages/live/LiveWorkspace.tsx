@@ -1,14 +1,18 @@
-import type { ContentRefDto, SourceDto } from '@ziptv/contracts';
-import { Server, Star } from 'lucide-react';
+import type { ContentRefDto, ProgrammeDto, SourceDto } from '@ziptv/contracts';
+import { CalendarDays, List, Server } from 'lucide-react';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
 
-import { Badge } from '../../components/ui/Badge';
+import { Segmented } from '../../components/ui/Segmented';
 import { errorMessage } from '../../lib/api-client';
-import { cn } from '../../lib/cn';
+import { useIsDesktop } from '../../lib/use-media-query';
+import { useNowNext } from '../../features/epg/api';
+import { EpgMappingDialog } from '../../features/epg/components/EpgMappingDialog';
+import { LiveInfoOverlay, LiveNowCard } from '../../features/epg/components/LiveNowCard';
+import { MiniGuide } from '../../features/epg/components/MiniGuide';
+import { ProgrammeDialog } from '../../features/epg/components/ProgrammeDialog';
 import { buildGroupOptions, neighbourChannel, selectChannels, toBrowsable, type BrowsableChannel, type GroupFilterValue } from '../../features/live/browse';
 import { ChannelBrowser } from '../../features/live/components/ChannelBrowser';
-import { ChannelLogo } from '../../features/live/components/ChannelLogo';
 import { useFavorites, useLibraryStore, useRecents } from '../../features/library/library-store';
 import { VideoPlayer } from '../../features/player/components/VideoPlayer';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
@@ -33,6 +37,13 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
   const toggleFavorite = useLibraryStore((state) => state.toggleFavorite);
   const pushRecent = useLibraryStore((state) => state.pushRecent);
   const rememberChannel = usePlayerPrefs((state) => state.rememberChannel);
+
+  const nowNextQuery = useNowNext(source);
+  const nowNext = nowNextQuery.data?.items;
+  const isDesktop = useIsDesktop();
+  const [panel, setPanel] = useState<'channels' | 'guide'>('channels');
+  const [programme, setProgramme] = useState<ProgrammeDto | null>(null);
+  const [mappingOpen, setMappingOpen] = useState(false);
 
   const [group, setGroup] = useState<GroupFilterValue>('all');
   const [search, setSearch] = useState('');
@@ -86,22 +97,30 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
               if (ref.type === 'channel') navigate(`/live/${ref.sourceId}/${ref.key}`);
             }}
             onBack={() => navigate(`/live/${source.id}`)}
+            infoOverlay={current ? <LiveInfoOverlay sourceId={source.id} channel={current} entry={nowNext?.[current.key]} /> : undefined}
           />
         </div>
 
         {current ? (
-          <div className="card flex items-center gap-3 p-3">
-            <ChannelLogo sourceId={source.id} channel={current} className="h-12 w-16" />
-            <div className="min-w-0 flex-1">
-              <h1 className="truncate text-lg font-semibold text-fg">{current.name}</h1>
-              <p className="flex flex-wrap items-center gap-2 truncate text-sm text-fg-muted">
-                {current.groups.length > 0 ? current.groups.join(' · ') : 'Uncategorized'}
-                <Badge>{current.kind === 'unknown' ? 'auto' : current.kind}</Badge>
-                {current.catchupDays && <Badge tone="brand">Archive {current.catchupDays}d</Badge>}
-              </p>
-            </div>
-            <FavoriteButton active={favorites.has(current.key)} onClick={() => toggleFavorite(source.id, current.key)} />
-          </div>
+          <>
+            <LiveNowCard
+              sourceId={source.id}
+              channel={current}
+              entry={nowNext?.[current.key]}
+              favorite={favorites.has(current.key)}
+              onToggleFavorite={() => toggleFavorite(source.id, current.key)}
+              onOpenMapping={() => setMappingOpen(true)}
+              onSelectProgramme={setProgramme}
+            />
+            {isDesktop && (
+              <section className="card flex min-h-[16rem] flex-col p-2" aria-label="Mini guide">
+                <h2 className="flex items-center gap-2 px-2 pb-2 pt-1 text-sm font-semibold text-fg">
+                  <CalendarDays className="h-4 w-4 text-brand-soft" /> Schedule
+                </h2>
+                <MiniGuide source={source} channel={current} onSelect={setProgramme} className="max-h-[28rem] min-h-0 flex-1" />
+              </section>
+            )}
+          </>
         ) : missingChannel ? (
           <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-600">
             This channel is no longer in “{source.name}” (the source may have been re-synced). Pick another one.
@@ -127,6 +146,22 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
             </select>
           </label>
         )}
+        {!isDesktop && current && (
+          <Segmented
+            label="Panel"
+            value={panel}
+            onChange={setPanel}
+            options={[
+              { value: 'channels', label: 'Channels', icon: <List className="h-4 w-4" /> },
+              { value: 'guide', label: 'Guide', icon: <CalendarDays className="h-4 w-4" /> },
+            ]}
+          />
+        )}
+        {!isDesktop && current && panel === 'guide' ? (
+          <div className="card min-h-0 flex-1 p-2">
+            <MiniGuide source={source} channel={current} onSelect={setProgramme} className="h-full" />
+          </div>
+        ) : (
         <div className="min-h-0 flex-1">
           <ChannelBrowser
             sourceId={source.id}
@@ -138,6 +173,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
             channels={visible}
             activeKey={channelKey}
             favorites={favorites}
+            nowNext={nowNext}
             onGroupChange={setGroup}
             onSearchChange={setSearch}
             onSelect={select}
@@ -145,25 +181,17 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
             onRetry={() => void channelsQuery.refetch()}
           />
         </div>
+        )}
       </div>
-    </div>
-  );
-}
 
-function FavoriteButton({ active, onClick }: { active: boolean; onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      aria-pressed={active}
-      className={cn(
-        'inline-flex h-10 items-center gap-2 rounded-lg px-3 text-sm font-medium ring-1 ring-inset transition-colors',
-        active ? 'bg-amber-400/10 text-amber-500 ring-amber-400/30' : 'text-fg-muted ring-line/10 hover:bg-fg/5',
-      )}
-    >
-      <Star className={cn('h-4 w-4', active && 'fill-current')} />
-      <span className="hidden sm:inline">{active ? 'Favorite' : 'Add to favorites'}</span>
-    </button>
+      <ProgrammeDialog
+        programme={programme}
+        channel={current ?? null}
+        onClose={() => setProgramme(null)}
+        onWatchLive={() => setProgramme(null)}
+      />
+      <EpgMappingDialog key={current?.key ?? 'none'} sourceId={source.id} channel={mappingOpen && current ? current : null} onClose={() => setMappingOpen(false)} />
+    </div>
   );
 }
 

@@ -23,6 +23,7 @@ export const sourcesApi = {
   },
   update: (id: string, patch: UpdateSourceRequest) => apiRequest<SourceDto>(`${BASE}/${id}`, { method: 'PATCH', body: patch }),
   sync: (id: string) => apiRequest<SourceDto>(`${BASE}/${id}/sync`, { method: 'POST' }),
+  convertToXtream: (id: string) => apiRequest<SourceDto>(`${BASE}/${id}/convert-to-xtream`, { method: 'POST' }),
   remove: (id: string) => apiRequest<void>(`${BASE}/${id}`, { method: 'DELETE' }),
   channels: (id: string, signal?: AbortSignal) => apiRequest<ChannelListDto>(`/api/v1/live/${id}/channels`, { signal }),
 };
@@ -45,7 +46,7 @@ export function useSources() {
     queryKey: sourceKeys.all,
     queryFn: ({ signal }) => sourcesApi.list(signal),
     staleTime: 10_000,
-    refetchInterval: (query) => (query.state.data?.some(isSyncing) ? 1_500 : 60_000),
+    refetchInterval: (query) => (query.state.data?.some(isSyncing) ? 1_500 : query.state.data?.some((source) => source.epg.syncing) ? 3_000 : 60_000),
   });
 }
 
@@ -100,6 +101,11 @@ export function useUpdateSource() {
 export function useSyncSource() {
   const upsert = useUpsertSource();
   return useMutation({ mutationFn: sourcesApi.sync, onSuccess: upsert });
+}
+
+export function useConvertToXtream() {
+  const upsert = useUpsertSource();
+  return useMutation({ mutationFn: sourcesApi.convertToXtream, onSuccess: upsert });
 }
 
 export function useDeleteSource() {

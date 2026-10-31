@@ -18,6 +18,14 @@ const ENGINES_BY_KIND: Record<StreamKind, EngineName[]> = {
   unknown: ['hls', 'mpegts', 'native'],
 };
 
+/**
+ * auto  — direct when the browser can fetch the stream itself, proxy as fallback (a user's own
+ *         sources: no server bandwidth, the URL is the user's own anyway);
+ * proxy — never hand out the upstream URL (operator/licensed content: the URL and any credentials
+ *         in it belong to the operator, and only proxied delivery can be revoked).
+ */
+export type DeliveryPolicy = 'auto' | 'proxy';
+
 export interface PlanInput {
   kind: StreamKind;
   url: string;
@@ -25,6 +33,7 @@ export interface PlanInput {
   /** The page is https: plain-http streams cannot be fetched directly (mixed content). */
   secureContext: boolean;
   proxyEnabled: boolean;
+  policy: DeliveryPolicy;
   /** Issues a signed proxy URL for the stream. */
   proxyUrl: () => string;
 }
@@ -36,12 +45,13 @@ export interface PlanInput {
  *   plain http on an https page (mixed content) or headers a browser cannot set (User-Agent,
  *   Referer, Cookie…) — then the proxy goes first;
  * - proxy as fallback for CORS failures;
- * - DASH manifests reference segments relatively and the proxy only rewrites HLS → direct only.
+ * - DASH manifests reference segments relatively and the proxy only rewrites HLS → direct only;
+ * - policy `proxy`: no direct candidate at all (so DASH cannot be delivered yet).
  */
 export function planCandidates(input: PlanInput): Candidate[] {
   const mixedContent = input.secureContext && input.url.startsWith('http:');
   const needsHeaders = Object.keys(input.headers).length > 0;
-  const canDirect = !mixedContent;
+  const canDirect = !mixedContent && input.policy === 'auto';
   const canProxy = input.proxyEnabled && input.kind !== 'dash';
   const proxyFirst = needsHeaders || mixedContent;
 

@@ -1,3 +1,4 @@
+import type { NowNextDto } from '@ziptv/contracts';
 import { ListFilter, Search, X } from 'lucide-react';
 
 import { Spinner } from '../../../components/ui/Spinner';
@@ -14,6 +15,7 @@ interface ChannelBrowserProps {
   channels: BrowsableChannel[];
   activeKey: string | undefined;
   favorites: ReadonlySet<string>;
+  nowNext?: Record<string, NowNextDto>;
   onGroupChange: (value: GroupFilterValue) => void;
   onSearchChange: (value: string) => void;
   onSelect: (channel: BrowsableChannel) => void;
@@ -85,6 +87,7 @@ export function ChannelBrowser(props: ChannelBrowserProps) {
             channels={channels}
             activeKey={props.activeKey}
             favorites={props.favorites}
+            nowNext={props.nowNext}
             showGroups={group === 'all' || group === 'fav' || group === 'recent' || Boolean(search)}
             onSelect={props.onSelect}
             onToggleFavorite={props.onToggleFavorite}

@@ -40,10 +40,57 @@ services:
       # true only for a home server whose playlists point to LAN addresses (e.g. TVHeadend).
       ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-false}
       LOG_LEVEL: ${LOG_LEVEL:-info}
+      # Email (password reset, address confirmation). All three or none; see the README.
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      # all = API + jobs in one process; api when the worker profile runs the jobs.
+      ROLE: ${ROLE:-all}
+      STREAM_DELIVERY: ${STREAM_DELIVERY:-auto}
+      PLAYLIST_EXPORT_MODE: ${PLAYLIST_EXPORT_MODE:-}
+      # Needed once more than one app instance runs (`--profile redis` starts the bundled one).
+      REDIS_URL: ${REDIS_URL:-}
     ports:
       - '${PORT:-8080}:8080'
+      # Operator console: loopback only by default — reach it through SSH/VPN, never the open internet.
+      - '${ADMIN_BIND:-127.0.0.1}:${ADMIN_PORT:-8081}:8081'
     # Live streams get time to finish during `docker compose down` / redeploys.
     stop_grace_period: 20s
+
+  # Background jobs in their own process (scale API and workers separately):
+  #   docker compose --profile worker up -d   and set ROLE=api on the app service.
+  worker:
+    profiles: ['worker']
+    image: ziptv:local
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ROLE: worker
+      DATABASE_URL: postgres://ziptv:${POSTGRES_PASSWORD}@postgres:5432/ziptv
+      STREAM_TOKEN_SECRET: ${STREAM_TOKEN_SECRET:?Set STREAM_TOKEN_SECRET in .env}
+      DATA_ENCRYPTION_KEY: ${DATA_ENCRYPTION_KEY:?Set DATA_ENCRYPTION_KEY in .env}
+      ALLOW_PRIVATE_UPSTREAMS: ${ALLOW_PRIVATE_UPSTREAMS:-false}
+      REDIS_URL: ${REDIS_URL:-}
+      PUBLIC_URL: ${PUBLIC_URL:-}
+      SMTP_URL: ${SMTP_URL:-}
+      MAIL_FROM: ${MAIL_FROM:-}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    stop_grace_period: 20s
+
+  # Shared state for multiple app instances. Start with: docker compose --profile redis up -d
+  # and set REDIS_URL=redis://redis:6379/0 in .env.
+  redis:
+    profiles: ['redis']
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no', '--maxmemory', '256mb', '--maxmemory-policy', 'volatile-lru']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 10
 
   # One-off tasks (tests, migrations) with dev dependencies and sources — never runs by itself.
   #   docker compose run --rm tools npm test

@@ -19,3 +19,9 @@ services:
         value: '1'
       - key: LOG_LEVEL
         value: info
+      # auto for users' own sources; proxy hides upstream URLs (operator content).
+      - key: STREAM_DELIVERY
+        value: auto
+      # Set when scaling beyond one instance (Render Key Value / any Redis).
+      - key: REDIS_URL
+        sync: false

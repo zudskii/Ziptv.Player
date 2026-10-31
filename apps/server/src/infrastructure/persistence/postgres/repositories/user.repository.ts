@@ -9,14 +9,14 @@ import type { UsersTable } from '../schema.js';
 type UserRow = Selectable<UsersTable>;
 
 function toRecord(row: UserRow): UserRecord {
-  return { id: row.id, email: row.email, role: row.role, createdAt: row.created_at, lastSeenAt: row.last_seen_at };
+  return { id: row.id, email: row.email, role: row.role, emailVerifiedAt: row.email_verified_at, createdAt: row.created_at, lastSeenAt: row.last_seen_at };
 }
 
 export class PgUserRepository implements UserRepository {
   constructor(private readonly db: Db) {}
 
   async createGuest(): Promise<UserRecord> {
-    const row = await this.db.insertInto('users').values({ id: newEntityId(), email: null, password_hash: null, legacy_secret_id: null }).returningAll().executeTakeFirstOrThrow();
+    const row = await this.db.insertInto('users').values({ id: newEntityId(), email: null, password_hash: null, email_verified_at: null, legacy_secret_id: null }).returningAll().executeTakeFirstOrThrow();
     return toRecord(row);
   }
 
@@ -24,7 +24,7 @@ export class PgUserRepository implements UserRepository {
     try {
       const row = await this.db
         .insertInto('users')
-        .values({ id: newEntityId(), email: input.email, password_hash: input.passwordHash, legacy_secret_id: null })
+        .values({ id: newEntityId(), email: input.email, password_hash: input.passwordHash, email_verified_at: null, legacy_secret_id: null })
         .returningAll()
         .executeTakeFirstOrThrow();
       return toRecord(row);
@@ -62,6 +62,10 @@ export class PgUserRepository implements UserRepository {
 
   async setPassword(userId: string, passwordHash: string): Promise<void> {
     await this.db.updateTable('users').set({ password_hash: passwordHash }).where('id', '=', userId).where('email', 'is not', null).execute();
+  }
+
+  async markEmailVerified(userId: string, at: Date): Promise<void> {
+    await this.db.updateTable('users').set({ email_verified_at: at }).where('id', '=', userId).where('email', 'is not', null).where('email_verified_at', 'is', null).execute();
   }
 
   async claimLegacy(legacySecretId: string): Promise<UserRecord | null> {

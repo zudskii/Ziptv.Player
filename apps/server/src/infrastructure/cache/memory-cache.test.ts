@@ -46,4 +46,14 @@ describe('MemoryCache', () => {
     await pending;
     expect(cache.get('source:1:list')).toBeUndefined();
   });
+
+  it('delete() also drops an in-flight computation (a revoked grant must not be re-cached as active)', async () => {
+    const cache = new MemoryCache();
+    let release: (value: boolean) => void = () => undefined;
+    const pending = cache.wrap('grant:session:1', 1000, () => new Promise<boolean>((resolve) => (release = resolve)));
+    cache.delete('grant:session:1');
+    release(true);
+    await pending;
+    expect(cache.get('grant:session:1')).toBeUndefined();
+  });
 });

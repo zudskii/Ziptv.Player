@@ -12,6 +12,12 @@ export interface CatalogProvider {
   fetchCatalog(credential: SourceCredential, context: FetchContext): Promise<CatalogBuild>;
 }
 
+/** Checks that credentials are accepted (before switching a source to them). */
+export interface AccountVerifier {
+  /** Throws SourceFetchError (auth_failed / unavailable / …) when the account cannot be used. */
+  verifyAccount(credential: SourceCredential, signal: AbortSignal): Promise<void>;
+}
+
 /** Parses an uploaded playlist file. */
 export interface PlaylistFileParser {
   parseFile(bytes: Buffer, fileName: string): CatalogBuild;

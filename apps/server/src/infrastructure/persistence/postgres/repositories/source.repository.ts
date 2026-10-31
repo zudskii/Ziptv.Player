@@ -137,13 +137,17 @@ export class PgSourceRepository implements SourceRepository {
     const set: Updateable<SourcesTable> = {
       updated_at: new Date(),
       ...(patch.name !== undefined ? { name: patch.name } : {}),
+      ...(patch.type !== undefined ? { type: patch.type } : {}),
+      ...(patch.xtreamCandidate !== undefined ? { xtream_candidate: patch.xtreamCandidate } : {}),
       ...(patch.autoSync !== undefined ? { sync_auto: patch.autoSync } : {}),
       ...(patch.intervalHours !== undefined ? { sync_interval_hours: patch.intervalHours } : {}),
       ...(patch.nextSyncAt !== undefined ? { sync_next_at: patch.nextSyncAt } : {}),
       ...(patch.credential !== undefined ? { credential: patch.credential } : {}),
       ...(patch.origin !== undefined ? { origin: json(patch.origin) } : {}),
     };
-    const row = await this.db.updateTable('sources').set(set).where('id', '=', id).where('owner_id', '=', ownerId).returningAll().executeTakeFirst();
+    let query = this.db.updateTable('sources').set(set).where('id', '=', id).where('owner_id', '=', ownerId);
+    if (patch.ifType !== undefined) query = query.where('type', '=', patch.ifType);
+    const row = await query.returningAll().executeTakeFirst();
     return row ? toRecord(row) : null;
   }
 

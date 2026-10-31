@@ -7,12 +7,13 @@ import type { Response as SupertestResponse } from 'supertest';
 
 import { createApp } from '../api/app.js';
 import type { Clock } from '../application/ports/clock.js';
+import type { Mailer } from '../application/ports/mailer.js';
 import type { PasswordHasher } from '../application/ports/password-hasher.js';
 import { ScryptPasswordHasher } from '../infrastructure/crypto/password-hasher.js';
 import { loadConfig, type AppConfig } from '../config/env.js';
 import { buildContainer, type Container } from '../container.js';
 import { createLogger } from '../infrastructure/logger.js';
-import { createDatabase, type DatabaseHandle } from '../infrastructure/persistence/postgres/database.js';
+import { createDatabase, type Db, type DatabaseHandle } from '../infrastructure/persistence/postgres/database.js';
 import { migrateToLatest } from '../infrastructure/persistence/postgres/migrator.js';
 
 /**
@@ -63,10 +64,15 @@ export interface TestApp {
   app: Express;
   container: Container;
   config: AppConfig;
+  /** The test database, for assertions about what is (not) stored. */
+  db: Db;
   close(): Promise<void>;
 }
 
-export async function startTestApp(env: Record<string, string> = {}, options: { clock?: Clock; passwordHasher?: PasswordHasher } = {}): Promise<TestApp> {
+export async function startTestApp(
+  env: Record<string, string> = {},
+  options: { clock?: Clock; passwordHasher?: PasswordHasher; mailer?: Mailer | null; /** Collects every log line at debug level. */ logLines?: string[] } = {},
+): Promise<TestApp> {
   const config = loadConfig({
     NODE_ENV: 'test',
     DATABASE_URL: TEST_DATABASE_URL ?? 'postgres://unused',
@@ -76,19 +82,24 @@ export async function startTestApp(env: Record<string, string> = {}, options: { 
     CORS_ORIGINS: 'http://localhost:5173',
     ...env,
   });
-  const logger = createLogger({ log: { level: process.env.TEST_LOG_LEVEL ?? 'silent' }, env: 'test' });
+  const logLines = options.logLines;
+  const logger = logLines
+    ? createLogger({ log: { level: 'debug' }, env: 'test' }, { write: (line: string) => void logLines.push(line) })
+    : createLogger({ log: { level: process.env.TEST_LOG_LEVEL ?? 'silent' }, env: 'test' });
   const testDb = await createTestDatabase();
   const container = buildContainer(config, logger, {
     db: testDb.database.db,
     ...(options.clock ? { clock: options.clock } : {}),
     // Cheap scrypt: tests create many accounts; production parameters would take minutes.
     passwordHasher: options.passwordHasher ?? new ScryptPasswordHasher({ N: 2 ** 10, r: 8, p: 1 }, 4),
+    ...(options.mailer !== undefined ? { mailer: options.mailer } : {}),
   });
   const app = createApp({ config, logger, container, isReady: () => true });
   return {
     app,
     container,
     config,
+    db: testDb.database.db,
     close: async () => {
       await container.dispose();
       await testDb.close();

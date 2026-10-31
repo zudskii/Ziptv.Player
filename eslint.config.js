@@ -71,17 +71,22 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/server/src/scripts/**/*.ts'],
+    files: ['apps/server/src/scripts/**/*.ts', 'apps/server/src/cli/**/*.ts'],
     rules: { 'no-console': 'off' },
   },
   {
-    files: ['apps/client/**/*.{ts,tsx}'],
+    files: ['apps/client/**/*.{ts,tsx}', 'apps/admin/**/*.{ts,tsx}'],
     languageOptions: { globals: globals.browser },
     ...reactHooks.configs.flat.recommended,
   },
   {
-    files: ['apps/client/src/**/*.tsx'],
+    files: ['apps/client/src/**/*.tsx', 'apps/admin/src/**/*.tsx'],
     ...reactRefresh.configs.vite,
+  },
+  {
+    // The console must never import viewer-app or server code: it talks to /admin/v1 only.
+    files: ['apps/admin/src/**/*.{ts,tsx}'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['**/apps/server/**', '**/apps/client/**', '../../server/**', '../../client/**'], message: 'The console uses the admin API contract only.' }] }] },
   },
   {
     files: ['**/*.test.ts'],

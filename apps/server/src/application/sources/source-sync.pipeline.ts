@@ -10,7 +10,7 @@ import type { Clock } from '../ports/clock.js';
 import type { Logger } from '../ports/logger.js';
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
 import { toStoredRevision } from './catalog-storage.js';
-import type { CatalogEpgLinker } from './hooks.js';
+import type { CatalogEpgLinker, SourceRevisionListener } from './hooks.js';
 import type { SourceSecrets } from './secrets.js';
 
 export interface SyncLease {
@@ -25,6 +25,7 @@ export interface SourceSyncDeps {
   providers: Partial<Record<SourceType, CatalogProvider>>;
   secrets: SourceSecrets;
   epg: CatalogEpgLinker;
+  revisionListeners: SourceRevisionListener[];
   notifications: NotificationService;
   cache: Cache;
   clock: Clock;
@@ -87,6 +88,9 @@ export class SourceSyncPipeline {
 
       await catalog.deleteOtherRevisions(source.id, revision);
       this.deps.cache.deleteByPrefix(sourceCachePrefix(source.id));
+      for (const listener of this.deps.revisionListeners) {
+        await listener.onRevisionCommitted(committed).catch((error: unknown) => log.warn({ err: error }, 'Revision listener failed'));
+      }
       await this.deps.epg.afterCommit(committed, build.epgUrls).catch((error: unknown) => log.warn({ err: error }, 'EPG attach after sync failed'));
 
       const finished = await sources.completeSync(source.id, lease.owner, {

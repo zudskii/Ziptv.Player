@@ -48,6 +48,8 @@ export class MemoryCache implements Cache {
 
   delete(key: string): void {
     this.entries.delete(key);
+    // A computation started before the delete must not store its (now stale) result.
+    this.inflight.delete(key);
   }
 
   deleteByPrefix(prefix: string): void {

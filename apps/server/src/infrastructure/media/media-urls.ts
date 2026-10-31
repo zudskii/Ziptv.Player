@@ -1,4 +1,4 @@
-import type { MediaUrls } from '../../application/ports/media-urls.js';
+import type { MediaGrant, MediaUrls } from '../../application/ports/media-urls.js';
 import type { StreamHeaders } from '../../domain/catalog/model.js';
 import type { MediaTokenCodec } from '../crypto/media-token.js';
 
@@ -7,14 +7,15 @@ export class SignedMediaUrls implements MediaUrls {
   constructor(
     private readonly tokens: MediaTokenCodec,
     private readonly mediaPrefix: string,
+    private readonly exportTtlSeconds: number,
   ) {}
 
-  newStreamExpiry(): number {
-    return this.tokens.newExpiry();
+  newStreamExpiry(use: 'playback' | 'export' = 'playback'): number {
+    return use === 'export' ? this.tokens.newExpiry(this.exportTtlSeconds) : this.tokens.newExpiry();
   }
 
-  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number): string {
-    return `${this.mediaPrefix}/stream/${this.tokens.issue(url, headers, expiresAt)}`;
+  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number, grant: MediaGrant): string {
+    return `${this.mediaPrefix}/stream/${this.tokens.issue(url, headers, expiresAt, grant)}`;
   }
 
   imageProxyPath(url: string): string {

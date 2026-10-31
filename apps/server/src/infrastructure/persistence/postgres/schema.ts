@@ -1,6 +1,8 @@
+import type { GuideOrigin } from '@ziptv/contracts';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { CatalogStats, CatalogWarning, EpgLink, CatchupInfo, StreamKind, UnplayableReason } from '../../../domain/catalog/model.js';
+import type { StaffRole } from '../../../domain/admin/rbac.js';
 import type { UserRole } from '../../../domain/identity/credentials.js';
 import type { HealthState, SourceProblem, SourceType, SyncStage, SyncStatus } from '../../../domain/sources/source.js';
 import type { SourceOrigin } from '../../../application/ports/source-repository.js';
@@ -40,6 +42,7 @@ export interface UsersTable {
   email: string | null;
   password_hash: string | null;
   role: Generated<UserRole>;
+  email_verified_at: Date | null;
   legacy_secret_id: string | null;
   created_at: Generated<Date>;
   last_seen_at: Generated<Date>;
@@ -196,16 +199,208 @@ export interface SchedulesTable {
   lease_until: Date | null;
 }
 
+export interface EmailTokensTable {
+  id: string;
+  user_id: string;
+  purpose: 'verify_email' | 'reset_password';
+  token_hash: string;
+  email: string;
+  expires_at: Date;
+  used_at: Date | null;
+  created_at: Date;
+}
+
+export interface PlaylistsTable {
+  id: string;
+  owner_id: string;
+  name: string;
+  export_token_hash: string | null;
+  export_token_sealed: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface PlaylistGroupsTable {
+  id: string;
+  playlist_id: string;
+  name: string;
+  position: number;
+}
+
+export interface PlaylistEntriesTable {
+  id: string;
+  playlist_id: string;
+  group_id: string | null;
+  position: number;
+  number: number | null;
+  name: string;
+  logo: string | null;
+  tvg_id: string | null;
+  source_id: string;
+  source_key: string;
+  origin_name_key: Generated<string>;
+  created_at: Generated<Date>;
+}
+
+export interface StaffUsersTable {
+  id: string;
+  email: string;
+  name: string;
+  password_hash: string;
+  role: StaffRole;
+  /** Encrypted (application cipher, purpose `staff-mfa`). */
+  mfa_secret: string | null;
+  mfa_enabled_at: Date | null;
+  /** Last accepted TOTP time step (replay protection). bigint → string from node-pg. */
+  mfa_last_step: ColumnType<string | null, number | null | undefined, number | null>;
+  must_change_password: Generated<boolean>;
+  /** Consecutive wrong TOTP codes; reaching the limit sets locked_until. */
+  mfa_failures: Generated<number>;
+  locked_until: Date | null;
+  disabled_at: Date | null;
+  last_login_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface StaffSessionsTable {
+  id: string;
+  staff_id: string;
+  token_hash: string;
+  ip: string | null;
+  user_agent: string | null;
+  created_at: Date;
+  last_seen_at: Date;
+  idle_expires_at: Date;
+  absolute_expires_at: Date;
+}
+
+export interface AdminAuditLogsTable {
+  seq: ColumnType<string, number, never>;
+  occurred_at: Date;
+  actor_id: string | null;
+  actor_email: string | null;
+  action: string;
+  target_type: string | null;
+  target_id: string | null;
+  before_hash: string | null;
+  after_hash: string | null;
+  details: Json<Record<string, unknown>>;
+  ip: string | null;
+  prev_hash: string;
+  hash: string;
+}
+
+export interface OutboxTable {
+  id: string;
+  topic: string;
+  payload: Json<Record<string, unknown>>;
+  created_at: Date;
+  available_at: Date;
+  attempts: Generated<number>;
+  last_error: string | null;
+  processed_at: Date | null;
+  lease_owner: string | null;
+  lease_until: Date | null;
+}
+
+export interface StoredGuideStats {
+  channels: number;
+  keptChannels: number;
+  programmes: number;
+  from: string | null;
+  to: string | null;
+}
+
+export interface GuidesTable {
+  id: string;
+  owner_id: string;
+  name: string;
+  origin: GuideOrigin;
+  /** Encrypted XMLTV URL. */
+  url: string;
+  url_hash: string;
+  host: Generated<string>;
+  generation: Generated<number>;
+  next_generation: Generated<number>;
+  sync_status: Generated<'idle' | 'queued' | 'running' | 'failed'>;
+  sync_last_attempt_at: Date | null;
+  sync_last_success_at: Date | null;
+  sync_next_at: Date | null;
+  sync_error: string | null;
+  sync_failures: Generated<number>;
+  sync_rerun: Generated<boolean>;
+  lease_owner: string | null;
+  lease_until: Date | null;
+  stats: JsonDefault<StoredGuideStats>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface GuideSourcesTable {
+  guide_id: string;
+  source_id: string;
+}
+
+export interface GuideChannelsTable {
+  guide_id: string;
+  generation: number;
+  id: string;
+  names: string[];
+  icon: string | null;
+  kept: boolean;
+  search: string;
+}
+
+export interface ProgrammesTable {
+  guide_id: string;
+  generation: number;
+  channel_id: string;
+  start_at: Date;
+  stop_at: Date;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  categories: string[];
+  icon: string | null;
+  episode: string | null;
+  rating: string | null;
+  search: string;
+}
+
+export interface EpgMappingsTable {
+  owner_id: string;
+  source_id: string;
+  channel_key: string;
+  guide_id: string;
+  epg_channel_id: string;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
+  email_tokens: EmailTokensTable;
   sources: SourcesTable;
   live_channels: LiveChannelsTable;
   movies: MoviesTable;
   series: SeriesTable;
   episodes: EpisodesTable;
+  playlists: PlaylistsTable;
+  playlist_groups: PlaylistGroupsTable;
+  playlist_entries: PlaylistEntriesTable;
   notifications: NotificationsTable;
   schedules: SchedulesTable;
+  staff_users: StaffUsersTable;
+  staff_sessions: StaffSessionsTable;
+  admin_audit_logs: AdminAuditLogsTable;
+  outbox: OutboxTable;
+  guides: GuidesTable;
+  guide_sources: GuideSourcesTable;
+  guide_channels: GuideChannelsTable;
+  programmes: ProgrammesTable;
+  epg_mappings: EpgMappingsTable;
 }
 
 /** Serialises a value for a JSON column. */
