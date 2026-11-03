@@ -12,8 +12,14 @@ export function accessNotice(failure: AccessFailure): { title: string; descripti
       if (reason === 'no_subscription') return { kind: 'subscribe', title: 'Subscription required', description: 'This channel is part of a ZIPTV package. Subscribe to start watching.' };
       if (reason === 'not_in_package') return { kind: 'subscribe', title: 'Not in your package', description: 'Your current package does not include this channel. See which plans have it.' };
       if (reason === 'account_blocked') return { kind: 'info', title: 'Account on hold', description: failure.message };
+      if (reason === 'catchup_not_licensed') return { kind: 'info', title: 'Catch-up not available', description: 'This programme cannot be replayed here (catch-up is licensed separately). Watch the channel live instead.' };
+      return null;
+    case 'UNPLAYABLE':
+      if (reason === 'catchup_unavailable') return { kind: 'info', title: 'Not in the archive', description: failure.message };
       return null;
     case 'CONCURRENCY_LIMIT':
+      // The subscriber's own provider account (Multi-view, other devices): nothing to stop from here.
+      if (reason === 'source_connections') return { kind: 'info', title: 'Too many streams on this account', description: failure.message };
       return { kind: 'concurrency', title: 'Too many streams', description: failure.message };
     case 'DEVICE_LIMIT':
       return { kind: 'devices', title: 'Device limit reached', description: failure.message };

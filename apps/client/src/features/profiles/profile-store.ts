@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 import { configureContextHeaders, configureProfileRecovery } from '../../lib/api-client';
+import { unlockTokenFor, useParentalStore } from '../parental/parental-store';
 import { queryClient } from '../../lib/query-client';
 import { persistentStorage } from '../../lib/storage';
 
@@ -31,12 +32,14 @@ export const useProfileStore = create<ProfileState>()(
 /** A new identity (sign in / sign out) starts on its default profile. */
 export function resetProfileSelection(): void {
   useProfileStore.setState({ profileId: null });
+  useParentalStore.getState().clear();
 }
 
 export function installProfileHeaders(): void {
   configureContextHeaders((): Record<string, string> => {
     const profileId = useProfileStore.getState().profileId;
-    return profileId ? { 'X-Profile-Id': profileId } : {};
+    const unlock = unlockTokenFor(profileId);
+    return { ...(profileId ? { 'X-Profile-Id': profileId } : {}), ...(unlock ? { 'X-Unlock-Token': unlock } : {}) };
   });
   configureProfileRecovery(() => {
     if (!useProfileStore.getState().profileId) return false;

@@ -246,7 +246,9 @@ function TracksMenu({ controller, snapshot }: { controller: PlaybackController |
 }
 
 function QualityMenu({ controller, snapshot }: { controller: PlaybackController | null; snapshot: PlaybackSnapshot }) {
-  const current = snapshot.qualities.find((level) => level.index === snapshot.quality)?.label ?? 'Auto';
+  const chosen = snapshot.qualities.find((level) => level.index === snapshot.quality)?.label ?? 'Auto';
+  // On Auto, show what Auto picked.
+  const current = snapshot.quality < 0 && snapshot.playingQuality ? `Auto · ${snapshot.playingQuality}` : chosen;
   return (
     <MenuButton label="Quality" icon={<Settings2 className="h-4 w-4" />} text={current}>
       {(close) =>

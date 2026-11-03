@@ -199,9 +199,17 @@ export interface UnlockDto {
 
 export interface UpdateParentalRulesRequest {
   pin: string;
+  /** Whose rules (another profile of the account); default = the current profile. */
+  profileId?: string;
   hideAdult?: boolean;
+  /** `sourceId: 'operator'` = a category of the licensed channels (by name). */
   lockedGroups?: { sourceId: string; group: string }[];
-  lockedChannels?: { sourceId: string; key: string }[];
+  /** `sourceId: 'operator'` = a licensed channel (`key` = channel id). `name` is for display. */
+  lockedChannels?: { sourceId: string; key: string; name?: string }[];
+}
+
+export interface RemovePinRequest {
+  pin: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -50,6 +50,17 @@ function setup() {
 }
 
 describe('OperatorPlaybackSessions', () => {
+  it('asks for an archive viewing (catch-up) with the programme times', async () => {
+    const { sessions, starts, answer } = setup();
+    const archive = { start: '2026-10-28T18:00:00.000Z', end: '2026-10-28T19:00:00.000Z' };
+    const viewing = sessions.resolve('news', false, new AbortController().signal, undefined, archive);
+    await flush();
+    expect(starts[0]!.body).toMatchObject({ channelId: 'news', archive });
+    answer();
+    await viewing;
+    sessions.dispose();
+  });
+
   it('starts a session per viewing, replaces it on zap, beats while playing and stops on release', async () => {
     const { sessions, calls, answer, clock, register } = setup();
     const first = sessions.resolve('news', false, new AbortController().signal);

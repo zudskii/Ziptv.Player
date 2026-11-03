@@ -6,6 +6,7 @@ import { Toaster } from 'sonner';
 import { AppShell } from '../components/layout/AppShell';
 import { Spinner } from '../components/ui/Spinner';
 import { queryClient } from '../lib/query-client';
+import { PinDialog } from '../features/parental/PinDialog';
 import { SessionGate } from '../features/session/SessionGate';
 import { installThemeSync, resolveTheme, useThemeStore } from '../features/theme/theme-store';
 import { HomePage } from '../pages/HomePage';
@@ -33,6 +34,7 @@ const ChannelsPage = lazy(() => import('../pages/ChannelsPage').then((module) =>
 const PlansPage = lazy(() => import('../pages/billing/PlansPage').then((module) => ({ default: module.PlansPage })));
 const AccountPage = lazy(() => import('../pages/billing/AccountPage').then((module) => ({ default: module.AccountPage })));
 const BillingReturnPage = lazy(() => import('../pages/billing/BillingReturnPage').then((module) => ({ default: module.BillingReturnPage })));
+const MultiViewPage = lazy(() => import('../pages/MultiViewPage').then((module) => ({ default: module.MultiViewPage })));
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
@@ -56,6 +58,7 @@ export function App() {
             <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />
             <Route path="channels/:channelId?" element={<Lazy><ChannelsPage /></Lazy>} />
             <Route path="guide/:sourceId?" element={<Lazy><GuidePage /></Lazy>} />
+            <Route path="multiview" element={<Lazy><MultiViewPage /></Lazy>} />
             <Route path="movies/:sourceId?" element={<Lazy><VodBrowsePage key="movies" kind="movies" /></Lazy>} />
             <Route path="movies/:sourceId/:key" element={<Lazy><MovieDetailsPage /></Lazy>} />
             <Route path="series/:sourceId?" element={<Lazy><VodBrowsePage key="series" kind="series" /></Lazy>} />
@@ -79,6 +82,7 @@ export function App() {
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </BrowserRouter>
+      <PinDialog />
       <Toaster theme={theme} position="bottom-right" richColors closeButton />
     </QueryClientProvider>
   );

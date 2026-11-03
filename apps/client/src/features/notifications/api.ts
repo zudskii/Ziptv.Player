@@ -22,11 +22,35 @@ export function useMarkNotificationsRead() {
       queryClient.setQueryData<NotificationListDto>(KEY, (current) =>
         current
           ? {
-              unread: ids === 'all' ? 0 : Math.max(0, current.unread - ids.length),
+              unread: ids === 'all' ? 0 : Math.max(0, current.unread - current.items.filter((item) => ids.includes(item.id) && !item.read).length),
               items: current.items.map((item) => (ids === 'all' || ids.includes(item.id) ? { ...item, read: true } : item)),
             }
           : current,
       );
+    },
+  });
+}
+
+export function useDismissNotification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => apiRequest<void>(`/api/v1/notifications/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    onSuccess: (_result, id) => {
+      queryClient.setQueryData<NotificationListDto>(KEY, (current) => {
+        if (!current) return current;
+        const removed = current.items.find((item) => item.id === id);
+        return { unread: removed && !removed.read ? Math.max(0, current.unread - 1) : current.unread, items: current.items.filter((item) => item.id !== id) };
+      });
+    },
+  });
+}
+
+export function useClearReadNotifications() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiRequest<{ removed: number }>('/api/v1/notifications', { method: 'DELETE' }),
+    onSuccess: () => {
+      queryClient.setQueryData<NotificationListDto>(KEY, (current) => (current ? { ...current, items: current.items.filter((item) => !item.read) } : current));
     },
   });
 }

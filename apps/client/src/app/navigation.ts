@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, CreditCard, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
+import { Bookmark, Clapperboard, CreditCard, Grid2x2, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -15,6 +15,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/', label: 'Home', icon: Home, group: 0, primary: true },
   { to: '/live', label: 'Live TV', icon: Tv, group: 1, primary: true },
   { to: '/guide', label: 'TV Guide', icon: LayoutGrid, group: 1, primary: true },
+  { to: '/multiview', label: 'Multi-view', icon: Grid2x2, group: 1 },
   { to: '/movies', label: 'Movies', icon: Clapperboard, group: 2, primary: true },
   { to: '/series', label: 'Series', icon: MonitorPlay, group: 2 },
   { to: '/my-list', label: 'My List', icon: Bookmark, group: 3 },

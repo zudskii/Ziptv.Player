@@ -222,3 +222,11 @@ export interface OperatorProgrammeDto {
   start: string;
   stop: string;
 }
+
+/** GET /operator/channels/:id/schedule?from=&to= — one channel's programmes; past ones flagged for catch-up. */
+export interface OperatorScheduleDto {
+  channelId: string;
+  /** Days of archive this viewer may replay on the channel here (0 = none). */
+  catchupDays: number;
+  programmes: (OperatorProgrammeDto & { catchup: boolean })[];
+}

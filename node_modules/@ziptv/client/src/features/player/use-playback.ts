@@ -70,7 +70,7 @@ export function contentKey(content: ContentRefDto | undefined | null): string {
     case 'catchup':
       return `catchup:${content.sourceId}:${content.key}:${content.start}`;
     case 'operator':
-      return `operator:${content.channelId}`;
+      return `operator:${content.channelId}${content.start ? `:${content.start}` : ''}`;
     default:
       return `${content.type}:${content.sourceId}:${content.key}`;
   }
@@ -95,13 +95,22 @@ export function useContentPlayback(controller: PlaybackController | null, conten
     if (current.type === 'operator') {
       if (!operatorSessions) return;
       const channelId = current.channelId;
-      controller.play((signal, context) => operatorSessions.resolve(channelId, config.isSecurePage, signal, context.continueSession));
+      const archive = current.start && current.end ? { start: current.start, end: current.end } : undefined;
+      controller.play((signal, context) => operatorSessions.resolve(channelId, config.isSecurePage, signal, context.continueSession, archive));
       return;
     }
     operatorSessions?.release();
+    // The viewing this player moves away from: its provider connection is freed (accounts with a connection limit).
+    const previous = controller.getSnapshot().plan?.sessionId;
     controller.play((signal, context) =>
       resolvePlayback(
-        { content: current, secureContext: config.isSecurePage, ...(unlockToken ? { unlockToken } : {}), ...(context.continueSession ? { continueSession: context.continueSession } : {}) },
+        {
+          content: current,
+          secureContext: config.isSecurePage,
+          ...(unlockToken ? { unlockToken } : {}),
+          ...(context.continueSession ? { continueSession: context.continueSession } : {}),
+          ...(previous && previous !== context.continueSession ? { replaces: previous } : {}),
+        },
         signal,
       ),
     );

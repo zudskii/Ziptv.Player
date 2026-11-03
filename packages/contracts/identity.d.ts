@@ -89,6 +89,8 @@ export interface ProfileDto {
   isDefault: boolean;
   /** Opening this profile requires the parental PIN. */
   pinProtected: boolean;
+  /** This device is held in this (kids) profile: others need the PIN (GET /profiles only). */
+  heldHere?: boolean;
   createdAt: string;
 }
 
@@ -97,6 +99,8 @@ export interface CreateProfileRequest {
   color?: string;
   kind?: ProfileKind;
   pinProtected?: boolean;
+  /** Parental PIN — needed when this device is held in a kids profile. */
+  pin?: string;
 }
 
 export interface UpdateProfileRequest {
@@ -104,6 +108,8 @@ export interface UpdateProfileRequest {
   color?: string;
   kind?: ProfileKind;
   pinProtected?: boolean;
+  /** Parental PIN — needed (once a PIN is set) to change `kind` or `pinProtected`. */
+  pin?: string;
 }
 
 /** Selecting a PIN-protected profile requires an unlock token (see parental controls). */

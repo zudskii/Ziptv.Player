@@ -37,6 +37,8 @@ export interface PlaybackSnapshot {
   failure: PlaybackFailure | null;
   qualities: QualityLevel[];
   quality: number;
+  /** The level actually playing (Auto picks it), e.g. "720p". */
+  playingQuality: string | null;
   /** Autoplay with sound was blocked; playback started muted. */
   mutedByAutoplayPolicy: boolean;
   /** The plan being played (content info, resume position, next episode, alternates). */
@@ -65,6 +67,7 @@ export const IDLE_SNAPSHOT: PlaybackSnapshot = {
   failure: null,
   qualities: [],
   quality: -1,
+  playingQuality: null,
   mutedByAutoplayPolicy: false,
   plan: null,
   tracks: NO_TRACKS,
@@ -245,7 +248,7 @@ export class PlaybackController {
     this.abort = new AbortController();
     if (status === 'resolving') this.continueAt = null;
     this.tracksApplied = false;
-    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1, tracks: NO_TRACKS, ...(status === 'resolving' ? { plan: null } : {}) });
+    this.update({ status, attempt: null, failure: null, qualities: [], quality: -1, playingQuality: null, tracks: NO_TRACKS, ...(status === 'resolving' ? { plan: null } : {}) });
 
     let plan: PlaybackPlanDto;
     try {
@@ -442,7 +445,7 @@ export class PlaybackController {
       if (subtitles !== null && subtitles !== tracks.subtitleIndex) engine.setSubtitleTrack?.(subtitles);
       tracks = engine.tracks();
     }
-    this.update({ tracks });
+    this.update({ tracks, playingQuality: engine.playingQuality?.() ?? null });
   }
 
   private fail(failure: PlaybackFailure): void {
