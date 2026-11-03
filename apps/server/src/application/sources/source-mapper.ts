@@ -36,8 +36,8 @@ export function toSourceDto(source: SourceRecord, guides: SourceGuideSummary = N
       state: source.health.state,
       checkedAt: iso(source.health.checkedAt),
       latencyMs: source.health.latencyMs,
-      unstableStreams: source.health.unstableStreams,
-      offlineStreams: source.health.offlineStreams,
+      plays: source.health.plays,
+      failedPlays: source.health.failedPlays,
       message: source.health.message,
     },
     account: source.account

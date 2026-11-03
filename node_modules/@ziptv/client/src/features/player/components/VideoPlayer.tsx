@@ -47,7 +47,7 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
   }, [controller, settings]);
   // Settings decide autoplay/resume/tracks: start once they are known (cached after the first load).
   useContentPlayback(controller, settingsQuery.isPending ? undefined : content);
-  usePlaybackReporting(video, snapshot);
+  usePlaybackReporting(video, snapshot, controller);
   const vod = snapshot.plan ? snapshot.plan.content.mode !== 'live' : false;
 
   // --- persisted volume ------------------------------------------------------------------

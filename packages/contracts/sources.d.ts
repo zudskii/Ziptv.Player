@@ -54,9 +54,10 @@ export interface SourceHealthDto {
   checkedAt: string | null;
   /** Latency of the last reachability check of the provider. */
   latencyMs: number | null;
-  /** Streams that recently failed / were flaky in real playback or a sample check. */
-  unstableStreams: number;
-  offlineStreams: number;
+  /** Playback attempts on this source in the last hours (real viewers' starts + failures). */
+  plays: number;
+  /** Of those, how many failed. */
+  failedPlays: number;
   message: string | null;
 }
 

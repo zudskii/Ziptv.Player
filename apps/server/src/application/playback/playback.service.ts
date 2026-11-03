@@ -19,6 +19,8 @@ import type { LiveCatalogService } from '../catalog/live.service.js';
 import { AppError } from '../errors.js';
 import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
+import type { PlaybackTelemetry } from '../health/playback-telemetry.js';
+import { NOOP_METRICS, type Metrics, type TelemetrySubject } from '../ports/health.js';
 import type { MediaUrls } from '../ports/media-urls.js';
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
 import type { StreamProber } from '../ports/stream-prober.js';
@@ -43,6 +45,9 @@ export interface PlaybackServiceDeps {
   /** Episodes incl. on-demand loading of provider-API series; defaults to stored episodes only. */
   episodes?: Pick<SeriesEpisodes, 'list'>;
   observer?: PlaybackObserver;
+  /** Stream health telemetry (candidate tokens, start/error reports). */
+  telemetry?: Pick<PlaybackTelemetry, 'token' | 'record'>;
+  metrics?: Metrics;
 }
 
 const UNPLAYABLE_MESSAGES: Record<UnplayableReason, string> = {
@@ -70,7 +75,28 @@ export class PlaybackService {
   }
 
   async resolve(viewer: Viewer, request: ResolvePlaybackRequest, context: ViewingContext = { country: null, device: 'web' }): Promise<PlaybackPlanDto> {
-    if (request.content.type === 'operator') return this.resolveOperator(viewer, request, request.content, context);
+    const kind = request.content.type === 'operator' ? 'operator' : 'byo';
+    try {
+      const plan = request.content.type === 'operator' ? await this.resolveOperator(viewer, request, request.content, context) : await this.resolveByo(viewer, request);
+      (this.deps.metrics ?? NOOP_METRICS).playbackPlan(kind, 'ok');
+      return plan;
+    } catch (error) {
+      (this.deps.metrics ?? NOOP_METRICS).playbackPlan(kind, 'error');
+      throw error;
+    }
+  }
+
+  /** Candidates of each target, tagged for telemetry (bound to this viewing's session id). */
+  private tagged<T extends { url: string }>(parts: { candidates: T[]; subject: TelemetrySubject | undefined }[], expiresAt: number, sessionId: string): (T & { telemetry?: string })[] {
+    return parts.flatMap(({ candidates, subject }) => {
+      if (!subject || !this.deps.telemetry) return candidates;
+      const token = this.deps.telemetry.token(subject, new Date(expiresAt * 1000), sessionId);
+      return candidates.map((candidate) => ({ ...candidate, telemetry: token }));
+    });
+  }
+
+  private async resolveByo(viewer: Viewer, request: ResolvePlaybackRequest): Promise<PlaybackPlanDto> {
+    if (request.content.type === 'operator') throw AppError.notFound('Channel');
     const source = await this.deps.live.requireSource(viewer, request.content.sourceId);
     const resolved = await this.resolveContent(viewer, source, request.content);
 
@@ -134,7 +160,7 @@ export class PlaybackService {
     return {
       sessionId,
       content,
-      candidates,
+      candidates: this.tagged([{ candidates, subject: { type: 'source', id: source.id } }], expiresAt, sessionId),
       expiresAt: new Date(expiresAt * 1000).toISOString(),
       resumeFrom,
       next: resolved.next,
@@ -154,13 +180,13 @@ export class PlaybackService {
     const resolved = await this.deps.operator.resolve(viewer, ref.channelId, context);
     const grant = { kind: 'session' as const, id: viewer.sessionId };
     const expiresAt = this.deps.media.newStreamExpiry('playback');
-    const candidates = [];
+    const parts: { candidates: ReturnType<typeof planCandidates>; subject: TelemetrySubject | undefined }[] = [];
     for (const target of resolved.targets) {
       const locator = target.locator;
       if (!locator) continue;
       const kind: StreamKind = target.kind === 'unknown' ? await this.deps.prober.probe(locator.url, locator.headers) : target.kind;
-      candidates.push(
-        ...planCandidates({
+      parts.push({
+        candidates: planCandidates({
           kind,
           url: locator.url,
           headers: locator.headers,
@@ -169,19 +195,20 @@ export class PlaybackService {
           policy: 'proxy',
           proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt, grant),
         }),
-      );
+        subject: target.telemetry,
+      });
     }
-    if (candidates.length === 0) throw new AppError('UNPLAYABLE', 422, 'This channel cannot be delivered to this browser.', { reason: 'unsupported_format' });
+    if (parts.every((part) => part.candidates.length === 0)) throw new AppError('UNPLAYABLE', 422, 'This channel cannot be delivered to this browser.', { reason: 'unsupported_format' });
 
     const continued = request.continueSession && this.observer.continues ? await this.observer.continues(viewer, request.continueSession, ref) : false;
     const sessionId = continued && request.continueSession ? request.continueSession : randomUUID();
     const content: PlaybackContentDto = { ...resolved.content, ref, image: this.artwork.url(resolved.content.image) };
     if (!continued) await this.observer.onPlanIssued(viewer, { sessionId, sourceName: 'ZIPTV', content, seriesTitle: null, rawImage: resolved.rawImage, episode: null });
-    return { sessionId, content, candidates, expiresAt: new Date(expiresAt * 1000).toISOString(), resumeFrom: null, next: null, alternates: [] };
+    return { sessionId, content, candidates: this.tagged(parts, expiresAt, sessionId), expiresAt: new Date(expiresAt * 1000).toISOString(), resumeFrom: null, next: null, alternates: [] };
   }
 
   async recordEvent(viewer: Viewer, event: PlaybackEventRequest): Promise<void> {
-    await this.observer.onEvent(viewer, event);
+    await Promise.all([this.observer.onEvent(viewer, event), this.deps.telemetry?.record(event)]);
   }
 
   // ---------------------------------------------------------------------------------------

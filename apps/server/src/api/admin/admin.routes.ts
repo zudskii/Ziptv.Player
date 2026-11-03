@@ -8,8 +8,10 @@ import { toMeDto } from '../../application/admin/principal.js';
 import type { StaffAuthService } from '../../application/admin/staff-auth.service.js';
 import type { StaffService } from '../../application/admin/staff.service.js';
 import type { SystemOverviewService } from '../../application/admin/system.service.js';
+import type { MonitoringAdminService } from '../../application/health/monitoring-admin.service.js';
 import type { CatalogAdminService } from '../../application/operator/catalog-admin.service.js';
 import { STAFF_ROLES } from '../../domain/admin/rbac.js';
+import { FEED_HEALTH_STATES } from '../../domain/health/feed-health.js';
 import { BUSINESS_MODELS, DEVICE_CLASSES, PROVIDER_TYPES } from '../../domain/operator/catalog.js';
 import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { routeParam } from '../middleware/request-context.js';
@@ -24,6 +26,7 @@ export interface AdminServices {
   users: AdminUsersService;
   system: SystemOverviewService;
   catalog: CatalogAdminService;
+  monitoring: MonitoringAdminService;
 }
 
 const Email = z.string().trim().email().max(254);
@@ -108,6 +111,13 @@ const UpdateLineupBody = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'nothing to change');
 const LineupRef = z.string().trim().min(1).max(80);
+
+// --- monitoring -----------------------------------------------------------------------------------
+const FeedHealthQuery = z.object({ status: z.enum(FEED_HEALTH_STATES).optional(), channelId: EntityId.optional(), providerId: EntityId.optional(), ...Page });
+const ProbesQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) });
+const MaintenanceBody = z.object({ on: z.boolean(), note: z.string().trim().max(300).optional() }).strict();
+const PinBody = z.object({ feedId: EntityId, until: z.string().datetime({ offset: true }).nullable().optional(), note: z.string().trim().max(300).optional() }).strict();
+const IncidentsQuery = z.object({ status: z.enum(['open', 'acknowledged', 'resolved', 'live']).optional(), ...Page });
 
 const digest = (value: string) => createHash('sha256').update(value).digest('base64url').slice(0, 22);
 
@@ -266,6 +276,40 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   });
   r.patch('/lineups/:id', 'catalog:write', async (req, res) => {
     res.json(await catalog.updateLineup(currentStaff(req), id(req, 'Lineup id'), parseInput(UpdateLineupBody, req.body, 'Lineup change'), adminContext(req)));
+  });
+
+  // --- monitoring: health, failover, incidents ----------------------------------------------------
+  const monitoring = services.monitoring;
+  r.get('/monitoring/feeds', 'monitoring:read', async (req, res) => {
+    res.json(await monitoring.feeds(parseInput(FeedHealthQuery, req.query, 'Feed filter')));
+  });
+  r.get('/monitoring/feeds/:id/probes', 'monitoring:read', async (req, res) => {
+    res.json(await monitoring.probes(id(req, 'Feed id'), parseInput(ProbesQuery, req.query, 'Probe history').limit));
+  });
+  r.post('/monitoring/feeds/:id/probe', 'monitoring:operate', async (req, res) => {
+    await monitoring.probeNow(currentStaff(req), id(req, 'Feed id'), adminContext(req));
+    res.status(202).end();
+  });
+  r.post('/monitoring/feeds/:id/maintenance', 'monitoring:operate', async (req, res) => {
+    res.json(await monitoring.maintenance(currentStaff(req), id(req, 'Feed id'), parseInput(MaintenanceBody, req.body, 'Maintenance'), adminContext(req)));
+  });
+  r.get('/monitoring/channels/:id/failover', 'monitoring:read', async (req, res) => {
+    res.json(await monitoring.failover(id(req, 'Channel id')));
+  });
+  r.post('/monitoring/channels/:id/failover/pin', 'monitoring:operate', async (req, res) => {
+    res.json(await monitoring.pin(currentStaff(req), id(req, 'Channel id'), parseInput(PinBody, req.body, 'Pin'), adminContext(req)));
+  });
+  r.delete('/monitoring/channels/:id/failover/pin', 'monitoring:operate', async (req, res) => {
+    res.json(await monitoring.unpin(currentStaff(req), id(req, 'Channel id'), adminContext(req)));
+  });
+  r.get('/monitoring/incidents', 'monitoring:read', async (req, res) => {
+    res.json(await monitoring.incidents(parseInput(IncidentsQuery, req.query, 'Incident filter')));
+  });
+  r.post('/monitoring/incidents/:id/acknowledge', 'monitoring:operate', async (req, res) => {
+    res.json(await monitoring.acknowledge(currentStaff(req), id(req, 'Incident id'), adminContext(req)));
+  });
+  r.post('/monitoring/incidents/:id/resolve', 'monitoring:operate', async (req, res) => {
+    res.json(await monitoring.resolve(currentStaff(req), id(req, 'Incident id'), adminContext(req)));
   });
 
   return r;

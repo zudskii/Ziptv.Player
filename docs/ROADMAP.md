@@ -21,7 +21,7 @@
 | 4 | Xtream + VOD მოდელი ✅ | Opus |
 | 5 | მაყურებლის გამოცდილება ✅ | Sonnet + Opus |
 | 6 | Master Catalog და კონტენტ-ოპერაციები ✅ | Opus |
-| 7 | Stream Health და Failover | Opus |
+| 7 | Stream Health და Failover ✅ | Opus |
 | 8 | Commerce და Playback Authorization | Opus |
 | 9 | Admin Console | Sonnet |
 | 10 | Catch-up, Multi-view, Parental | Sonnet + Opus |
@@ -151,7 +151,9 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 6.9 Admin API კატალოგისთვის (ყოველი write აუდიტში). *(Sonnet)*
 - **Gate:** ერთი channelId-ს ორი ავტორიზებული feed აქვს; უფლებების გარეშე არხი არ ჩანს.
 
-## ფაზა 7 — Stream Health და Failover (ZP-ENT-06)
+## ფაზა 7 — Stream Health და Failover (ZP-ENT-06) · ✅ დასრულდა
+
+> **სტატუსი:** 7.1–7.9 გაკეთებულია (`0009-stream-health`). Probe fleet რეგიონებით (`PROBE_REGION`), lease-ით და provider-ზე fleet-wide ლიმიტით; probe: playlist → ყველაზე იაფი variant → ბოლო სეგმენტი (+ init) → `ffprobe` (მხოლოდ stdin), TTFB; გაყინული live playlist (sequence არ მოძრაობს) = failure, თუნდაც 200 იყოს. რეგიონის state machine hysteresis-ით (fail/recover N ზედიზედ), საერთო სტატუსი რეგიონების კონსენსუსით (HEALTHY / UNHEALTHY / GEO_BLOCKED / NOT_ENTITLED / MAINTENANCE / PROVIDER_OUTAGE / UNKNOWN). Failover მხოლოდ იმავე master არხის feed-ებზე: გაფუჭებისას მაშინვე, fail-back cooldown-ის შემდეგ, ოპერატორის pin (override), ყველაფერი `failover_events` ჟურნალში და console-ის აუდიტში. Incidents (feed / channel_down / provider_outage) + alert-ები outbox-ით (HMAC-ხელმოწერილი webhook, Slack, email), acknowledge/resolve. კლიენტის telemetry (session-ზე მიბმული ტოკენით) feed-ს მხოლოდ ხელახლა ამოწმებინებს, თავად არასდროს რთავს. BYO წყაროები: Online / Slow / Unstable / Offline (ნაკადს არ ხსნის). Prometheus `/metrics` (token). Gate შემოწმებულია e2e-ით და lab-ში რეალური ffprobe-ით (primary down → backup 8 წამში, მაყურებელი აგრძელებს ყურებას, ხელით pin/unpin ჟურნალით). სტრატეგია: `docs/architecture/STREAM_HEALTH.md`. ღია: probe ცხრილის partitioning — ფაზა 13; console ეკრანები — ფაზა 9; provider-ზე probe slot-ის დიდ კატალოგზე capacity planning (დოკუმენტში).
 
 - 7.1 `stream_probe_results` (დროითი სერია, retention/partition). *(Opus)*
 - 7.2 **Probe ტიპები:** manifest (ასაკი, `EXT-X-MEDIA-SEQUENCE` პროგრესი), სეგმენტის ჩამოტვირთვა, `ffprobe` დეკოდის ნიმუში (იშვიათად), TTFB. HTTP 200 საკმარისი არაა. *(Opus)*

@@ -8,6 +8,8 @@ import type { UserRole } from '../../../domain/identity/credentials.js';
 import type { HealthState, SourceProblem, SourceType, SyncStage, SyncStatus } from '../../../domain/sources/source.js';
 import type { SourceOrigin } from '../../../application/ports/source-repository.js';
 import type { StoredProfileSettings } from '../../../domain/viewer/settings.js';
+import type { FeedHealthState, ProbeOutcome, RegionState } from '../../../domain/health/feed-health.js';
+import type { FailoverEventReason, IncidentKind, IncidentStatus, ProbeStepKind } from '../../../application/ports/health.js';
 import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../../domain/operator/catalog.js';
 
 /**
@@ -26,8 +28,9 @@ export interface StoredHealth {
   state: HealthState;
   checkedAt: string | null;
   latencyMs: number | null;
-  unstableStreams: number;
-  offlineStreams: number;
+  /** Rows written before Phase 7 have no plays/failedPlays. */
+  plays?: number;
+  failedPlays?: number;
   message: string | null;
 }
 
@@ -571,6 +574,107 @@ export interface OperatorFavoritesTable {
   added_at: Generated<Date>;
 }
 
+export interface FeedProbeStateTable {
+  feed_id: string;
+  region: string;
+  state: Generated<RegionState>;
+  failures: Generated<number>;
+  successes: Generated<number>;
+  last_outcome: ProbeOutcome | null;
+  last_error: string | null;
+  last_probe_at: Date | null;
+  last_ok_at: Date | null;
+  next_probe_at: Generated<Date>;
+  media_sequence: string | null;
+  last_segment: string | null;
+  sequence_at: Date | null;
+  last_decode_at: Date | null;
+  lease_owner: string | null;
+  lease_until: Date | null;
+}
+
+export interface StreamProbeResultsTable {
+  id: Generated<string>;
+  feed_id: string;
+  region: string;
+  probed_at: Date;
+  kind: ProbeStepKind;
+  outcome: ProbeOutcome;
+  http_status: number | null;
+  ttfb_ms: number | null;
+  duration_ms: number | null;
+  bytes: number | null;
+  media_sequence: string | null;
+  error: string | null;
+}
+
+export interface FeedHealthTable {
+  feed_id: string;
+  status: Generated<FeedHealthState>;
+  since: Generated<Date>;
+  maintenance: Generated<boolean>;
+  maintenance_note: string | null;
+  updated_at: Generated<Date>;
+}
+
+export interface ChannelFailoverTable {
+  channel_id: string;
+  active_feed_id: string | null;
+  pinned_feed_id: string | null;
+  pinned_until: Date | null;
+  pinned_by: string | null;
+  pin_note: string | null;
+  last_switch_at: Date | null;
+  updated_at: Generated<Date>;
+}
+
+export interface FailoverEventsTable {
+  id: Generated<string>;
+  channel_id: string;
+  occurred_at: Date;
+  from_feed_id: string | null;
+  to_feed_id: string | null;
+  reason: FailoverEventReason;
+  actor_id: string | null;
+  actor_email: string | null;
+  details: JsonDefault<Record<string, unknown>>;
+}
+
+export interface IncidentsTable {
+  id: string;
+  kind: IncidentKind;
+  severity: 'warning' | 'critical';
+  status: Generated<IncidentStatus>;
+  target_type: 'feed' | 'channel' | 'provider';
+  target_id: string;
+  title: string;
+  details: JsonDefault<Record<string, unknown>>;
+  opened_at: Date;
+  last_seen_at: Date;
+  acknowledged_at: Date | null;
+  acknowledged_by: string | null;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+}
+
+export interface PlaybackTelemetryTable {
+  subject_type: 'feed' | 'source';
+  subject_id: string;
+  bucket: Date;
+  starts: Generated<number>;
+  errors: Generated<number>;
+  startup_ms_sum: Generated<string>;
+  startup_count: Generated<number>;
+}
+
+export interface SourceProbeStateTable {
+  source_id: string;
+  next_check_at: Generated<Date>;
+  checks: JsonDefault<{ ok: boolean; latencyMs: number | null; at: string }[]>;
+  lease_owner: string | null;
+  lease_until: Date | null;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
@@ -609,6 +713,14 @@ export interface Database {
   lineups: LineupsTable;
   lineup_channels: LineupChannelsTable;
   operator_favorites: OperatorFavoritesTable;
+  feed_probe_state: FeedProbeStateTable;
+  stream_probe_results: StreamProbeResultsTable;
+  feed_health: FeedHealthTable;
+  channel_failover: ChannelFailoverTable;
+  failover_events: FailoverEventsTable;
+  incidents: IncidentsTable;
+  playback_telemetry: PlaybackTelemetryTable;
+  source_probe_state: SourceProbeStateTable;
 }
 
 /** Serialises a value for a JSON column. */

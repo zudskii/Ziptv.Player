@@ -15,3 +15,4 @@ export * from './user-state';
 export * from './playlists';
 export * from './admin';
 export * from './operator';
+export * from './monitoring';

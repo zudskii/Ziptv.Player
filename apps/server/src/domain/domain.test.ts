@@ -6,7 +6,7 @@ import { classifyEntry, extractYear, parseEpisodeName } from './catalog/classify
 import { createContentKeyFactory, episodeKey } from './catalog/content-key.js';
 import { kindFromExtension, planCandidates } from './playback/plan.js';
 import { normalizeChannelName, queryTerms, searchTokens } from './shared/text.js';
-import { evaluateHealth, maskUsername, nextSyncAt, problemFromAccount, problemFromHttpStatus } from './sources/source.js';
+import { maskUsername, nextSyncAt, problemFromAccount, problemFromHttpStatus } from './sources/source.js';
 
 describe('catalog classification', () => {
   const classify = (url: string, name: string, duration = -1, attributes: Record<string, string> = {}) =>
@@ -111,15 +111,6 @@ describe('source rules', () => {
     expect(problemFromAccount({ status: 'Active', expiresAt: new Date('2027-01-01') }, now)).toBeNull();
     expect(problemFromAccount({ status: 'Active', expiresAt: new Date('2026-01-01') }, now)).toBe('expired');
     expect(problemFromAccount({ status: 'Banned', expiresAt: null }, now)).toBe('auth_failed');
-  });
-
-  it('derives health from reachability, latency and stream telemetry', () => {
-    const base = { reachable: true, latencyMs: 200, offlineStreams: 0, unstableStreams: 0, sampled: 0 };
-    expect(evaluateHealth(base)).toBe('online');
-    expect(evaluateHealth({ ...base, latencyMs: 4000 })).toBe('slow');
-    expect(evaluateHealth({ ...base, unstableStreams: 2 })).toBe('unstable');
-    expect(evaluateHealth({ ...base, offlineStreams: 3, sampled: 3 })).toBe('offline');
-    expect(evaluateHealth({ ...base, reachable: false })).toBe('offline');
   });
 
   it('masks usernames', () => {

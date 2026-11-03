@@ -1,6 +1,7 @@
 import type { ListItemDto, OperatorChannelDto, OperatorChannelListDto, OperatorFavoritesImportDto, OperatorLineupDto, PlaybackContentDto } from '@ziptv/contracts';
 
 import { aliasKeys, type DeviceClass } from '../../domain/operator/catalog.js';
+import { playbackOrder } from '../../domain/health/failover.js';
 import { playableFeeds } from '../../domain/operator/feeds.js';
 import { denialReason, findCoveringGrant, isLicensedAt, type RightsQuery } from '../../domain/operator/rights.js';
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
@@ -10,11 +11,13 @@ import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
 import type { Logger } from '../ports/logger.js';
-import type { CategoryRecord, LineupRecord, MasterChannelRecord, OperatorCatalogRepository, ProviderAdapters, StoredGrant } from '../ports/operator.js';
+import type { HealthRepository } from '../ports/health.js';
+import type { CategoryRecord, FeedRecord, LineupRecord, MasterChannelRecord, OperatorCatalogRepository, ProviderAdapters, StoredGrant } from '../ports/operator.js';
 import type { SourceRepository } from '../ports/source-repository.js';
 import type { ListRepository } from '../ports/user-state-repository.js';
 import type { StreamTarget } from '../playback/playback-ports.js';
 import { invalidateHome } from '../user-state/cache-keys.js';
+import { FeedLocators } from './feed-locators.js';
 import type { ProviderConnections } from './provider-connections.js';
 
 /** Where and on what the viewer watches. `country` is decided by the server (never the client) for playback. */
@@ -52,8 +55,14 @@ export class OperatorService {
       clock: Clock;
       logger: Logger;
       artwork?: ArtworkUrls;
+      /** Health and failover state (Phase 7); without it feeds are tried in priority order. */
+      health?: Pick<HealthRepository, 'feedHealthOf' | 'failoverOf'>;
     },
-  ) {}
+  ) {
+    this.locators = new FeedLocators(deps);
+  }
+
+  private readonly locators: FeedLocators;
 
   private get artwork(): ArtworkUrls {
     return this.deps.artwork ?? directArtwork;
@@ -99,13 +108,11 @@ export class OperatorService {
     }
 
     const targets: StreamTarget[] = [];
-    for (const feed of playableFeeds(await this.deps.catalog.feedsOf([channel.id]))) {
+    for (const feed of await this.orderedFeeds(channel.id)) {
       try {
-        const [stream, provider] = await Promise.all([this.deps.catalog.findStream(feed.providerStreamId), this.deps.catalog.findProvider(feed.providerId)]);
-        if (!stream || !provider) continue;
-        const connection = await this.deps.connections.open(provider);
-        const locator = await this.deps.adapters[provider.type].resolveFeed(provider, connection, stream);
-        targets.push({ kind: stream.kind, unplayableReason: null, locator });
+        const located = await this.locators.locate(feed);
+        if (!located) continue;
+        targets.push({ kind: located.kind, unplayableReason: null, locator: located.locator, telemetry: { type: 'feed', id: feed.id } });
       } catch (error) {
         // One broken feed must not hide the others (backup feeds exist for exactly this).
         this.deps.logger.warn({ err: error, feedId: feed.id, channelId: channel.id }, 'Feed could not be resolved');
@@ -191,6 +198,22 @@ export class OperatorService {
     }
     if (added > 0) invalidateHome(this.deps.cache, viewer.profileId);
     return { added };
+  }
+
+  /**
+   * Playable feeds in failover order: the channel's active feed first (as chosen by the health
+   * evaluator or pinned by an operator), then working before failing feeds, by priority; feeds in
+   * maintenance are left out. Without health data this is plain priority order.
+   */
+  private async orderedFeeds(channelId: string): Promise<FeedRecord[]> {
+    const feeds = playableFeeds(await this.deps.catalog.feedsOf([channelId]));
+    if (!this.deps.health || feeds.length === 0) return feeds;
+    const [states, failover] = await Promise.all([this.deps.health.feedHealthOf(feeds.map((feed) => feed.id)), this.deps.health.failoverOf(channelId)]);
+    const byId = new Map(feeds.map((feed) => [feed.id, feed]));
+    return playbackOrder(
+      feeds.map((feed) => ({ id: feed.id, priority: feed.priority, createdAt: feed.createdAt, health: states.get(feed.id) ?? 'UNKNOWN' })),
+      failover?.activeFeedId ?? null,
+    ).map((feed) => byId.get(feed.id)!);
   }
 
   forget(): void {

@@ -193,6 +193,18 @@ covers their country, device class and the current time. Operator playback is al
 Console API, ingestion/dedup rules, the rights invariant and the BYO → operator migration strategy:
 `docs/architecture/OPERATOR_CATALOG.md`.
 
+## Stream health and failover
+
+Every operator feed is probed from one or more regions (playlist, a segment, a decode check — a
+frozen live playlist that still answers 200 counts as a failure). A feed fails only when every
+region that probed it recently agrees; a channel then switches to its best working feed, fails
+back after a cooldown, and operators can pin a feed (override) — all journaled. Incidents (feed /
+channel / provider) alert via signed webhook, Slack or email; viewers' playback reports trigger
+re-probes but never switch feeds themselves. Subscribers' own sources show Online / Slow /
+Unstable / Offline from light endpoint checks. `GET /metrics` (Prometheus) with `METRICS_TOKEN`.
+
+Configuration, rules and the console API: `docs/architecture/STREAM_HEALTH.md`.
+
 ## Operator console (`apps/admin`)
 
 Staff accounts are separate from subscriber accounts and always sign in with a password **and** a

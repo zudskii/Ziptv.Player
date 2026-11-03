@@ -37,6 +37,7 @@ const EventBody = z
     error: z.object({ kind: z.string().max(40), message: z.string().max(500) }).optional(),
     via: z.enum(['direct', 'proxy']).optional(),
     startupMs: z.number().int().min(0).max(600_000).optional(),
+    telemetry: z.string().max(120).optional(),
   })
   .strict();
 

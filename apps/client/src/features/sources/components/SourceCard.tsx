@@ -83,10 +83,10 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
               {source.account.maxConnections !== null && ` · ${source.account.maxConnections} connection${source.account.maxConnections === 1 ? '' : 's'}`}
             </p>
           )}
-          {source.health.unstableStreams + source.health.offlineStreams > 0 && (
+          {(source.health.failedPlays > 0 || source.health.message) && source.health.state !== 'online' && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-500">
               <TriangleAlert className="h-3.5 w-3.5" />
-              {source.health.unstableStreams + source.health.offlineStreams} stream{source.health.unstableStreams + source.health.offlineStreams === 1 ? '' : 's'} unstable
+              {source.health.failedPlays > 0 ? `${source.health.failedPlays} of ${source.health.plays} recent plays failed` : source.health.message}
               {source.health.checkedAt && ` · checked ${formatAgo(source.health.checkedAt, now)}`}
             </p>
           )}

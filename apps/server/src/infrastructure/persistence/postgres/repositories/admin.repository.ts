@@ -23,6 +23,7 @@ import { isEntityId } from '../../../../domain/shared/ids.js';
 import type { Db } from '../database.js';
 import { json, type AdminAuditLogsTable, type StaffSessionsTable, type StaffUsersTable } from '../schema.js';
 import { PgSessionRepository } from './session.repository.js';
+import { PgHealthRepository } from './health.repository.js';
 import { PgOperatorCatalogRepository } from './operator-catalog.repository.js';
 
 /** Serialises audit appends across every instance (pg_advisory_xact_lock key). */
@@ -394,6 +395,7 @@ export class PgAdminUnitOfWork implements AdminUnitOfWork {
         outbox: new PgOutboxRepository(trx),
         sessions: new PgSessionRepository(trx),
         catalog: new PgOperatorCatalogRepository(trx),
+        health: new PgHealthRepository(trx, true),
       }),
     );
   }

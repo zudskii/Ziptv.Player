@@ -22,6 +22,8 @@ export interface PlaybackCandidateDto {
   /** Absolute upstream URL (direct) or API-relative path (proxy), resolve against the API origin. */
   url: string;
   via: 'direct' | 'proxy';
+  /** Opaque: echo it in `start` / `error` playback events of this candidate (stream health telemetry). */
+  telemetry?: string;
 }
 
 export interface ResolvePlaybackRequest {
@@ -90,4 +92,6 @@ export interface PlaybackEventRequest {
   via?: 'direct' | 'proxy';
   /** For `start`: time to first frame. */
   startupMs?: number;
+  /** The candidate's `telemetry` token: which stream the `start` / `error` is about. */
+  telemetry?: string;
 }

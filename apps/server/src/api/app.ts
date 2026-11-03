@@ -59,7 +59,8 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
     }),
   );
 
-  // --- Probes (for Docker/Render/K8s) -------------------------------------------------------
+  // --- Probes (for Docker/Render/K8s) and metrics ------------------------------------------
+  app.get('/metrics', container.metrics.handler(config.metrics.token));
   app.get('/healthz', (_req, res) => {
     res.json({ status: 'ok' });
   });
@@ -94,6 +95,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
       maxAge: 86_400,
     }),
   );
+  api.use(container.metrics.httpMiddleware());
   api.use(compression());
   api.use(express.json({ limit: '256kb' }));
   api.use(limit({ name: 'api', windowMs: 60 * 1000, limit: 900 }));

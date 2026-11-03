@@ -1,3 +1,4 @@
+import type { TelemetrySubject } from '../ports/health.js';
 import type { ContentRefDto, PlaybackContentDto, PlaybackEventRequest, PlaybackPlanDto } from '@ziptv/contracts';
 
 import type { StreamKind, StreamLocator, UnplayableReason } from '../../domain/catalog/model.js';
@@ -9,6 +10,8 @@ export interface StreamTarget {
   kind: StreamKind;
   unplayableReason: UnplayableReason | null;
   locator: StreamLocator | null;
+  /** What client telemetry of this target is about (operator feed / BYO source). */
+  telemetry?: TelemetrySubject;
 }
 
 export interface ResolvedContent {

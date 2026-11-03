@@ -35,7 +35,21 @@ import { HISTORY_MIN_SECS } from './domain/viewer/progress.js';
 import { DEFAULT_SETTINGS } from './domain/viewer/settings.js';
 import { PgProfileRepository } from './infrastructure/persistence/postgres/repositories/profile.repository.js';
 import { PgHistoryRepository, PgListRepository, PgProgressRepository } from './infrastructure/persistence/postgres/repositories/user-state.repository.js';
+import { createFeedProbeWorker, FeedProbeService } from './application/health/feed-probe.service.js';
+import { HealthEvaluator } from './application/health/health-evaluator.js';
+import { MonitoringAdminService } from './application/health/monitoring-admin.service.js';
+import { PlaybackTelemetry } from './application/health/playback-telemetry.js';
+import { createSourceHealthWorker, SourceHealthService } from './application/health/source-health.service.js';
+import { FeedLocators } from './application/operator/feed-locators.js';
 import { CatalogAdminService } from './application/operator/catalog-admin.service.js';
+import { HmacTelemetryTokens } from './infrastructure/crypto/telemetry-tokens.js';
+import { alertChannels, createAlertHandlers } from './infrastructure/alerts/incident-alerts.js';
+import { HttpFeedProber } from './infrastructure/health/feed-prober.js';
+import { FfprobeDecoder } from './infrastructure/health/ffprobe-decoder.js';
+import { HttpSourceEndpointChecker } from './infrastructure/health/source-endpoint-checker.js';
+import { PrometheusMetrics } from './infrastructure/metrics/prometheus.js';
+import { PgHealthRepository, PgSourceHealthRepository } from './infrastructure/persistence/postgres/repositories/health.repository.js';
+import { sourceCachePrefix } from './application/sources/source-sync.pipeline.js';
 import { OperatorService } from './application/operator/operator.service.js';
 import { ProviderConnections } from './application/operator/provider-connections.js';
 import { createProviderSyncWorker, ProviderSyncService } from './application/operator/provider-sync.js';
@@ -125,6 +139,7 @@ export interface Container {
     users: AdminUsersService;
     system: SystemOverviewService;
     catalog: CatalogAdminService;
+    monitoring: MonitoringAdminService;
   };
   sessions: SessionService;
   accounts: AccountService;
@@ -145,6 +160,7 @@ export interface Container {
   epg: EpgService;
   playback: PlaybackService;
   operator: OperatorService;
+  metrics: PrometheusMetrics;
   notifications: NotificationService;
   jobs: JobRunner;
   media: {
@@ -321,6 +337,22 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const live = new LiveCatalogService({ sources: sourceRepository, catalog: catalogRepository, cache, artwork });
   const seriesEpisodes = new SeriesEpisodes({ catalog: catalogRepository, secrets, details: xtream, cache, clock, logger: logger.child({ module: 'series-episodes' }) });
   const vod = new VodCatalogService({ live, catalog: catalogRepository, episodes: seriesEpisodes, list: listRepository, progress: progressRepository, cache, artwork });
+  // --- stream health (ZP-ENT-06): repositories and metrics shared by playback, probes and console --
+  const healthRepository = new PgHealthRepository(db);
+  const metrics = new PrometheusMetrics({
+    defaults: config.env !== 'test',
+    labels: { role: config.role },
+    state: { feeds: () => healthRepository.statusCounts(), incidents: () => healthRepository.openIncidentCounts() },
+  });
+  const telemetry = new PlaybackTelemetry({
+    tokens: new HmacTelemetryTokens(config.stream.tokenSecret),
+    health: healthRepository,
+    cache,
+    clock,
+    metrics,
+    logger: logger.child({ module: 'telemetry' }),
+  });
+
   // --- operator catalog (licensed channels, ZP-ENT-03) --------------------------------------------
   const secretStore = new LocalSecretStore(cipher);
   const operatorCatalog = new PgOperatorCatalogRepository(db);
@@ -337,6 +369,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     clock,
     logger: logger.child({ module: 'operator' }),
     artwork,
+    health: healthRepository,
   });
   const providerSync = new ProviderSyncService({ catalog: operatorCatalog, adapters: providerAdapters, connections: providerConnections, secrets, clock, logger: logger.child({ module: 'provider-sync' }) });
   const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork, operatorFavorites: (viewer) => operator.favoriteListItems(viewer) });
@@ -388,6 +421,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     streamUrls: new ProviderStreamUrls(secrets),
     episodes: seriesEpisodes,
     operator,
+    telemetry,
+    metrics,
     observer: new WatchObserver({
       history: historyRepository,
       progress: progressRepository,
@@ -418,6 +453,59 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const adminUow = new PgAdminUnitOfWork(db);
   const adminQueries = new PgAdminQueries(db);
   const forgetSessionGrants = (ids: string[]) => ids.forEach((id) => mediaGrants.forget({ kind: 'session', id }));
+  // --- stream health: probes, failover, incidents, BYO source checks ------------------------------
+  const healthLogger = logger.child({ module: 'health' });
+  const evaluator = new HealthEvaluator({
+    health: healthRepository,
+    catalog: operatorCatalog,
+    clock,
+    metrics,
+    logger: healthLogger,
+    config: {
+      // A region that missed ~3 probes no longer votes.
+      freshnessMs: config.health.intervalMs * 3 + 60_000,
+      failover: { cooldownMs: config.health.failoverCooldownMs },
+      alertChannels: alertChannels(config.alerts, mailer),
+    },
+  });
+  const feedProbes = new FeedProbeService({
+    health: healthRepository,
+    locators: new FeedLocators({ catalog: operatorCatalog, adapters: providerAdapters, connections: providerConnections }),
+    catalog: operatorCatalog,
+    prober: new HttpFeedProber(upstream, config.health.decodeEveryMs > 0 ? new FfprobeDecoder(config.health.ffprobePath) : null),
+    evaluator,
+    clock,
+    metrics,
+    logger: healthLogger,
+    schedule: {
+      region: config.health.region,
+      intervalMs: config.health.intervalMs,
+      failingIntervalMs: config.health.failingIntervalMs,
+      decodeEveryMs: config.health.decodeEveryMs,
+      policy: { failAfter: config.health.failAfter, recoverAfter: config.health.recoverAfter },
+    },
+  });
+  const sourceHealthRepository = new PgSourceHealthRepository(db);
+  const sourceHealth = new SourceHealthService({
+    sources: sourceRepository,
+    secrets,
+    checker: new HttpSourceEndpointChecker(upstream, xtream),
+    repository: sourceHealthRepository,
+    telemetry: healthRepository,
+    clock,
+    logger: healthLogger,
+    intervalMs: config.health.sourceIntervalMs,
+    onChange: (sourceId) => cache.deleteByPrefix(sourceCachePrefix(sourceId)),
+  });
+  const monitoring = new MonitoringAdminService({
+    health: healthRepository,
+    catalog: operatorCatalog,
+    evaluator,
+    uow: adminUow,
+    clock,
+    regions: config.health.regions,
+  });
+
   const admin = {
     auth: new StaffAuthService({
       staff: staffRepository,
@@ -446,10 +534,12 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       allowMockProviders: config.operator.allowMockProviders,
       onChange: () => operator.forget(),
     }),
+    monitoring,
   };
 
   // Side effects committed with their cause (outbox) — handlers must be idempotent.
   const outboxHandlers = {
+    ...createAlertHandlers({ config: config.alerts, mailer, findIncident: (id) => healthRepository.findIncident(id), consoleUrl: null, logger: healthLogger }),
     [USER_SESSIONS_REVOKED]: async (payload: Record<string, unknown>) => {
       await notifications.notify({
         ownerId: String(payload.userId),
@@ -479,6 +569,23 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     createEpgSyncWorker({ guides: guideRepository, pipeline: epgPipeline, concurrency: config.jobs.epgSyncConcurrency }),
     createProviderSyncWorker({ catalog: operatorCatalog, sync: providerSync }),
     createOutboxWorker({ outbox: outboxRepository, handlers: outboxHandlers, clock, logger: logger.child({ module: 'outbox' }) }),
+    createSourceHealthWorker({ repository: sourceHealthRepository, service: sourceHealth, clock, logger: healthLogger }),
+    // Fail-back after the cooldown and pin expiry need a decision even when no probe changes anything.
+    periodicWorker({
+      name: 'failover-reconcile',
+      intervalMs: 60_000,
+      schedules: scheduleRepository,
+      leaseMs: 5 * 60_000,
+      run: async (lease) => {
+        for (const channelId of await healthRepository.channelsWithFeeds()) {
+          if (lease.signal.aborted) return;
+          // One broken channel must not stop the others' fail-back / pin expiry.
+          await evaluator.evaluateChannel(channelId).catch((error: unknown) => healthLogger.warn({ err: error, channelId }, 'Failover reconcile failed for a channel'));
+        }
+        const orphans = await evaluator.resolveOrphans();
+        if (orphans > 0) healthLogger.info({ orphans }, 'Resolved incidents of targets that left the catalog');
+      },
+    }),
     periodicWorker({
       name: 'cleanup',
       intervalMs: 60 * 60_000,
@@ -494,10 +601,23 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         if (prunedHistory > 0) logger.debug({ prunedHistory }, 'Pruned watch history');
         const endedProgrammes = await programmeRepository.deleteEndedBefore(new Date(clock.now().getTime() - 31 * 86_400_000));
         if (endedProgrammes > 0) logger.debug({ endedProgrammes }, 'Pruned ended programmes');
+        const day = 86_400_000;
+        const now = clock.now().getTime();
+        const prunedHealth = await healthRepository.prune({
+          probes: new Date(now - config.health.retentionDays * day),
+          telemetry: new Date(now - 7 * day),
+          failoverEvents: new Date(now - 180 * day),
+          incidents: new Date(now - 180 * day),
+        });
+        logger.debug({ prunedHealth }, 'Pruned health data');
         logger.debug({ purged, expiredSessions, expiredEmailTokens, expiredStaffSessions }, 'Cleanup finished');
       },
     }),
   );
+
+  if (config.health.probesEnabled) {
+    jobs.register(createFeedProbeWorker({ health: healthRepository, probes: feedProbes, clock, region: config.health.region, concurrency: config.health.concurrency, providerLimit: config.health.providerConcurrency, logger: healthLogger }));
+  }
 
   // --- media (public) handlers --------------------------------------------------------------------
   const images = new CatalogImages({ sources: sourceRepository, catalog: catalogRepository, cache });
@@ -555,6 +675,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     epg,
     playback,
     operator,
+    metrics,
     notifications,
     jobs,
     media,

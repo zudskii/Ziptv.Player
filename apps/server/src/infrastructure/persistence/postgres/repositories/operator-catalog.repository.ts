@@ -444,6 +444,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
     await sql`UPDATE lineup_channels SET channel_id = ${intoId} WHERE channel_id = ${fromId}`.execute(this.db);
     await sql`INSERT INTO operator_favorites (profile_id, channel_id, added_at) SELECT profile_id, ${intoId}, added_at FROM operator_favorites WHERE channel_id = ${fromId} ON CONFLICT DO NOTHING`.execute(this.db);
     await sql`UPDATE history SET channel_id = ${intoId}, key = ${intoId} WHERE channel_id = ${fromId}`.execute(this.db);
+    await sql`UPDATE failover_events SET channel_id = ${intoId} WHERE channel_id = ${fromId}`.execute(this.db);
     await sql`DELETE FROM channel_master WHERE id = ${fromId}`.execute(this.db);
   }
 
