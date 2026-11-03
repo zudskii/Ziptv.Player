@@ -52,6 +52,7 @@ export function UsersPage() {
             ),
           },
           { header: 'Type', cell: (row) => (row.isGuest ? <Badge>Guest</Badge> : <Badge tone={row.emailVerified ? 'ok' : 'neutral'}>{row.emailVerified ? 'Verified' : 'Registered'}</Badge>) },
+          { header: 'Subscription', cell: (row) => (row.blocked ? <Badge tone="danger">Blocked</Badge> : row.subscription ? <Badge tone={row.subscription === 'active' || row.subscription === 'trialing' ? 'ok' : 'warn'}>{row.subscription.replace('_', ' ')}</Badge> : <span className="text-fg-subtle">—</span>) },
           { header: 'Sources', cell: (row) => row.sources, className: 'tabular-nums' },
           { header: 'Devices', cell: (row) => row.sessions, className: 'tabular-nums' },
           { header: 'Last seen', cell: (row) => formatTime(row.lastSeenAt), className: 'whitespace-nowrap' },

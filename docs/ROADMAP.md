@@ -22,8 +22,8 @@
 | 5 | მაყურებლის გამოცდილება ✅ | Sonnet + Opus |
 | 6 | Master Catalog და კონტენტ-ოპერაციები ✅ | Opus |
 | 7 | Stream Health და Failover ✅ | Opus |
-| 8 | Commerce და Playback Authorization | Opus |
-| 9 | Admin Console | Sonnet |
+| 8 | Commerce და Playback Authorization ✅ | Opus |
+| 9 | Admin Console ✅ | Sonnet |
 | 10 | Catch-up, Multi-view, Parental | Sonnet + Opus |
 | 11 | რეალური ინტეგრაციები | Opus + Sonnet |
 | 12 | Pilot Hardening | Opus + დამოუკიდებელი review |
@@ -183,7 +183,9 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 8.11 **Bypass ტესტები:** ვადაგასული გამოწერა, მეორე მოწყობილობა, არასწორი ქვეყანა, გაუქმებული grant. *(Opus)*
 - **Gate:** აქტიური entitlement-ის გარეშე ნაკადი არ გაიცემა; concurrency/geo არ გვერდავდება.
 
-## ფაზა 9 — Admin Console
+## ფაზა 9 — Admin Console · ✅ დასრულდა
+
+> **სტატუსი:** 9.1–9.10 გაკეთებულია (`0011-console`). 12 სექცია როლების მიხედვით (Overview, Approvals, Live monitoring, Channels, Providers, EPG, Packages & rights, Subscribers, Support, Finance, Audit & security, Staff); ყოველი route-ის უფლებას API ამოწმებს, UI მხოლოდ მალავს. **Four-eyes:** პაკეტის შექმნა/ცვლილება (ფასი, ლიმიტები, სტატუსი, არხები) და rights grant ცვლილების მოთხოვნაა (`202 {changeRequest}`) — მეორე ადამიანი იმავე write-უფლებით ამტკიცებს, საკუთარ მოთხოვნაზე გადაწყვეტილება შეუძლებელია (დომენი + DB `CHECK`); დამტკიცებისას ცვლილება approver-ის ტრანზაქციაში ხელახლა იწერება stale-შემოწმების შემდეგ (შეცვლილი ობიექტი / 30 დღეზე ძველი → `failed`, არაფერი იცვლება); პაკეტზე ერთი pending ცვლილება; revoke მაშინვე მოქმედებს და შემდეგ review-ს გადის; ვისაც TOTP მოთხოვნის შემდეგ ჩაეწერა, ვერ დაამტკიცებს; merge უარყოფილია, სანამ არხს აქტიური rights/პაკეტი აქვს. `CONSOLE_FOUR_EYES=false` production-ში აკრძალულია. Read models: MRR ბოლო გადახდილი ინვოისიდან, churn მხოლოდ გადახდილ გამოწერებზე, 12-თვიანი სერია; პარტნიორის შემოსავალი **ყურების წუთების წილით** (`playback_sessions.provider_id`, სესიები 400 დღე ინახება), CSV formula-injection დაცვით; provider-ის SLA probe-ებიდან; support notes აუდიტში ტექსტის გარეშე. **ოპერატორის EPG:** ლიცენზირებული XMLTV გზამკვლევები generation-ებით, ავტო-mapping alias-ებით (tvg-id ▶ სახელი, priority), ხელით mapping იმარჯვებს, დაფარვა (unmapped / no_data / gaps / ends_soon / ok), მაყურებლისთვის now/next. Gate შემოწმებულია e2e-ით, ბრაუზერის ტესტით თითო როლზე (`roles.ui.test.tsx`, 401/403 გამოძახების გარეშე) და lab-ში (ორი finance/content თანამშრომელი რეალურ UI-ში). სტრატეგია: `docs/architecture/CONSOLE.md`. ღია: SUPER_ADMIN-ს ახალი staff ანგარიშით მაინც შეუძლია მეორე ხელმოწერა — ფაზა 12 (staff შექმნა four-eyes-ით ან IdP); საკონტრაქტო განაკვეთები/მინიმალური გარანტიები — ფაზა 11; ფინანსური მოთხოვნები replica-ზე — ფაზა 13.
 
 ყველა ეკრანი ეყრდნობა ფაზა 2-ის RBAC-ს; ბრაუზერის ტესტი თითო როლზე.
 

@@ -14,6 +14,10 @@ import { StaticGeoResolver } from './infrastructure/geo/static-geo.js';
 import { PgCommerceRepository } from './infrastructure/persistence/postgres/repositories/commerce.repository.js';
 import { PgLeaseStore } from './infrastructure/persistence/postgres/repositories/lease-store.js';
 import { AdminUsersService, USER_SESSIONS_REVOKED } from './application/admin/admin-users.service.js';
+import { ChangeRequestService } from './application/admin/change-requests.service.js';
+import { ConsoleService, PLAYBACK_SESSION_RETENTION_DAYS } from './application/admin/console.service.js';
+import { PgConsoleQueries } from './infrastructure/persistence/postgres/repositories/console.queries.js';
+import { PgChangeRequestRepository } from './infrastructure/persistence/postgres/repositories/change-request.repository.js';
 import { AuditService } from './application/admin/audit.service.js';
 import { StaffAuthService } from './application/admin/staff-auth.service.js';
 import { StaffService } from './application/admin/staff.service.js';
@@ -62,6 +66,8 @@ import { PrometheusMetrics } from './infrastructure/metrics/prometheus.js';
 import { PgHealthRepository, PgSourceHealthRepository } from './infrastructure/persistence/postgres/repositories/health.repository.js';
 import { sourceCachePrefix } from './application/sources/source-sync.pipeline.js';
 import { OperatorService } from './application/operator/operator.service.js';
+import { createOperatorEpgWorker, OperatorEpgService } from './application/operator/operator-epg.service.js';
+import { PgOperatorEpgRepository } from './infrastructure/persistence/postgres/repositories/operator-epg.repository.js';
 import { ProviderConnections } from './application/operator/provider-connections.js';
 import { createProviderSyncWorker, ProviderSyncService } from './application/operator/provider-sync.js';
 import { createProviderAdapters } from './infrastructure/operator/provider-adapters.js';
@@ -152,6 +158,9 @@ export interface Container {
     catalog: CatalogAdminService;
     monitoring: MonitoringAdminService;
     commerce: CommerceAdminService;
+    changes: ChangeRequestService;
+    console: ConsoleService;
+    epg: OperatorEpgService;
   };
   commerce: {
     billing: BillingService;
@@ -183,6 +192,7 @@ export interface Container {
   epg: EpgService;
   playback: PlaybackService;
   operator: OperatorService;
+  operatorEpg: OperatorEpgService;
   metrics: PrometheusMetrics;
   notifications: NotificationService;
   jobs: JobRunner;
@@ -565,6 +575,21 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     regions: config.health.regions,
   });
 
+  // Four-eyes control: package/price changes and new rights grants are approved by a second person.
+  const consoleQueries = new PgConsoleQueries(db);
+  const operatorEpgRepository = new PgOperatorEpgRepository(db);
+  const operatorEpg = new OperatorEpgService({
+    epg: operatorEpgRepository,
+    reader: new HttpXmltvReader(upstream, config.epg.maxBytes),
+    secrets,
+    urlPolicy,
+    uow: adminUow,
+    clock,
+    logger: logger.child({ module: 'operator-epg' }),
+    jobs,
+    daysAhead: config.epg.daysAhead,
+  });
+  const changes = new ChangeRequestService({ uow: adminUow, requests: new PgChangeRequestRepository(db), staff: staffRepository, clock, logger: logger.child({ module: 'changes' }), fourEyes: config.admin.fourEyes });
   const admin = {
     auth: new StaffAuthService({
       staff: staffRepository,
@@ -580,7 +605,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     staff: new StaffService({ staff: staffRepository, uow: adminUow, hasher, clock }),
     audit: new AuditService(new PgAuditRepository(db, false)),
     users: new AdminUsersService({ queries: adminQueries, sessions: sessionRepository, uow: adminUow, clock, onSessionsRevoked: forgetSessionGrants, jobs }),
-    system: new SystemOverviewService({ queries: adminQueries, outbox: outboxRepository, clock }),
+    system: new SystemOverviewService({ queries: adminQueries, outbox: outboxRepository, clock, console: consoleQueries, health: healthRepository, changes }),
     catalog: new CatalogAdminService({
       catalog: operatorCatalog,
       uow: adminUow,
@@ -592,12 +617,15 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       clock,
       allowMockProviders: config.operator.allowMockProviders,
       onChange: () => operator.forget(),
+      channelStats: (ids) => consoleQueries.channelStats(ids),
+      changes,
       onRightsRevoked: (channelId) => authorization.revalidateChannel(channelId),
     }),
     monitoring,
     commerce: new CommerceAdminService({
       commerce: commerceRepository,
       catalog: operatorCatalog,
+      changes,
       billing,
       accounts: accountBilling,
       authorization,
@@ -605,7 +633,11 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       clock,
       onCatalogChange: () => operator.forget(),
     }),
+    changes,
+    epg: operatorEpg,
+    console: new ConsoleService({ queries: consoleQueries, users: adminQueries, audit: new PgAuditRepository(db, false), uow: adminUow, clock, probeRetentionDays: config.health.retentionDays }),
   };
+  changes.register(...admin.catalog.changeHandlers(), ...admin.commerce.changeHandlers());
 
   // Side effects committed with their cause (outbox) — handlers must be idempotent.
   const outboxHandlers = {
@@ -660,6 +692,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     createSourceSyncWorker({ sources: sourceRepository, pipeline, concurrency: config.jobs.sourceSyncConcurrency }),
     createEpgSyncWorker({ guides: guideRepository, pipeline: epgPipeline, concurrency: config.jobs.epgSyncConcurrency }),
     createProviderSyncWorker({ catalog: operatorCatalog, sync: providerSync }),
+    createOperatorEpgWorker({ epg: operatorEpgRepository, service: operatorEpg }),
     createOutboxWorker({ outbox: outboxRepository, handlers: outboxHandlers, clock, logger: logger.child({ module: 'outbox' }) }),
     createSourceHealthWorker({ repository: sourceHealthRepository, service: sourceHealth, clock, logger: healthLogger }),
     // Fail-back after the cooldown and pin expiry need a decision even when no probe changes anything.
@@ -678,6 +711,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         if (orphans > 0) healthLogger.info({ orphans }, 'Resolved incidents of targets that left the catalog');
       },
     }),
+    // New channels / aliases (provider syncs, console edits) get their guide channel automatically.
+    periodicWorker({ name: 'operator-epg-automap', intervalMs: 10 * 60_000, schedules: scheduleRepository, run: async () => void (await operatorEpg.automap()) }),
     // Subscription state follows time (trial end, period end, dunning) even without webhooks.
     periodicWorker({
       name: 'subscription-clock',
@@ -726,7 +761,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         if (endedProgrammes > 0) logger.debug({ endedProgrammes }, 'Pruned ended programmes');
         const day = 86_400_000;
         const now = clock.now().getTime();
-        const prunedCommerce = await commerceRepository.pruneCommerce({ endedSessions: new Date(now - 90 * day), expiredCheckouts: new Date(now - 90 * day) });
+        const prunedCommerce = await commerceRepository.pruneCommerce({ endedSessions: new Date(now - PLAYBACK_SESSION_RETENTION_DAYS * day), expiredCheckouts: new Date(now - 90 * day) });
         logger.debug({ prunedCommerce }, 'Pruned commerce data');
         const prunedHealth = await healthRepository.prune({
           probes: new Date(now - config.health.retentionDays * day),
@@ -802,6 +837,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     epg,
     playback,
     operator,
+    operatorEpg,
     metrics,
     notifications,
     jobs,

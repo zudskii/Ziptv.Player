@@ -5,9 +5,15 @@ import { z } from 'zod';
 import type { AdminUsersService } from '../../application/admin/admin-users.service.js';
 import type { AuditService } from '../../application/admin/audit.service.js';
 import { toMeDto } from '../../application/admin/principal.js';
+import { AppError } from '../../application/errors.js';
 import type { StaffAuthService } from '../../application/admin/staff-auth.service.js';
 import type { StaffService } from '../../application/admin/staff.service.js';
 import type { SystemOverviewService } from '../../application/admin/system.service.js';
+import type { ChangeRequestedDto } from '@ziptv/contracts';
+
+import type { ChangeRequestService } from '../../application/admin/change-requests.service.js';
+import type { ConsoleService } from '../../application/admin/console.service.js';
+import type { OperatorEpgService } from '../../application/operator/operator-epg.service.js';
 import type { CommerceAdminService } from '../../application/commerce/commerce-admin.service.js';
 import type { MonitoringAdminService } from '../../application/health/monitoring-admin.service.js';
 import type { CatalogAdminService } from '../../application/operator/catalog-admin.service.js';
@@ -29,6 +35,9 @@ export interface AdminServices {
   catalog: CatalogAdminService;
   monitoring: MonitoringAdminService;
   commerce: CommerceAdminService;
+  changes: ChangeRequestService;
+  console: ConsoleService;
+  epg: OperatorEpgService;
 }
 
 const Email = z.string().trim().email().max(254);
@@ -66,7 +75,23 @@ const ProviderConfig = z.object({ channels: z.array(MockChannel).max(5_000).opti
 const SyncHours = z.number().int().min(1).max(168);
 const CreateProviderBody = z.object({ name: Name, slug: Slug.optional(), type: z.enum(PROVIDER_TYPES), credential: Credential.optional(), config: ProviderConfig.optional(), syncIntervalHours: SyncHours.optional() }).strict();
 const UpdateProviderBody = z
-  .object({ name: Name.optional(), status: z.enum(['active', 'paused', 'terminated']).optional(), config: ProviderConfig.optional(), syncIntervalHours: SyncHours.optional() })
+  .object({
+    name: Name.optional(),
+    status: z.enum(['active', 'paused', 'terminated']).optional(),
+    config: ProviderConfig.optional(),
+    syncIntervalHours: SyncHours.optional(),
+    contract: z
+      .object({
+        ref: z.string().trim().max(200).nullable().optional(),
+        startAt: z.string().datetime({ offset: true }).nullable().optional(),
+        endAt: z.string().datetime({ offset: true }).nullable().optional(),
+        slaTargetPct: z.number().gt(0).max(100).nullable().optional(),
+        monthlyCost: z.object({ currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'), amountMinor: z.number().int().min(0).max(1_000_000_000) }).strict().nullable().optional(),
+        notes: z.string().max(4000).optional(),
+      })
+      .strict()
+      .optional(),
+  })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'nothing to change');
 const StreamsQuery = z.object({ providerId: EntityId.optional(), status: z.enum(['pending', 'matched', 'ignored', 'gone']).default('pending'), ...Page });
@@ -137,6 +162,26 @@ const CompBody = z.object({ packageId: EntityId, endsAt: z.string().datetime({ o
 const BlockBody = z.object({ blocked: z.boolean(), reason: z.string().trim().max(500).optional() }).strict();
 const PaymentEventsQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) });
 
+const ChangeRequestsQuery = z.object({
+  status: z.enum(['open', 'pending', 'applied', 'rejected', 'withdrawn', 'failed', 'reviewed']).optional(),
+  kind: z.enum(['package.create', 'package.update', 'rights.grant', 'rights.revoke']).optional(),
+  targetId: EntityId.optional(),
+  offset: z.coerce.number().int().min(0).default(0),
+  limit: z.coerce.number().int().min(1).max(100).default(50),
+});
+const GuideUrl = z.string().trim().url().max(2048);
+const CreateGuideBody = z.object({ name: z.string().trim().min(1).max(100), url: GuideUrl, priority: z.number().int().min(0).max(1000).optional(), syncIntervalHours: z.number().int().min(1).max(168).optional() }).strict();
+const UpdateGuideBody = z
+  .object({ name: z.string().trim().min(1).max(100).optional(), url: GuideUrl.optional(), status: z.enum(['active', 'paused']).optional(), priority: z.number().int().min(0).max(1000).optional(), syncIntervalHours: z.number().int().min(1).max(168).optional() })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'nothing to change');
+const GuideChannelsQuery = z.object({ q: z.string().max(100).optional(), guideId: EntityId.optional(), limit: z.coerce.number().int().min(1).max(100).default(30) });
+const MappingBody = z.object({ guideId: EntityId, epgChannelId: z.string().trim().min(1).max(300) }).strict();
+const RangeQuery = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional() });
+const NotesQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) });
+const NoteBody = z.object({ body: z.string().trim().min(1).max(4000) }).strict();
+const DecisionBody = z.object({ note: z.string().trim().max(1000).optional() }).strict();
+
 // --- monitoring -----------------------------------------------------------------------------------
 const FeedHealthQuery = z.object({ status: z.enum(FEED_HEALTH_STATES).optional(), channelId: EntityId.optional(), providerId: EntityId.optional(), ...Page });
 const ProbesQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) });
@@ -175,8 +220,8 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   });
 
   // --- overview ------------------------------------------------------------------------------
-  r.get('/system/overview', 'system:read', async (_req, res) => {
-    res.json(await services.system.overview());
+  r.get('/system/overview', 'system:read', async (req, res) => {
+    res.json(await services.system.overview(currentStaff(req)));
   });
 
   // --- staff -----------------------------------------------------------------------------------
@@ -261,6 +306,9 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   r.post('/channels', 'catalog:write', async (req, res) => {
     res.status(201).json(await catalog.createChannel(currentStaff(req), parseInput(CreateChannelBody, req.body, 'Channel'), adminContext(req)));
   });
+  r.get('/channels/duplicates', 'catalog:read', async (_req, res) => {
+    res.json(await services.console.duplicates());
+  });
   r.get('/channels/:id', 'catalog:read', async (req, res) => {
     res.json(await catalog.channel(id(req, 'Channel id')));
   });
@@ -283,7 +331,10 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
 
   // --- rights ----------------------------------------------------------------------------------
   r.post('/channels/:id/grants', 'rights:write', async (req, res) => {
-    res.status(201).json(await catalog.grant(currentStaff(req), id(req, 'Channel id'), parseInput(GrantBody, req.body, 'Rights grant'), adminContext(req)));
+    const outcome = await catalog.grant(currentStaff(req), id(req, 'Channel id'), parseInput(GrantBody, req.body, 'Rights grant'), adminContext(req));
+    // 201 + the grant when applied (four-eyes off); 202 + the change request waiting for approval.
+    if (outcome.status === 'applied') res.status(201).json(outcome.grant);
+    else res.status(202).json({ changeRequest: outcome.request } satisfies ChangeRequestedDto);
   });
   r.post('/grants/:id/revoke', 'rights:write', async (req, res) => {
     res.json(await catalog.revokeGrant(currentStaff(req), id(req, 'Grant id'), adminContext(req)));
@@ -343,13 +394,17 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
     res.json(await commerce.packages());
   });
   r.post('/packages', 'billing:write', async (req, res) => {
-    res.status(201).json(await commerce.createPackage(currentStaff(req), parseInput(CreatePackageBody, req.body, 'Package'), adminContext(req)));
+    const outcome = await commerce.createPackage(currentStaff(req), parseInput(CreatePackageBody, req.body, 'Package'), adminContext(req));
+    if (outcome.status === 'applied') res.status(201).json(outcome.package);
+    else res.status(202).json({ changeRequest: outcome.request } satisfies ChangeRequestedDto);
   });
   r.get('/packages/:id', 'billing:read', async (req, res) => {
     res.json(await commerce.package(id(req, 'Package id')));
   });
   r.patch('/packages/:id', 'billing:write', async (req, res) => {
-    res.json(await commerce.updatePackage(currentStaff(req), id(req, 'Package id'), parseInput(UpdatePackageBody, req.body, 'Package change'), adminContext(req)));
+    const outcome = await commerce.updatePackage(currentStaff(req), id(req, 'Package id'), parseInput(UpdatePackageBody, req.body, 'Package change'), adminContext(req));
+    if (outcome.status === 'applied') res.json(outcome.package);
+    else res.status(202).json({ changeRequest: outcome.request } satisfies ChangeRequestedDto);
   });
   r.get('/users/:id/billing', 'billing:read', async (req, res) => {
     res.json(await commerce.userBilling(id(req, 'User id')));
@@ -375,6 +430,90 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   r.get('/billing/payment-events', 'billing:read', async (req, res) => {
     res.json(await commerce.paymentEvents(parseInput(PaymentEventsQuery, req.query, 'Payment events').limit));
   });
+
+  // --- operator EPG (9.7) ---------------------------------------------------------------------------
+  const epg = services.epg;
+  r.get('/epg/guides', 'catalog:read', async (_req, res) => {
+    res.json(await epg.guides());
+  });
+  r.post('/epg/guides', 'catalog:write', async (req, res) => {
+    res.status(201).json(await epg.createGuide(currentStaff(req), parseInput(CreateGuideBody, req.body, 'Guide'), adminContext(req)));
+  });
+  r.patch('/epg/guides/:id', 'catalog:write', async (req, res) => {
+    res.json(await epg.updateGuide(currentStaff(req), id(req, 'Guide id'), parseInput(UpdateGuideBody, req.body, 'Guide change'), adminContext(req)));
+  });
+  r.delete('/epg/guides/:id', 'catalog:write', async (req, res) => {
+    await epg.deleteGuide(currentStaff(req), id(req, 'Guide id'), adminContext(req));
+    res.status(204).end();
+  });
+  r.post('/epg/guides/:id/sync', 'catalog:write', async (req, res) => {
+    await epg.syncNow(currentStaff(req), id(req, 'Guide id'), adminContext(req));
+    res.status(202).json({ status: 'queued' });
+  });
+  r.get('/epg/coverage', 'catalog:read', async (_req, res) => {
+    res.json(await epg.coverage());
+  });
+  r.get('/epg/guide-channels', 'catalog:read', async (req, res) => {
+    const query = parseInput(GuideChannelsQuery, req.query, 'Guide channel search');
+    res.json(await epg.searchGuideChannels({ guideId: query.guideId, text: query.q ?? '', limit: query.limit }));
+  });
+  r.post('/channels/:id/epg', 'catalog:write', async (req, res) => {
+    await epg.setMapping(currentStaff(req), id(req, 'Channel id'), parseInput(MappingBody, req.body, 'EPG mapping'), adminContext(req));
+    res.status(204).end();
+  });
+  r.delete('/channels/:id/epg', 'catalog:write', async (req, res) => {
+    await epg.clearMapping(currentStaff(req), id(req, 'Channel id'), adminContext(req));
+    res.status(204).end();
+  });
+
+  // --- console read models: finance, partners, providers, security, support ----------------------
+  const reports = services.console;
+  r.get('/finance/summary', 'billing:read', async (req, res) => {
+    res.json(await reports.finance(parseInput(RangeQuery, req.query, 'Report period')));
+  });
+  r.get('/finance/partners', 'billing:read', async (req, res) => {
+    res.json(await reports.partners(parseInput(RangeQuery, req.query, 'Report period')));
+  });
+  r.get('/finance/partners.csv', 'billing:read', async (req, res) => {
+    const csv = await reports.partnersCsv(parseInput(RangeQuery, req.query, 'Report period'));
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="ziptv-partners.csv"');
+    res.send(csv);
+  });
+  r.get('/providers/:id/report', 'providers:read', async (req, res) => {
+    const provider = (await services.catalog.providers()).find((item) => item.id === id(req, 'Provider id'));
+    if (!provider) throw AppError.notFound('Provider');
+    res.json(await reports.providerReport(provider.id, provider.contract.slaTargetPct));
+  });
+  r.get('/security/overview', 'audit:read', async (req, res) => {
+    res.json(await reports.security(currentStaff(req)));
+  });
+  r.get('/support/notes', 'support:read', async (req, res) => {
+    res.json(await reports.notes({ limit: parseInput(NotesQuery, req.query, 'Notes').limit }));
+  });
+  r.get('/users/:id/notes', 'support:read', async (req, res) => {
+    res.json(await reports.notes({ userId: id(req, 'User id'), limit: parseInput(NotesQuery, req.query, 'Notes').limit }));
+  });
+  r.post('/users/:id/notes', 'support:write', async (req, res) => {
+    res.status(201).json(await reports.addNote(currentStaff(req), id(req, 'User id'), parseInput(NoteBody, req.body, 'Note').body, adminContext(req)));
+  });
+
+  // --- four-eyes change requests ------------------------------------------------------------------
+  // Listed and decided per kind: the service checks the role's permission for each kind and never
+  // lets the requester decide on their own request.
+  const changes = services.changes;
+  r.get('/change-requests', 'system:read', async (req, res) => {
+    res.json(await changes.list(currentStaff(req), parseInput(ChangeRequestsQuery, req.query, 'Change request filter')));
+  });
+  r.get('/change-requests/:id', 'system:read', async (req, res) => {
+    res.json(await changes.get(currentStaff(req), id(req, 'Change request id')));
+  });
+  for (const decision of ['approve', 'reject', 'withdraw', 'review'] as const) {
+    r.post(`/change-requests/:id/${decision}`, 'system:read', async (req, res) => {
+      const body = parseInput(DecisionBody, req.body ?? {}, 'Decision');
+      res.json(await changes.decide(currentStaff(req), id(req, 'Change request id'), decision, body.note ?? null, adminContext(req)));
+    });
+  }
 
   return r;
 }

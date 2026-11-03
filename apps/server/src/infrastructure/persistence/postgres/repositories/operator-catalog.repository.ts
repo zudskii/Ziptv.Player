@@ -7,6 +7,7 @@ import type {
   MasterChannelRecord,
   NewGrant,
   OperatorCatalogRepository,
+  ProviderContract,
   ProviderRecord,
   ProviderStats,
   ProviderStreamRecord,
@@ -43,6 +44,15 @@ function toProvider(row: ProviderRow): ProviderRecord {
     },
     stats: row.stats,
     credential: row.secret_ref ? { secretRef: row.secret_ref, rotatedAt: row.rotated_at ?? row.created_at } : null,
+    contract: {
+      ref: row.contract_ref,
+      startAt: row.contract_start_at,
+      endAt: row.contract_end_at,
+      slaTargetPct: row.sla_target_pct === null ? null : Number(row.sla_target_pct),
+      monthlyCostMinor: row.monthly_cost_minor,
+      costCurrency: row.cost_currency,
+      notes: row.notes,
+    },
     createdAt: row.created_at,
   };
 }
@@ -144,7 +154,8 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
     return (await this.findProvider(input.id))!;
   }
 
-  async updateProvider(id: string, patch: { name?: string; status?: ProviderStatus; config?: Record<string, unknown>; host?: string; syncIntervalHours?: number }): Promise<ProviderRecord | null> {
+  async updateProvider(id: string, patch: { name?: string; status?: ProviderStatus; config?: Record<string, unknown>; host?: string; syncIntervalHours?: number; contract?: Partial<ProviderContract> }): Promise<ProviderRecord | null> {
+    const contract = patch.contract ?? {};
     if (!isEntityId(id)) return null;
     const result = await this.db
       .updateTable('providers')
@@ -155,6 +166,13 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
         ...(patch.config !== undefined ? { config: json(patch.config) } : {}),
         ...(patch.host !== undefined ? { host: patch.host } : {}),
         ...(patch.syncIntervalHours !== undefined ? { sync_interval_hours: patch.syncIntervalHours } : {}),
+        ...(contract.ref !== undefined ? { contract_ref: contract.ref } : {}),
+        ...(contract.startAt !== undefined ? { contract_start_at: contract.startAt } : {}),
+        ...(contract.endAt !== undefined ? { contract_end_at: contract.endAt } : {}),
+        ...(contract.slaTargetPct !== undefined ? { sla_target_pct: contract.slaTargetPct } : {}),
+        ...(contract.monthlyCostMinor !== undefined ? { monthly_cost_minor: contract.monthlyCostMinor } : {}),
+        ...(contract.costCurrency !== undefined ? { cost_currency: contract.costCurrency } : {}),
+        ...(contract.notes !== undefined ? { notes: contract.notes } : {}),
       })
       .where('id', '=', id)
       .executeTakeFirst();

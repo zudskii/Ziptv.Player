@@ -1,5 +1,6 @@
 import type {
   CategoryDto,
+  ChangeRequestDto,
   CreateGrantRequest,
   CreateLineupRequest,
   CreateMasterChannelRequest,
@@ -10,6 +11,7 @@ import type {
   MasterChannelDetailDto,
   MasterChannelDto,
   MasterChannelPageDto,
+  MasterChannelStatsDto,
   ProviderCredentialInput,
   ProviderDto,
   ProviderHealthDto,
@@ -30,9 +32,11 @@ import { playableFeeds } from '../../domain/operator/feeds.js';
 import { normalizeChannelName } from '../../domain/shared/text.js';
 import { actorOf, type AdminContext, type StaffPrincipal } from '../admin/principal.js';
 import { AppError } from '../errors.js';
-import type { AdminUnitOfWork } from '../ports/admin.js';
+import type { AdminTransaction, AdminUnitOfWork } from '../ports/admin.js';
+import type { ConsoleQueries } from '../ports/console.js';
+import type { ChangeHandler, ChangeRequestService } from '../admin/change-requests.service.js';
 import type { Clock } from '../ports/clock.js';
-import type { FeedRecord, LineupRecord, MasterChannelRecord, OperatorCatalogRepository, ProviderAdapters, ProviderRecord, ProviderStreamRecord, StoredGrant } from '../ports/operator.js';
+import type { FeedRecord, LineupRecord, MasterChannelRecord, OperatorCatalogRepository, ProviderAdapters, ProviderContract, ProviderRecord, ProviderStreamRecord, StoredGrant } from '../ports/operator.js';
 import type { SecretStore } from '../ports/secret-store.js';
 import type { JobKicker } from '../sources/hooks.js';
 import type { ProviderConnections } from './provider-connections.js';
@@ -61,6 +65,10 @@ export class CatalogAdminService {
       allowMockProviders: boolean;
       /** Clears viewer-side caches after a change. */
       onChange: () => void;
+      /** List columns of the console (feeds, rights, health). */
+      channelStats?: ConsoleQueries['channelStats'];
+      /** Four-eyes control (new grants wait for approval; revocations are reviewed afterwards). */
+      changes?: Pick<ChangeRequestService, 'propose' | 'recordForReview'>;
       /** A rights grant was revoked: viewings it allowed must stop now (not at the next heartbeat). */
       onRightsRevoked?: (channelId: string) => Promise<unknown>;
     },
@@ -106,6 +114,7 @@ export class CatalogAdminService {
         ...(input.status !== undefined ? { status: input.status } : {}),
         ...(input.config !== undefined ? { config: input.config } : {}),
         ...(input.syncIntervalHours !== undefined ? { syncIntervalHours: input.syncIntervalHours } : {}),
+        ...(input.contract ? { contract: contractPatch(input.contract, before.contract) } : {}),
       });
       if (!updated) throw AppError.notFound('Provider');
       await audit(actor, context, 'provider.updated', 'provider', id, providerState(before), providerState(updated), { changes: Object.keys(input) });
@@ -226,7 +235,14 @@ export class CatalogAdminService {
 
   async channels(query: { text?: string | undefined; status?: 'active' | 'hidden' | undefined; offset: number; limit: number }): Promise<MasterChannelPageDto> {
     const page = await this.deps.catalog.listChannels(query);
-    return { items: page.items.map(toChannelDto), total: page.total };
+    const stats = this.deps.channelStats ? await this.deps.channelStats(page.items.map((channel) => channel.id)) : new Map();
+    return {
+      items: page.items.map((channel) => {
+        const counts = stats.get(channel.id);
+        return { ...toChannelDto(channel), feeds: counts?.feeds ?? 0, playableFeeds: counts?.playableFeeds ?? 0, activeGrants: counts?.activeGrants ?? 0, health: (counts?.health ?? null) as MasterChannelStatsDto['health'] };
+      }),
+      total: page.total,
+    };
   }
 
   async channel(id: string): Promise<MasterChannelDetailDto> {
@@ -297,7 +313,18 @@ export class CatalogAdminService {
   async mergeChannels(actor: StaffPrincipal, intoId: string, fromId: string, context: AdminContext): Promise<MasterChannelDetailDto> {
     if (intoId === fromId) throw AppError.validation('A channel cannot be merged into itself.');
     const [into, from] = await Promise.all([this.requireChannel(intoId), this.requireChannel(fromId)]);
-    await this.write(async (catalog, audit) => {
+    await this.write(async (catalog, audit, tx) => {
+      // Rights and package membership are four-eyes data: a merge must not move or drop them
+      // behind the approval flow. The operator revokes/moves them first (each change reviewed).
+      const now = this.deps.clock.now();
+      const grants = await catalog.grantsOf([from.id]);
+      if (grants.some((grant) => grant.status === 'active' && (grant.endAt === null || grant.endAt > now))) {
+        throw new AppError('CONFLICT', 409, `"${from.name}" still has active rights grants. Revoke them (or grant them on "${into.name}") before merging.`);
+      }
+      const packages = (await tx.commerce.packagesOfChannels([from.id])).get(from.id) ?? [];
+      if (packages.length) {
+        throw new AppError('CONFLICT', 409, `"${from.name}" is in ${packages.length} package(s). Remove it from them (via an approved package change) before merging.`);
+      }
       await catalog.mergeChannels(from.id, into.id);
       await audit(actor, context, 'channel.merged', 'channel', into.id, channelState(from), channelState(into), { mergedChannelId: from.id, mergedName: from.name });
     });
@@ -333,37 +360,95 @@ export class CatalogAdminService {
 
   // --- rights ------------------------------------------------------------------------------------
 
-  async grant(actor: StaffPrincipal, channelId: string, input: CreateGrantRequest, context: AdminContext): Promise<RightsGrantDto> {
-    await this.requireChannel(channelId);
-    if (!isTerritory(input.territory)) throw AppError.validation('Territory must be an ISO 3166-1 alpha-2 code or "*".');
-    const startAt = new Date(input.startAt);
-    const endAt = input.endAt ? new Date(input.endAt) : null;
-    if (endAt && endAt <= startAt) throw AppError.validation('The end of a grant must be after its start.');
-    const created = await this.write(async (catalog, audit) => {
-      const grant = await catalog.createGrant({
-        id: catalog.newId(),
-        channelId,
-        territory: input.territory,
-        deviceClasses: [...new Set(input.deviceClasses)],
-        businessModels: [...new Set(input.businessModels)],
-        startAt,
-        endAt,
-        contractRef: input.contractRef.trim(),
-        createdBy: actor.id,
-      });
-      await audit(actor, context, 'rights.granted', 'rights_grant', grant.id, null, grantState(grant), { channelId, territory: grant.territory, contractRef: grant.contractRef });
-      return grant;
-    });
-    return toGrantDto(created);
+  /** A new rights grant: through four-eyes approval unless it is off. */
+  async grant(actor: StaffPrincipal, channelId: string, input: CreateGrantRequest, context: AdminContext): Promise<GrantChange> {
+    if (!this.deps.changes) throw new Error('Change requests are not wired');
+    const outcome = await this.deps.changes.propose(actor, 'rights.grant', channelId, { ...input }, context);
+    return outcome.status === 'pending' ? { status: 'pending', request: outcome.request } : { status: 'applied', grant: toGrantDto(outcome.result as StoredGrant) };
+  }
+
+  /** Four-eyes handler of new rights grants. */
+  changeHandlers(): ChangeHandler[] {
+    const grant: ChangeHandler = {
+      kind: 'rights.grant',
+      targetType: 'channel',
+      prepare: async (payload, channelId) => {
+        const input = payload as unknown as CreateGrantRequest;
+        const channel = await this.requireChannel(channelId ?? '');
+        const { startAt, endAt } = checkGrant(input);
+        const span = `${startAt.toISOString().slice(0, 10)} → ${endAt ? endAt.toISOString().slice(0, 10) : 'open-ended'}`;
+        return {
+          payload: { ...input, contractRef: input.contractRef.trim() },
+          summary: `Rights for “${channel.name}”: ${input.territory === '*' ? 'worldwide' : input.territory} · ${[...new Set(input.deviceClasses)].join(', ')} · ${[...new Set(input.businessModels)].join(', ')} · ${span} · contract ${input.contractRef.trim()}`,
+          base: revokedGrants(await this.deps.catalog.grantsOf([channel.id])),
+        };
+      },
+      // A revocation on the channel after the request (an ended licence) makes the request stale:
+      // approving it would quietly undo the revocation.
+      current: async (tx, channelId) => revokedGrants(await tx.catalog.grantsOf([channelId])),
+      apply: async (tx, actor, change, context) => {
+        const input = change.payload as unknown as CreateGrantRequest;
+        const channelId = change.targetId ?? '';
+        if (!(await tx.catalog.findChannel(channelId))) throw AppError.notFound('Channel');
+        const { startAt, endAt } = checkGrant(input);
+        if (endAt && endAt <= this.deps.clock.now()) throw AppError.validation('This grant has already ended; ask for a new one.');
+        const devices = [...new Set(input.deviceClasses)].sort().join(',');
+        const models = [...new Set(input.businessModels)].sort().join(',');
+        const duplicate = (await tx.catalog.grantsOf([channelId])).find(
+          (grant) =>
+            grant.status === 'active' &&
+            grant.territory === input.territory &&
+            grant.contractRef === input.contractRef.trim() &&
+            grant.startAt.getTime() === startAt.getTime() &&
+            (grant.endAt?.getTime() ?? null) === (endAt?.getTime() ?? null) &&
+            [...grant.deviceClasses].sort().join(',') === devices &&
+            [...grant.businessModels].sort().join(',') === models,
+        );
+        if (duplicate) throw new AppError('CONFLICT', 409, 'An identical grant already exists on this channel.');
+        const created = await tx.catalog.createGrant({
+          id: tx.catalog.newId(),
+          channelId,
+          territory: input.territory,
+          deviceClasses: [...new Set(input.deviceClasses)],
+          businessModels: [...new Set(input.businessModels)],
+          startAt,
+          endAt,
+          contractRef: input.contractRef.trim(),
+          // The person who asked for it; the approver is in the audit entry.
+          createdBy: change.requestedBy,
+        });
+        await tx.audit.append({
+          ...actorOf(actor, context),
+          occurredAt: this.deps.clock.now(),
+          action: 'rights.granted',
+          targetType: 'rights_grant',
+          targetId: created.id,
+          beforeHash: stateHash(null),
+          afterHash: stateHash(grantState(created)),
+          details: { channelId, territory: created.territory, contractRef: created.contractRef, changeRequest: change.requestId, requestedBy: change.requestedBy },
+        });
+        return { targetId: channelId, result: created };
+      },
+      afterCommit: async () => this.deps.onChange(),
+    };
+    return [grant];
   }
 
   async revokeGrant(actor: StaffPrincipal, grantId: string, context: AdminContext): Promise<RightsGrantDto> {
     const before = await this.deps.catalog.findGrant(grantId);
     if (!before) throw AppError.notFound('Grant');
-    const revoked = await this.write(async (catalog, audit) => {
+    // Applied at once (a licence ended must not wait for a second person); reviewed afterwards.
+    const revoked = await this.write(async (catalog, audit, tx) => {
       const after = await catalog.revokeGrant(grantId, this.deps.clock.now());
       if (!after) throw new AppError('CONFLICT', 409, 'This grant is already revoked.');
       await audit(actor, context, 'rights.revoked', 'rights_grant', grantId, grantState(before), grantState(after), { channelId: before.channelId });
+      const channel = await catalog.findChannel(before.channelId);
+      await this.deps.changes?.recordForReview(
+        tx,
+        actor,
+        { kind: 'rights.revoke', targetType: 'rights_grant', targetId: grantId, payload: { channelId: before.channelId, grant: toGrantDto(before) }, summary: `Revoked rights for “${channel?.name ?? before.channelId}”: ${before.territory === '*' ? 'worldwide' : before.territory} · ${before.deviceClasses.join(', ')} · ${before.businessModels.join(', ')} · contract ${before.contractRef}` },
+        context,
+      );
       return after;
     });
     await this.deps.onRightsRevoked?.(before.channelId);
@@ -414,13 +499,13 @@ export class CatalogAdminService {
 
   // ---------------------------------------------------------------------------------------------
 
-  private async write<T>(work: (catalog: OperatorCatalogRepository, audit: AuditWriter) => Promise<T>, conflictMessage?: string): Promise<T> {
+  private async write<T>(work: (catalog: OperatorCatalogRepository, audit: AuditWriter, tx: AdminTransaction) => Promise<T>, conflictMessage?: string): Promise<T> {
     try {
       const result = await this.deps.uow.run(async (tx) => {
         const audit: AuditWriter = async (actor, context, action, targetType, targetId, before, after, details) => {
           await tx.audit.append({ ...actorOf(actor, context), occurredAt: this.deps.clock.now(), action, targetType, targetId, beforeHash: stateHash(before), afterHash: stateHash(after), details });
         };
-        return work(tx.catalog, audit);
+        return work(tx.catalog, audit, tx);
       });
       this.deps.onChange();
       return result;
@@ -478,6 +563,17 @@ export class CatalogAdminService {
   }
 }
 
+export type GrantChange = { status: 'applied'; grant: RightsGrantDto } | { status: 'pending'; request: ChangeRequestDto };
+
+/** Territory and dates of a grant; throws when they make no sense. */
+function checkGrant(input: CreateGrantRequest): { startAt: Date; endAt: Date | null } {
+  if (!isTerritory(input.territory)) throw AppError.validation('Territory must be an ISO 3166-1 alpha-2 code or "*".');
+  const startAt = new Date(input.startAt);
+  const endAt = input.endAt ? new Date(input.endAt) : null;
+  if (endAt && endAt <= startAt) throw AppError.validation('The end of a grant must be after its start.');
+  return { startAt, endAt };
+}
+
 type AuditWriter = (
   actor: StaffPrincipal,
   context: AdminContext,
@@ -500,7 +596,7 @@ function credentialSource(ref: string): string {
 
 // --- audit states (what before/after hashes cover) ---------------------------------------------
 
-const providerState = (provider: ProviderRecord) => ({ name: provider.name, status: provider.status, type: provider.type, config: provider.config, syncIntervalHours: provider.syncIntervalHours });
+const providerState = (provider: ProviderRecord) => ({ name: provider.name, status: provider.status, type: provider.type, config: provider.config, syncIntervalHours: provider.syncIntervalHours, contract: provider.contract });
 const streamState = (stream: ProviderStreamRecord) => ({ status: stream.status, channelId: stream.channelId });
 const channelState = (channel: MasterChannelRecord) => ({
   name: channel.name,
@@ -545,7 +641,33 @@ function toProviderDto(provider: ProviderRecord): ProviderDto {
     },
     stats: provider.stats,
     credential: provider.credential ? { source: credentialSource(provider.credential.secretRef), rotatedAt: provider.credential.rotatedAt.toISOString() } : null,
+    contract: {
+      ref: provider.contract.ref,
+      startAt: provider.contract.startAt?.toISOString() ?? null,
+      endAt: provider.contract.endAt?.toISOString() ?? null,
+      slaTargetPct: provider.contract.slaTargetPct,
+      monthlyCost: provider.contract.monthlyCostMinor !== null && provider.contract.costCurrency ? { currency: provider.contract.costCurrency, amountMinor: provider.contract.monthlyCostMinor } : null,
+      notes: provider.contract.notes,
+    },
     createdAt: provider.createdAt.toISOString(),
+  };
+}
+
+/** Contract fields of a provider update (null clears a field). */
+function contractPatch(input: NonNullable<UpdateProviderRequest['contract']>, current: ProviderContract): Partial<ProviderContract> {
+  const startAt = input.startAt === undefined ? undefined : input.startAt ? new Date(input.startAt) : null;
+  const endAt = input.endAt === undefined ? undefined : input.endAt ? new Date(input.endAt) : null;
+  // Checked against the stored value of the field that is not being changed.
+  const start = startAt === undefined ? current.startAt : startAt;
+  const end = endAt === undefined ? current.endAt : endAt;
+  if (start && end && end <= start) throw AppError.validation('The contract must end after it starts.');
+  return {
+    ...(input.ref !== undefined ? { ref: input.ref?.trim() || null } : {}),
+    ...(startAt !== undefined ? { startAt } : {}),
+    ...(endAt !== undefined ? { endAt } : {}),
+    ...(input.slaTargetPct !== undefined ? { slaTargetPct: input.slaTargetPct } : {}),
+    ...(input.monthlyCost !== undefined ? { monthlyCostMinor: input.monthlyCost?.amountMinor ?? null, costCurrency: input.monthlyCost?.currency.toUpperCase() ?? null } : {}),
+    ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
   };
 }
 
@@ -602,4 +724,12 @@ function toGrantDto(grant: StoredGrant): RightsGrantDto {
     createdAt: grant.createdAt.toISOString(),
     revokedAt: grant.revokedAt?.toISOString() ?? null,
   };
+}
+
+/** Revoked grant ids of a channel, sorted: the staleness base of a pending rights request. */
+function revokedGrants(grants: readonly StoredGrant[]): string[] {
+  return grants
+    .filter((grant) => grant.status === 'revoked')
+    .map((grant) => grant.id)
+    .sort();
 }

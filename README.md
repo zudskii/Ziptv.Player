@@ -232,6 +232,13 @@ rules, API and the known limits: `docs/architecture/COMMERCE.md`.
 
 ## Operator console (`apps/admin`)
 
+Phase 9 screens: Overview, Approvals, Live monitoring, Channels (duplicates, review queue,
+categories, lineups), Providers (contract, SLA, cost), EPG (licensed guides, coverage, mapping),
+Packages & rights, Subscribers & billing, Support & incidents, Finance (MRR, churn, partner report
+by watch minutes, CSV), Audit & security. Prices, packages and rights grants need a **second
+person** to approve (`CONSOLE_FOUR_EYES`, always on in production); rights revocations apply at
+once and are reviewed afterwards. Details: `docs/architecture/CONSOLE.md`.
+
 Staff accounts are separate from subscriber accounts and always sign in with a password **and** a
 TOTP code (authenticator app; enrolment happens at first sign-in). The console and its API
 (`/admin/v1`) run on a **separate listener** — `ADMIN_PORT` (default 8081), i.e. a different origin

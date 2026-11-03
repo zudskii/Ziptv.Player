@@ -20,5 +20,7 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // UI tests run the real server in-process (imported from apps/server), which this project does not compile.
+  "exclude": ["src/test", "src/**/*.ui.test.tsx"]
 }

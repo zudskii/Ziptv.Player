@@ -75,7 +75,18 @@ export interface ProviderRecord {
   };
   stats: ProviderStats;
   credential: { secretRef: string; rotatedAt: Date } | null;
+  contract: ProviderContract;
   createdAt: Date;
+}
+
+export interface ProviderContract {
+  ref: string | null;
+  startAt: Date | null;
+  endAt: Date | null;
+  slaTargetPct: number | null;
+  monthlyCostMinor: number | null;
+  costCurrency: string | null;
+  notes: string;
 }
 
 export interface ProviderStreamRecord {
@@ -178,7 +189,7 @@ export interface OperatorCatalogRepository {
   listProviders(): Promise<ProviderRecord[]>;
   findProvider(id: string): Promise<ProviderRecord | null>;
   createProvider(input: { id: string; slug: string; name: string; type: ProviderType; config: Record<string, unknown>; host: string; syncIntervalHours: number; secretRef: string | null }): Promise<ProviderRecord>;
-  updateProvider(id: string, patch: { name?: string; status?: ProviderStatus; config?: Record<string, unknown>; host?: string; syncIntervalHours?: number }): Promise<ProviderRecord | null>;
+  updateProvider(id: string, patch: { name?: string; status?: ProviderStatus; config?: Record<string, unknown>; host?: string; syncIntervalHours?: number; contract?: Partial<ProviderContract> }): Promise<ProviderRecord | null>;
   setCredential(id: string, secretRef: string, now: Date): Promise<void>;
   requestProviderSync(id: string, now: Date): Promise<boolean>;
   claimDueProvider(now: Date, owner: string, leaseUntil: Date): Promise<ProviderRecord | null>;

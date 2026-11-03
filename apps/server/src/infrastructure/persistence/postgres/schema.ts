@@ -471,6 +471,14 @@ export interface ProvidersTable {
   lease_owner: string | null;
   lease_until: Date | null;
   stats: JsonDefault<{ streams: number; matched: number; pending: number; gone: number }>;
+  contract_ref: string | null;
+  contract_start_at: Date | null;
+  contract_end_at: Date | null;
+  /** numeric(5,2): read as a string by node-postgres. */
+  sla_target_pct: ColumnType<string | null, number | null | undefined, number | null>;
+  monthly_cost_minor: number | null;
+  cost_currency: string | null;
+  notes: Generated<string>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
 }
@@ -758,6 +766,7 @@ export interface PlaybackSessionsTable {
   expires_at: Date;
   ended_at: Date | null;
   end_reason: string | null;
+  provider_id: string | null;
 }
 
 export interface CheckoutsTable {
@@ -803,6 +812,89 @@ export interface LeasesTable {
   key: string;
   holder: string;
   expires_at: Date;
+}
+
+export type ChangeRequestKind = 'package.create' | 'package.update' | 'rights.grant' | 'rights.revoke';
+export type ChangeRequestStatus = 'pending' | 'applied' | 'rejected' | 'withdrawn' | 'failed' | 'reviewed';
+
+export interface ChangeRequestsTable {
+  id: string;
+  kind: ChangeRequestKind;
+  mode: 'approval' | 'review';
+  status: ChangeRequestStatus;
+  target_type: string;
+  target_id: string | null;
+  payload: ColumnType<Record<string, unknown>, string, string>;
+  summary: string;
+  base_hash: string | null;
+  requested_by: string;
+  requested_at: Date;
+  decided_by: string | null;
+  decided_at: Date | null;
+  decision_note: string | null;
+  error: string | null;
+}
+
+export interface SupportNotesTable {
+  id: string;
+  user_id: string;
+  author_id: string;
+  body: string;
+  created_at: Date;
+}
+
+export interface OperatorGuidesTable {
+  id: string;
+  name: string;
+  url: string;
+  url_hash: string;
+  host: Generated<string>;
+  status: Generated<'active' | 'paused'>;
+  priority: Generated<number>;
+  generation: Generated<number>;
+  next_generation: Generated<number>;
+  sync_rerun: Generated<boolean>;
+  sync_interval_hours: Generated<number>;
+  sync_status: Generated<SyncStatus>;
+  sync_last_attempt_at: Date | null;
+  sync_last_success_at: Date | null;
+  sync_next_at: Date | null;
+  sync_error: string | null;
+  sync_failures: Generated<number>;
+  lease_owner: string | null;
+  lease_until: Date | null;
+  stats: JsonDefault<{ channels: number; programmes: number; from: string | null; to: string | null }>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface OperatorGuideChannelsTable {
+  guide_id: string;
+  generation: number;
+  id: string;
+  names: string[];
+  icon: string | null;
+}
+
+export interface OperatorProgrammesTable {
+  guide_id: string;
+  generation: number;
+  epg_channel_id: string;
+  start_at: Date;
+  stop_at: Date;
+  title: string;
+  subtitle: string | null;
+  description: string | null;
+  categories: string[];
+  icon: string | null;
+}
+
+export interface ChannelEpgTable {
+  channel_id: string;
+  guide_id: string;
+  epg_channel_id: string;
+  method: 'auto' | 'manual';
+  updated_at: Date;
 }
 
 export interface Database {
@@ -861,6 +953,12 @@ export interface Database {
   invoices: InvoicesTable;
   payment_events: PaymentEventsTable;
   leases: LeasesTable;
+  change_requests: ChangeRequestsTable;
+  support_notes: SupportNotesTable;
+  operator_guides: OperatorGuidesTable;
+  operator_guide_channels: OperatorGuideChannelsTable;
+  operator_programmes: OperatorProgrammesTable;
+  channel_epg: ChannelEpgTable;
 }
 
 /** Serialises a value for a JSON column. */

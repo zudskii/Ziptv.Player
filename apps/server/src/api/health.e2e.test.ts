@@ -91,6 +91,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Stream health and failover', { timeout: 60_
       {
         JOBS_ENABLED: 'true',
         OPERATOR_ACCESS: 'rights',
+        CONSOLE_FOUR_EYES: 'false',
         PROBES_ENABLED: 'true',
         PROBE_REGION: 'eu-central',
         PROBE_REGIONS: 'eu-central,us-east',

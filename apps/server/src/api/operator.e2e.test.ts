@@ -68,7 +68,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator master catalog', () => {
       if (path?.endsWith('.ts')) return void res.writeHead(200, { 'content-type': 'video/mp2t' }).end(TS);
       res.writeHead(404).end();
     });
-    t = await startTestApp({ JOBS_ENABLED: 'true', OPERATOR_ACCESS: 'rights', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE' }, { clock });
+    t = await startTestApp({ JOBS_ENABLED: 'true', CONSOLE_FOUR_EYES: 'false', OPERATOR_ACCESS: 'rights', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE' }, { clock });
     t.container.jobs.start();
     admin = createAdminApp({ config: t.config, logger: createLogger({ log: { level: 'silent' }, env: 'test' }), container: t.container });
 
@@ -271,18 +271,25 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator master catalog', () => {
     await request(t.app).get('/api/v1/operator/channels?lineup=nope').set(as()).expect(404);
   });
 
-  it('merges a duplicate channel (feeds, rights, favourites and history follow) and revokes rights', async () => {
+  it('merges a duplicate channel (feeds, rights history, favourites and history follow) and revokes rights', async () => {
     const duplicate = (await request(admin).post('/admin/v1/channels').set(ops()).send({ name: 'Daily News' }).expect(201)).body as MasterChannelDetailDto;
     expect(duplicate.slug).toBe('daily-news-2');
-    await grant(duplicate.id, { territory: 'US' });
+    const usOnDuplicate = await grant(duplicate.id, { territory: 'US' });
     await request(admin).post(`/admin/v1/channels/${news.id}/merge`).set(ops()).send({ fromChannelId: news.id }).expect(400);
-    const merged = (await request(admin).post(`/admin/v1/channels/${news.id}/merge`).set(ops()).send({ fromChannelId: duplicate.id }).expect(200)).body as MasterChannelDetailDto;
-    expect(merged.grants.map((g) => g.territory).sort()).toEqual(['GE', 'US']);
+    // Active rights do not move with a merge (that would bypass the four-eyes rights flow, Phase 9).
+    expect((await request(admin).post(`/admin/v1/channels/${news.id}/merge`).set(ops()).send({ fromChannelId: duplicate.id }).expect(409)).body.error.message).toMatch(/active rights grants/);
+    await request(admin).post(`/admin/v1/grants/${usOnDuplicate.id}/revoke`).set(ops()).expect(200);
+    await request(admin).post(`/admin/v1/channels/${news.id}/merge`).set(ops()).send({ fromChannelId: duplicate.id }).expect(200);
     await request(admin).get(`/admin/v1/channels/${duplicate.id}`).set(ops()).expect(404);
+    await grant(news.id, { territory: 'US' });
+    const merged = await channel(news.id);
+    const active = merged.grants.filter((g) => g.status === 'active');
+    expect(active.map((g) => g.territory).sort()).toEqual(['GE', 'US']);
+    expect(merged.grants.filter((g) => g.status === 'revoked').map((g) => g.id)).toEqual([usOnDuplicate.id]);
     expect((await list({ 'cf-ipcountry': 'US' })).channels.map((c) => c.name)).toEqual(['Daily News', 'Night Club']);
 
-    for (const item of merged.grants) await request(admin).post(`/admin/v1/grants/${item.id}/revoke`).set(ops()).expect(200);
-    await request(admin).post(`/admin/v1/grants/${merged.grants[0]!.id}/revoke`).set(ops()).expect(409);
+    for (const item of active) await request(admin).post(`/admin/v1/grants/${item.id}/revoke`).set(ops()).expect(200);
+    await request(admin).post(`/admin/v1/grants/${active[0]!.id}/revoke`).set(ops()).expect(409);
     expect((await list()).channels.map((c) => c.name)).toEqual(['Night Club']);
     expect((await play(news.id).expect(403)).body.error.code).toBe('NOT_ENTITLED');
     const myList = (await request(t.app).get('/api/v1/me/list').set(as()).expect(200)).body as ListStateDto;

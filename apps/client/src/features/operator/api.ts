@@ -1,4 +1,4 @@
-import type { OperatorChannelListDto, OperatorFavoritesImportDto } from '@ziptv/contracts';
+import type { OperatorChannelListDto, OperatorFavoritesImportDto, OperatorNowNextDto } from '@ziptv/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../lib/api-client';
@@ -20,6 +20,29 @@ export function useOperatorChannels(lineup: string | null = null) {
     queryKey: operatorKeys.channels(lineup),
     queryFn: ({ signal }) => apiRequest<OperatorChannelListDto>(`${BASE}/channels${lineup ? `?lineup=${encodeURIComponent(lineup)}` : ''}`, { signal }),
     staleTime: 60_000,
+  });
+}
+
+/**
+ * What is on now / next on the given operator channels (refreshed every minute). Channels the
+ * viewer may not see are simply not answered.
+ */
+export function useOperatorGuide(channelIds: string[]) {
+  const key = [...channelIds].sort().join(',');
+  return useQuery({
+    queryKey: ['operator', 'guide', key],
+    queryFn: async ({ signal }) => {
+      const result = new Map<string, OperatorNowNextDto>();
+      // Chunks keep each URL well under proxy limits.
+      for (let i = 0; i < channelIds.length; i += 200) {
+        const chunk = channelIds.slice(i, i + 200);
+        for (const row of await apiRequest<OperatorNowNextDto[]>(`${BASE}/guide?channels=${chunk.map(encodeURIComponent).join(',')}`, { signal })) result.set(row.channelId, row);
+      }
+      return result;
+    },
+    enabled: channelIds.length > 0,
+    staleTime: 60_000,
+    refetchInterval: 60_000,
   });
 }
 

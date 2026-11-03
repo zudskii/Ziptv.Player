@@ -47,7 +47,8 @@ export function createAdminApp({ config, logger, container }: { config: AppConfi
           defaultSrc: ["'self'"],
           scriptSrc: ["'self'"],
           styleSrc: ["'self'", "'unsafe-inline'"],
-          imgSrc: ["'self'", 'data:'],
+          // Channel logos are curated URLs on provider/CDN hosts (https only; no referrer is sent).
+          imgSrc: ["'self'", 'data:', 'https:'],
           connectSrc: ["'self'"],
           fontSrc: ["'self'", 'data:'],
           objectSrc: ["'none'"],

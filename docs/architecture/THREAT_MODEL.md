@@ -129,6 +129,24 @@ is not race-proof against two simultaneous demotions (both actors would need to 
   payment after the subscription ended are refunded and canceled at the processor (outbox).
 - **The fake processor is refused in production** unless explicitly allowed for a demo.
 
+## Console four-eyes and read models (Phase 9)
+
+- **Prices, packages and rights grants need a second person** with the same write permission;
+  nobody decides on their own request (domain rule and database `CHECK`). The change is re-applied
+  in the approver's transaction after a stale check; requests expire after 30 days.
+  `CONSOLE_FOUR_EYES=false` is refused in production.
+- **Rights revocations apply at once** (a licence that ended must stop immediately) and are
+  reviewed afterwards by a second person.
+- **Account takeover inside the console**: an approver whose TOTP was enrolled after the request
+  cannot decide on it, so a password + MFA reset of a colleague does not yield a second approver.
+- **No side doors**: a channel merge is refused while the merged-away channel holds active rights
+  or package membership.
+- **Least privilege on read models**: revenue on the overview only with `billing:read`; the staff
+  roster on the security screen only with `staff:read`; partner CSV cells are neutralised against
+  spreadsheet formula injection; support note text never enters the audit trail.
+- **CSP** of the console allows `img-src https:` (channel and provider logos are remote images);
+  scripts, styles and connections stay `'self'`.
+
 ## Tests that enforce this
 
 - `api/security.e2e.test.ts` — with proxy delivery, scans every response body/header a client
@@ -148,6 +166,12 @@ is not race-proof against two simultaneous demotions (both actors would need to 
   proxy), concurrent starts against the stream limit, device limit, forged and replayed webhooks,
   success redirect without payment, duplicate payment and payment-after-end refunds, trial once.
 - `infrastructure/persistence/postgres/lease-store.test.ts` — 12 concurrent acquires, limit 2.
+- `api/console.e2e.test.ts` and `domain/admin/change-requests.test.ts` — four-eyes: requester
+  cannot approve, wrong role cannot decide, stale and expired requests fail without applying, one
+  pending price change per package, revocation review, merge refused with active rights, MFA
+  re-enrolment rule, finance cannot see the staff roster.
+- `apps/admin/src/roles.ui.test.tsx` — the console per role in a browser DOM against the real
+  server: visible sections match the permissions and no screen calls an API that answers 401/403.
 
 ## Known gaps (accepted for now)
 
@@ -158,6 +182,7 @@ is not race-proof against two simultaneous demotions (both actors would need to 
 | All proxied video flows through Node.js | Phase 11: CDN signed URLs; the proxy stays for BYO sources |
 | MPEG-DASH cannot be proxied | DASH manifest rewriting or CDN delivery (Phase 11) |
 | Catch-up templates are left out of `proxied` exports | Phase 10 catch-up through the proxy |
+| A SUPER_ADMIN can create a fresh staff account and approve their own change with it | Staff creation under four-eyes or an external IdP (Phase 12) |
 | `STREAM_TOKEN_SECRET` has no rotation list | Tokens live hours; rotate by deploying a new secret (in-flight streams re-plan) |
 | Rolling deploy from the 2.x token format: links issued by old instances get 403 on new ones | Clients re-plan automatically on a fatal stream error |
 | Deleting an account relies on the 30 s grant TTL (no explicit forget) | Acceptable; sessions are gone from the database immediately |

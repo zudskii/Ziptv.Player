@@ -72,3 +72,16 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
 export function errorText(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong.';
 }
+
+/** Downloads a file answer (CSV export) with the console session and saves it. */
+export async function download(path: string, filename: string): Promise<void> {
+  const token = consoleSession.token;
+  const response = await fetch(`/admin/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+  if (!response.ok) throw new ApiError(response.status, 'INTERNAL_ERROR', `Download failed (${response.status})`);
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+}
