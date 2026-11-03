@@ -9,12 +9,21 @@ import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentViewer, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import type { ViewingContextResolver } from '../middleware/viewing-context.js';
-import { EntityId } from './schemas.js';
+import { EntityId, IsoInstant } from './schemas.js';
 
 const CheckoutBody = z.object({ packageId: z.string().trim().min(1).max(80) }).strict();
 const AccountQuery = z.object({ deviceId: EntityId.optional() });
 const DeviceBody = z.object({ key: z.string().min(32).max(128), name: z.string().trim().min(1).max(60), platform: z.enum(DEVICE_CLASSES) }).strict();
-const SessionBody = z.object({ channelId: EntityId, deviceId: EntityId, secureContext: z.boolean(), replaces: EntityId.optional(), continueSession: z.string().uuid().optional() }).strict();
+const SessionBody = z
+  .object({
+    channelId: EntityId,
+    deviceId: EntityId,
+    secureContext: z.boolean(),
+    replaces: EntityId.optional(),
+    continueSession: z.string().uuid().optional(),
+    archive: z.object({ start: IsoInstant, end: IsoInstant }).strict().optional(),
+  })
+  .strict();
 
 /** Where the processor sends the browser back: the configured public origin, else this request's. */
 export function returnBase(req: Request, publicUrl: string | null): string {
@@ -79,7 +88,7 @@ export function createPlaybackSessionRouter(deps: { authorization: PlaybackAutho
   router.post('/', startLimiter, async (req, res) => {
     const body = parseInput(SessionBody, req.body, 'Playback session');
     res.setHeader('Cache-Control', 'no-store');
-    res.status(201).json(await deps.authorization.start(currentViewer(req), { channelId: body.channelId, deviceId: body.deviceId, secureContext: body.secureContext, ...(body.replaces ? { replaces: body.replaces } : {}), ...(body.continueSession ? { continueSession: body.continueSession } : {}) }, deps.viewingContext(req)));
+    res.status(201).json(await deps.authorization.start(currentViewer(req), { channelId: body.channelId, deviceId: body.deviceId, secureContext: body.secureContext, ...(body.replaces ? { replaces: body.replaces } : {}), ...(body.continueSession ? { continueSession: body.continueSession } : {}), ...(body.archive ? { archive: body.archive } : {}) }, deps.viewingContext(req)));
   });
   router.post('/:id/heartbeat', beatLimiter, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');

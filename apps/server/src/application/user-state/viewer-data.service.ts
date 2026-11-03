@@ -91,7 +91,7 @@ export class ViewerDataService {
       const wanted = [...new Set(keys)].slice(0, budget);
       budget -= wanted.length;
       for (const channel of await this.deps.catalog.findLiveMany({ sourceId, revision: source.revision }, wanted)) {
-        if (isHiddenForViewer(viewer, channel)) continue;
+        if (isHiddenForViewer(viewer, channel, sourceId)) continue;
         await this.deps.list.add({ profileId: viewer.profileId, sourceId, type: 'channel', key: channel.key, title: channel.name, subtitle: channel.groups[0] ?? null, image: channel.logo });
         favorites++;
       }
@@ -106,7 +106,7 @@ export class ViewerDataService {
         // Most recent first: give each an earlier time so the original order is kept.
         for (const [index, key] of wanted.entries()) {
           const channel = channels.get(key);
-          if (!channel || isHiddenForViewer(viewer, channel)) continue;
+          if (!channel || isHiddenForViewer(viewer, channel, sourceId)) continue;
           await this.deps.history.start(
             {
               id: newEntityId(now.getTime() - index * 60_000),

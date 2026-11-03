@@ -43,7 +43,7 @@ export class HomeService {
   async home(viewer: Viewer): Promise<HomeDto> {
     const owned = await this.deps.sources.listByOwner(viewer.userId);
     const versions = owned.map((source) => `${source.id}:${catalogVersion(source)}:${source.sync.status}`).join(',');
-    const key = `${homeCachePrefix(viewer.profileId)}${homeEpoch(this.deps.cache, viewer.profileId)}:${viewer.restrictionsVersion}:${versions}`;
+    const key = `${homeCachePrefix(viewer.profileId)}${homeEpoch(this.deps.cache, viewer.profileId)}:${viewer.restrictionsVersion}${viewer.unlocked ? 'u' : ''}:${versions}`;
     return this.deps.cache.wrap(key, HOME_TTL_MS, () => this.build(viewer, owned));
   }
 
@@ -74,8 +74,13 @@ export class HomeService {
           match: (channel, now) => channel.groups.some((group) => SPORTS.test(group)) || SPORTS.test(channel.name) || now.categories.some((category) => SPORTS.test(category)),
         }),
       ),
-      this.rail('movies', async () => (await this.deps.catalog.latestMovies(refs, RAIL, hideAdult)).map((movie) => toMovieDto(movie.sourceId, movie, locked(movie.sourceId, movie), artwork))),
-      this.rail('series', async () => (await this.deps.catalog.latestSeries(refs, RAIL, hideAdult)).map((item) => toSeriesDto(item.sourceId, item, locked(item.sourceId, item), artwork))),
+      // Kids profiles never see locked items (filtered out, not shown as locked).
+      this.rail('movies', async () =>
+        (await this.deps.catalog.latestMovies(refs, RAIL, hideAdult)).filter((movie) => !(viewer.kids && locked(movie.sourceId, movie))).map((movie) => toMovieDto(movie.sourceId, movie, locked(movie.sourceId, movie), artwork)),
+      ),
+      this.rail('series', async () =>
+        (await this.deps.catalog.latestSeries(refs, RAIL, hideAdult)).filter((item) => !(viewer.kids && locked(item.sourceId, item))).map((item) => toSeriesDto(item.sourceId, item, locked(item.sourceId, item), artwork)),
+      ),
       this.rail('recentlyAdded', async () =>
         (await this.deps.catalog.recentlyAdded(refs, RAIL, hideAdult))
           .filter((row) => !(viewer.kids && locked(row.sourceId, row)))

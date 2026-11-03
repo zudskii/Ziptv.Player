@@ -25,10 +25,11 @@ export interface ResolvedContent {
   episode?: { season: number; episode: number };
 }
 
-/** Stream URLs of provider-API sources (Xtream) and catch-up URLs. */
+/** Stream URLs of provider-API sources (Xtream): live / VOD items and the live archive. */
 export interface StreamUrlResolver {
   provider(source: SourceRecord, type: 'live' | 'movie' | 'episode', ref: { id: number; ext?: string }, kind: StreamKind): Promise<StreamTarget>;
-  catchup?(viewer: Viewer, source: SourceRecord, ref: Extract<ContentRefDto, { type: 'catchup' }>): Promise<ResolvedContent>;
+  /** Archive of an Xtream live channel, [start, end) (panel time zone applied). */
+  archive?(source: SourceRecord, ref: { id: number }, range: { start: Date; end: Date }): Promise<StreamTarget>;
 }
 
 export interface IssuedSession {
@@ -51,6 +52,8 @@ export interface PlaybackObserver {
   resumePosition(viewer: Viewer, ref: ContentRefDto): Promise<number | null>;
   /** True when `sessionId` is this profile's viewing of the same content (reconnects). */
   continues?(viewer: Viewer, sessionId: string, ref: ContentRefDto): Promise<boolean>;
+  /** The BYO source a viewing of this profile plays from (provider connection tracking). */
+  sourceOf?(viewer: Viewer, sessionId: string): Promise<string | null>;
 }
 
 export const noopPlaybackObserver: PlaybackObserver = {

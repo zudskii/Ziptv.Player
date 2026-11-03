@@ -16,6 +16,7 @@ import { ForgotPasswordPage } from '../pages/auth/ForgotPasswordPage';
 import { ResetPasswordPage } from '../pages/auth/ResetPasswordPage';
 import { VerifyEmailPage } from '../pages/auth/VerifyEmailPage';
 import { OnboardingPage } from '../pages/onboarding/OnboardingPage';
+import { WelcomePage } from '../pages/onboarding/WelcomePage';
 import { PlaylistsPage } from '../pages/playlists/PlaylistsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { SourcesPage } from '../pages/SourcesPage';
@@ -52,7 +53,9 @@ export function App() {
           <Route path="/forgot-password" element={<ForgotPasswordPage />} />
           <Route path="/reset-password" element={<ResetPasswordPage />} />
           <Route path="/verify-email" element={<VerifyEmailPage />} />
-          <Route path="/welcome" element={<Gate><OnboardingPage /></Gate>} />
+          {/* The front door for a device without a session; with one it sends straight back in. */}
+          <Route path="/welcome" element={<WelcomePage />} />
+          <Route path="/setup" element={<Gate><OnboardingPage /></Gate>} />
           <Route element={<Gate><AppShell /></Gate>}>
             <Route index element={<HomePage />} />
             <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />

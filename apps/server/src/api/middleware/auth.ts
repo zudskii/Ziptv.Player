@@ -8,7 +8,7 @@ import type { ViewerResolver } from '../../application/identity/viewer-resolver.
  * `Authorization: Bearer <token>` → `req.user`, then `X-Profile-Id` / `X-Unlock-Token` →
  * `req.viewer` (active profile and its parental restrictions).
  */
-export function requireSession(sessions: SessionService, viewers: ViewerResolver): RequestHandler {
+export function requireSession(sessions: SessionService, viewers: ViewerResolver | null): RequestHandler {
   return async (req, _res, next) => {
     const header = req.headers.authorization;
     const token = header?.startsWith('Bearer ') ? header.slice('Bearer '.length).trim() : '';
@@ -17,6 +17,8 @@ export function requireSession(sessions: SessionService, viewers: ViewerResolver
     const user = await sessions.authenticate(token);
     if (!user) throw AppError.unauthorized('Session is unknown or expired. Create a new session.');
     req.user = user;
+    // Account-level routes (profiles: choosing / unlocking one) work before a profile is open.
+    if (!viewers) return next();
     req.viewer = await viewers.resolve(user, {
       profileId: headerValue(req.headers['x-profile-id']),
       unlockToken: headerValue(req.headers['x-unlock-token']),
@@ -44,6 +46,25 @@ export function optionalSession(sessions: SessionService): RequestHandler {
 function headerValue(value: string | string[] | undefined): string | undefined {
   const first = Array.isArray(value) ? value[0] : value;
   return first?.trim() || undefined;
+}
+
+/**
+ * `auth` followed by the strict kids rule: a kids profile cannot change what the account brings
+ * in (sources, playlists, guides, purchases). `mode: 'writes'` lets it read, `'all'` refuses all.
+ */
+export function withoutKids(auth: RequestHandler, mode: 'writes' | 'all'): RequestHandler {
+  return async (req, res, next) => {
+    let passed = false;
+    await auth(req, res, (error?: unknown) => {
+      if (error) throw error;
+      passed = true;
+    });
+    if (!passed) return;
+    if (req.viewer?.kids && (mode === 'all' || !['GET', 'HEAD', 'OPTIONS'].includes(req.method))) {
+      throw new AppError('FORBIDDEN', 403, 'Not available in a kids profile.', { reason: 'kids_profile' });
+    }
+    next();
+  };
 }
 
 /** Playback requests may carry the unlock token in the JSON body (`unlockToken`). */

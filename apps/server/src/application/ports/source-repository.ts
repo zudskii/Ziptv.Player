@@ -35,6 +35,8 @@ export interface SourceAccount {
   maxConnections: number | null;
   activeConnections: number | null;
   trial: boolean;
+  /** Xtream panels: IANA zone of archive start times (null/absent = UTC). */
+  timezone?: string | null;
 }
 
 export interface SourceRecord {

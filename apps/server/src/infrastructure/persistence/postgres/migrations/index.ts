@@ -11,6 +11,7 @@ import * as operatorCatalog from './0008-operator-catalog.js';
 import * as streamHealth from './0009-stream-health.js';
 import * as commerce from './0010-commerce.js';
 import * as consoleModule from './0011-console.js';
+import * as viewerControls from './0012-viewer-controls.js';
 
 /**
  * Forward-only migrations, applied in key order. Add a new file and register it here;
@@ -28,4 +29,5 @@ export const MIGRATIONS: Record<string, Migration> = {
   '0009-stream-health': streamHealth,
   '0010-commerce': commerce,
   '0011-console': consoleModule,
+  '0012-viewer-controls': viewerControls,
 };

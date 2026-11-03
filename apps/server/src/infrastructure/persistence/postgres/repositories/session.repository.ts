@@ -40,6 +40,8 @@ export class PgSessionRepository implements SessionRepository {
         'sessions.last_seen_at as session_last_seen_at',
         'sessions.expires_at as session_expires_at',
         'sessions.user_agent as session_user_agent',
+        'sessions.kids_lock_profile_id as session_kids_lock',
+        'sessions.open_profile_id as session_open_profile',
         'users.id as user_id',
         'users.email as user_email',
         'users.role as user_role',
@@ -58,6 +60,8 @@ export class PgSessionRepository implements SessionRepository {
         lastSeenAt: row.session_last_seen_at,
         expiresAt: row.session_expires_at,
         userAgent: row.session_user_agent,
+        kidsLockProfileId: row.session_kids_lock,
+        openProfileId: row.session_open_profile,
       },
       user: { id: row.user_id, email: row.user_email, role: row.user_role, emailVerifiedAt: row.user_email_verified_at, createdAt: row.user_created_at, lastSeenAt: row.user_last_seen_at },
     };
@@ -70,6 +74,19 @@ export class PgSessionRepository implements SessionRepository {
       .where('id', '=', sessionId)
       .execute();
     await this.db.updateTable('users').set({ last_seen_at: at }).where('id', '=', userId).execute();
+  }
+
+  async setProfileGate(sessionId: string, userId: string, gate: { kidsLockProfileId?: string | null; openProfileId?: string | null }): Promise<void> {
+    const set = {
+      ...(gate.kidsLockProfileId !== undefined ? { kids_lock_profile_id: gate.kidsLockProfileId } : {}),
+      ...(gate.openProfileId !== undefined ? { open_profile_id: gate.openProfileId } : {}),
+    };
+    if (Object.keys(set).length === 0) return;
+    await this.db.updateTable('sessions').set(set).where('id', '=', sessionId).where('user_id', '=', userId).execute();
+  }
+
+  async clearProfileGates(userId: string): Promise<void> {
+    await this.db.updateTable('sessions').set({ kids_lock_profile_id: null, open_profile_id: null }).where('user_id', '=', userId).execute();
   }
 
   async listForUser(userId: string): Promise<SessionRecord[]> {

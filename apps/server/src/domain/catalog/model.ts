@@ -35,6 +35,8 @@ export interface CatchupInfo {
   days: number;
   /** `catchup-source` template (may be relative to the stream URL); null = mode default. */
   template: string | null;
+  /** xtream: IANA zone the panel reads archive start times in (licensed operator streams). */
+  timezone?: string | null;
 }
 
 /** Link of a live channel to a guide channel (set by the EPG matcher). */
@@ -144,6 +146,8 @@ export interface ProviderAccount {
   maxConnections: number | null;
   activeConnections: number | null;
   trial: boolean;
+  /** Xtream panels: IANA zone the archive (`timeshift`) start times are read in. */
+  timezone?: string | null;
 }
 
 export interface CatalogStats {

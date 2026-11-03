@@ -1,4 +1,4 @@
-import type { StreamKind, StreamLocator } from '../../domain/catalog/model.js';
+import type { CatchupInfo, StreamKind, StreamLocator } from '../../domain/catalog/model.js';
 import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../domain/operator/catalog.js';
 import type { RightsGrant } from '../../domain/operator/rights.js';
 
@@ -25,6 +25,8 @@ export interface ProviderChannel {
   locator: StreamLocator | null;
   /** Xtream: stream id (the URL is built from the credential at play time). */
   xtream: { id: number } | null;
+  /** The provider's archive of this stream (catch-up), if any. */
+  catchup: CatchupInfo | null;
 }
 
 export interface ProviderHealth {
@@ -40,6 +42,8 @@ export interface ProviderHealth {
 export interface ProviderAdapter {
   listChannels(provider: ProviderRecord, connection: ProviderConnection, signal: AbortSignal): Promise<{ channels: ProviderChannel[]; epgUrls: string[] }>;
   resolveFeed(provider: ProviderRecord, connection: ProviderConnection, stream: ProviderStreamRecord): Promise<StreamLocator>;
+  /** Archive address of [start, end) on this stream; null when the stream has no usable archive. */
+  resolveArchive(provider: ProviderRecord, connection: ProviderConnection, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): Promise<StreamLocator | null>;
   health(provider: ProviderRecord, connection: ProviderConnection, signal: AbortSignal): Promise<ProviderHealth>;
 }
 
@@ -101,6 +105,7 @@ export interface ProviderStreamRecord {
   /** Encrypted locator. */
   locator: string | null;
   xtream: { id: number } | null;
+  catchup: CatchupInfo | null;
   status: StreamStatus;
   channelId: string | null;
   matchMethod: MatchMethod | null;
@@ -140,6 +145,8 @@ export interface FeedRecord {
   /** Joined: for playability decisions. */
   providerStatus: ProviderStatus;
   streamStatus: StreamStatus;
+  /** Joined: days of archive the provider keeps for this stream (0 = no catch-up). */
+  archiveDays: number;
 }
 
 export interface LineupRecord {
@@ -160,6 +167,7 @@ export interface NewGrant {
   startAt: Date;
   endAt: Date | null;
   contractRef: string;
+  catchupDays: number;
   createdBy: string | null;
 }
 

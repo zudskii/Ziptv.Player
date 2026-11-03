@@ -53,7 +53,7 @@ export class LiveCatalogService {
   async getChannel(viewer: Viewer, sourceId: string, key: string): Promise<ChannelDto> {
     const source = await this.requireSource(viewer, sourceId);
     const [channel] = await this.deps.catalog.findLiveMany({ sourceId: source.id, revision: source.revision }, [key]);
-    if (!channel || isHiddenForViewer(viewer, channel)) throw AppError.notFound('Channel');
+    if (!channel || isHiddenForViewer(viewer, channel, source.id)) throw AppError.notFound('Channel');
     return toChannelDto(channel, this.isLocked(viewer, source.id, channel), this.artwork);
   }
 

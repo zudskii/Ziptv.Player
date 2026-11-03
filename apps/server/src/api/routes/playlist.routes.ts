@@ -5,7 +5,9 @@ import type { PlaylistEntryService } from '../../application/playlists/playlist-
 import type { ExportLink, PlaylistService } from '../../application/playlists/playlist.service.js';
 import { PLAYLIST_EXPORT_PREFIX } from '../http-paths.js';
 import type { RateLimiterFactory } from '../middleware/rate-limit.js';
-import { currentUser, routeParam } from '../middleware/request-context.js';
+import { AppError } from '../../application/errors.js';
+import type { ParentalService } from '../../application/identity/parental.service.js';
+import { currentUser, currentViewer, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import { EntityId } from './schemas.js';
 
@@ -85,6 +87,8 @@ export function createPlaylistRouter(deps: {
   /** Origin for export links; null = the origin of the request. */
   publicUrl: string | null;
   limit: RateLimiterFactory;
+  /** An export link plays everything outside the app (no profile, no locks): with a PIN set it needs the PIN. */
+  parental?: Pick<ParentalService, 'hasPin'>;
 }): Router {
   const { playlists, entries, auth, publicUrl } = deps;
   const router = Router();
@@ -133,6 +137,9 @@ export function createPlaylistRouter(deps: {
   /** Turns the link on or replaces it; the previous link stops working immediately. */
   router.post('/:playlistId/export', exportLimiter, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
+    if (deps.parental && !currentViewer(req).unlocked && (await deps.parental.hasPin(owner(req)))) {
+      throw new AppError('PIN_REQUIRED', 403, 'Enter the parental PIN to create an export link.', { reason: 'pin_required' });
+    }
     res.json({ enabled: true, url: await playlists.enableExport(owner(req), id(req), linkFor(req)) });
   });
 

@@ -49,6 +49,23 @@ export function configureProfileRecovery(handler: () => boolean): void {
   recoverProfile = handler;
 }
 
+/** Parental gate of a profile (`PIN_REQUIRED` with reason `kids_lock` / `profile_locked`). */
+export interface ProfileGate {
+  reason: 'kids_lock' | 'profile_locked';
+  profileId: string;
+}
+
+let recoverGate: (gate: ProfileGate) => Promise<boolean> = async () => false;
+
+/**
+ * Called when the server refuses the selected profile on this device (held in a kids profile,
+ * or a PIN-protected profile not opened here): the handler switches profile or asks for the PIN
+ * and returns true when the request may be repeated once.
+ */
+export function configureGateRecovery(handler: (gate: ProfileGate) => Promise<boolean>): void {
+  recoverGate = handler;
+}
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   /** Plain objects are sent as JSON, FormData as multipart. */
@@ -103,9 +120,20 @@ async function send(path: string, options: RequestOptions, withAuth: boolean, is
     if (read && withAuth && !isRetry && error.status === 404 && (error.details as { reason?: unknown } | undefined)?.reason === 'profile' && recoverProfile()) {
       return send(path, options, withAuth, true);
     }
+    const gate = profileGate(error);
+    if (gate && withAuth && !isRetry && (read || gate.reason === 'profile_locked') && (await recoverGate(gate))) {
+      return send(path, options, withAuth, true);
+    }
     throw error;
   }
   return response;
+}
+
+function profileGate(error: ApiError): ProfileGate | null {
+  if (error.code !== 'PIN_REQUIRED') return null;
+  const details = error.details as { reason?: unknown; profileId?: unknown } | undefined;
+  if ((details?.reason === 'kids_lock' || details?.reason === 'profile_locked') && typeof details.profileId === 'string') return { reason: details.reason, profileId: details.profileId };
+  return null;
 }
 
 async function toApiError(response: Response): Promise<ApiError> {

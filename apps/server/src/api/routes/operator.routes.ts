@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
+import { AppError } from '../../application/errors.js';
 import type { OperatorEpgService } from '../../application/operator/operator-epg.service.js';
 import type { OperatorService } from '../../application/operator/operator.service.js';
 import { DEVICE_CLASSES } from '../../domain/operator/catalog.js';
@@ -12,6 +13,7 @@ import { EntityId } from './schemas.js';
 
 export const DeviceClass = z.enum(DEVICE_CLASSES);
 const ChannelsQuery = z.object({ lineup: z.string().trim().min(1).max(80).optional(), device: DeviceClass.default('web') }).strict();
+const ScheduleQuery = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional(), device: DeviceClass.default('web') }).strict();
 const GuideQuery = z.object({ channels: z.string().max(40_000).transform((value) => [...new Set(value.split(',').map((id) => id.trim()).filter(Boolean))].slice(0, 1000)), device: DeviceClass.default('web') }).strict();
 
 /**
@@ -35,6 +37,21 @@ export function createOperatorRouter(deps: { operator: OperatorService; epg?: Op
     const visible = new Set((await operator.channels(currentViewer(req), deps.viewingContext(req, query.device))).channels.map((channel) => channel.id));
     res.setHeader('Cache-Control', 'private, max-age=60');
     res.json(deps.epg ? await deps.epg.nowNext(query.channels.filter((id) => visible.has(id))) : []);
+  });
+
+  // One channel's schedule (past programmes flagged when this viewer may replay them).
+  router.get('/channels/:channelId/schedule', deps.auth, async (req, res) => {
+    const channelId = parseInput(EntityId, routeParam(req, 'channelId'), 'Channel id');
+    const query = parseInput(ScheduleQuery, req.query, 'Schedule request');
+    const viewer = currentViewer(req);
+    const context = deps.viewingContext(req, query.device);
+    const channel = (await operator.channels(viewer, context)).channels.find((item) => item.id === channelId);
+    if (!channel || !deps.epg) throw AppError.notFound('Channel');
+    const now = Date.now();
+    const from = query.from ?? new Date(now - Math.max(channel.catchupDays, 1) * 86_400_000);
+    const to = query.to ?? new Date(now + 86_400_000);
+    res.setHeader('Cache-Control', 'private, max-age=60');
+    res.json(await deps.epg.schedule(channel.id, { from, to }, channel.catchupDays));
   });
 
   router.put('/favorites/:channelId', deps.auth, writeLimiter, async (req, res) => {

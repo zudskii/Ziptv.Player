@@ -8,6 +8,10 @@ export interface SessionRecord {
   /** null = never expires (guest sessions). */
   expiresAt: Date | null;
   userAgent: string | null;
+  /** Parental: the kids profile this device is held in (other profiles need the PIN). */
+  kidsLockProfileId?: string | null;
+  /** Parental: the PIN-protected profile opened on this device with the PIN. */
+  openProfileId?: string | null;
 }
 
 export interface NewSession {
@@ -27,6 +31,10 @@ export interface SessionRepository {
   findByTokenHash(tokenHash: string): Promise<{ session: SessionRecord; user: UserRecord } | null>;
   /** Marks activity; `expiresAt` slides the expiry of account sessions (undefined = leave as is). */
   touch(sessionId: string, userId: string, at: Date, expiresAt?: Date): Promise<void>;
+  /** Parental profile gate of one device (undefined = unchanged). */
+  setProfileGate(sessionId: string, userId: string, gate: { kidsLockProfileId?: string | null; openProfileId?: string | null }): Promise<void>;
+  /** Every device of the account leaves its kids lock / open protected profile (PIN removed). */
+  clearProfileGates(userId: string): Promise<void>;
   listForUser(userId: string): Promise<SessionRecord[]>;
   /** The session exists and has not expired at `now` (media proxies re-check their grant with this). */
   isActive(sessionId: string, now: Date): Promise<boolean>;

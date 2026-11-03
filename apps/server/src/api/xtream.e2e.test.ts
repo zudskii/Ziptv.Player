@@ -18,6 +18,7 @@ const TS_PACKETS = Buffer.alloc(188 * 3, 0xff);
 const MP4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42'), Buffer.alloc(12)]);
 
 const calls: Record<string, number> = {};
+const archiveRequests: string[] = [];
 
 const LIVE_CATEGORIES = [
   { category_id: '1', category_name: 'News', parent_id: 0 },
@@ -77,7 +78,7 @@ async function startPanel(): Promise<FakeOrigin> {
           case 'auth':
             json(res, {
               user_info: { username: USER, auth: 1, status: 'Active', exp_date: String(Math.floor(Date.now() / 1000) + 86_400 * 30), is_trial: '0', active_cons: '0', max_connections: '2', allowed_output_formats: ['m3u8', 'ts'] },
-              server_info: { timezone: 'UTC' },
+              server_info: { timezone: 'Asia/Tbilisi' },
             });
             return;
           case 'get_live_categories':
@@ -136,6 +137,11 @@ async function startPanel(): Promise<FakeOrigin> {
         res.writeHead(200, { 'content-type': 'video/mp4', 'content-length': MP4.length, 'accept-ranges': 'bytes' }).end(MP4);
         return;
       default:
+        if (url.pathname.startsWith(`/timeshift/${USER}/${PASS}/`)) {
+          archiveRequests.push(url.pathname);
+          res.writeHead(200, { 'content-type': 'video/mp2t' }).end(TS_PACKETS);
+          return;
+        }
         res.writeHead(404).end();
     }
   });
@@ -166,8 +172,11 @@ describe.skipIf(!TEST_DATABASE_URL)('Xtream Codes end-to-end', () => {
     });
   }
 
+  /** A plan, its viewing then reported stopped (the account allows only 2 connections at once). */
   async function play(content: Record<string, unknown>): Promise<PlaybackPlanDto> {
-    return (await request(t.app).post('/api/v1/playback').set(auth()).send({ content, secureContext: true }).expect(200)).body as PlaybackPlanDto;
+    const plan = (await request(t.app).post('/api/v1/playback').set(auth()).send({ content, secureContext: true }).expect(200)).body as PlaybackPlanDto;
+    await request(t.app).post('/api/v1/playback/events').set(auth()).send({ sessionId: plan.sessionId, type: 'stop' }).expect(204);
+    return plan;
   }
 
   it('syncs live, movies and series with the account state, never exposing the credentials', async () => {
@@ -208,6 +217,45 @@ describe.skipIf(!TEST_DATABASE_URL)('Xtream Codes end-to-end', () => {
     const base = new URL(plan.candidates[0]!.url, 'http://api.local');
     const segment = await request(t.app).get(new URL(segmentRef, base).pathname).buffer(true).parse(binaryParser).expect(200);
     expect(Buffer.compare(segment.body as Buffer, TS_PACKETS)).toBe(0);
+  });
+
+  it('replays a programme from the Xtream archive in the panel time zone, through the proxy', async () => {
+    const live = (await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(auth())).body as ChannelListDto;
+    const [news, sports] = live.channels;
+    const start = new Date(Math.floor(Date.now() / 3_600_000) * 3_600_000 - 3 * 3_600_000);
+    const end = new Date(start.getTime() + 90 * 60_000);
+    const plan = await play({ type: 'catchup', sourceId: source.id, key: news!.key, start: start.toISOString(), end: end.toISOString() });
+    expect(plan.content).toMatchObject({ mode: 'catchup', title: 'Xtream News', durationSecs: 5400 });
+    expect(plan.candidates.map((c) => [c.engine, c.via])).toEqual([['mpegts', 'proxy']]);
+    expect(JSON.stringify(plan)).not.toContain(PASS);
+    const body = await request(t.app).get(plan.candidates[0]!.url).buffer(true).parse(binaryParser).expect(200);
+    expect(Buffer.compare(body.body as Buffer, TS_PACKETS)).toBe(0);
+    // Asia/Tbilisi is UTC+4: the panel reads the start in its own zone.
+    const local = new Date(start.getTime() + 4 * 3_600_000).toISOString();
+    expect(archiveRequests.at(-1)).toBe(`/timeshift/${USER}/${PASS}/90/${local.slice(0, 10)}:${local.slice(11, 13)}-${local.slice(14, 16)}/101.ts`);
+
+    const refused = async (content: Record<string, unknown>) => (await request(t.app).post('/api/v1/playback').set(auth()).send({ content, secureContext: true }).expect(422)).body.error.details as Record<string, unknown>;
+    expect(await refused({ type: 'catchup', sourceId: source.id, key: sports!.key, start: start.toISOString(), end: end.toISOString() })).toMatchObject({ reason: 'catchup_unavailable', problem: 'not_available' });
+    const old = new Date(Date.now() - 4 * 86_400_000);
+    expect(await refused({ type: 'catchup', sourceId: source.id, key: news!.key, start: old.toISOString(), end: new Date(old.getTime() + 3_600_000).toISOString() })).toMatchObject({ problem: 'outside_window' });
+    const onAir = new Date(Date.now() - 600_000);
+    expect(await refused({ type: 'catchup', sourceId: source.id, key: news!.key, start: onAir.toISOString(), end: new Date(onAir.getTime() + 3_600_000).toISOString() })).toMatchObject({ problem: 'not_ended' });
+  });
+
+  it('the account allows 2 connections: a third player is refused until one stops or moves on', async () => {
+    const live = (await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(auth())).body as ChannelListDto;
+    const content = { type: 'channel', sourceId: source.id, key: live.channels[0]!.key };
+    const plan = (extra: Record<string, unknown> = {}) => request(t.app).post('/api/v1/playback').set(auth()).send({ content, secureContext: true, ...extra });
+    const first = (await plan().expect(200)).body as PlaybackPlanDto;
+    const second = (await plan().expect(200)).body as PlaybackPlanDto;
+    expect((await plan().expect(409)).body.error).toMatchObject({ code: 'CONCURRENCY_LIMIT', details: { reason: 'source_connections', limit: 2 } });
+    // A player zapping on keeps its own connection (the previous viewing is freed first).
+    const zapped = (await plan({ replaces: second.sessionId }).expect(200)).body as PlaybackPlanDto;
+    await request(t.app).post('/api/v1/playback/events').set(auth()).send({ sessionId: zapped.sessionId, type: 'heartbeat' }).expect(204);
+    await plan().expect(409);
+    await request(t.app).post('/api/v1/playback/events').set(auth()).send({ sessionId: first.sessionId, type: 'stop' }).expect(204);
+    const third = (await plan().expect(200)).body as PlaybackPlanDto;
+    for (const viewing of [zapped, third]) await request(t.app).post('/api/v1/playback/events').set(auth()).send({ sessionId: viewing.sessionId, type: 'stop' }).expect(204);
   });
 
   it('plays a movie from its container extension', async () => {

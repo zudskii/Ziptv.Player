@@ -28,6 +28,7 @@ function guideXml(): string {
 }
 
 let providerBase = '';
+const archivePaths: string[] = [];
 
 async function startProvider(): Promise<FakeOrigin> {
   return startOrigin((req, res) => {
@@ -38,6 +39,12 @@ async function startProvider(): Promise<FakeOrigin> {
     }
     if (req.headers['user-agent'] !== 'SecretUA/9' && path !== '/SECRETUSER/logo.png') {
       res.writeHead(403).end();
+      return;
+    }
+    // Flussonic archive of the live channel: /live/master-<start>-<duration>.m3u8
+    if (path && /^\/SECRETUSER\/SECRETPASS\/live\/master-\d+-\d+\.m3u8$/.test(path)) {
+      archivePaths.push(path);
+      res.writeHead(200).end('#EXTM3U\n#EXT-X-PLAYLIST-TYPE:VOD\n#EXTINF:6,\nseg1.ts?token=SECRETTOKEN\n#EXT-X-ENDLIST\n');
       return;
     }
     switch (path) {
@@ -87,7 +94,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Security: proxy delivery hides providers an
     token = ((await request(t.app).post('/api/v1/sessions').send({}).expect(201)).body as SessionDto).token;
     const m3u = [
       `#EXTM3U url-tvg="${origin.url}/SECRETUSER/guide.xml?token=SECRETTOKEN"`,
-      `#EXTINF:-1 tvg-id="live.one" group-title="News" tvg-logo="${origin.url}/SECRETUSER/logo.png?token=SECRETTOKEN",Live One`,
+      `#EXTINF:-1 tvg-id="live.one" group-title="News" catchup="flussonic" catchup-days="2" tvg-logo="${origin.url}/SECRETUSER/logo.png?token=SECRETTOKEN",Live One`,
       '#EXTVLCOPT:http-user-agent=SecretUA/9',
       `${origin.url}/SECRETUSER/SECRETPASS/live/master.m3u8?token=SECRETTOKEN`,
       '#EXTINF:-1 group-title="News",Dead One',
@@ -143,6 +150,25 @@ describe.skipIf(!TEST_DATABASE_URL)('Security: proxy delivery hides providers an
     expect(t.container.mediaTokens.verify(variant, 'stream')!.expiresAt).toBeGreaterThan(now + 3600);
   });
 
+  it('catch-up plans are proxied too; the archive address is built server-side', async () => {
+    const start = Math.floor(Date.now() / 3_600_000) * 3_600_000 - 2 * 3_600_000;
+    // The programme title comes from the guide (synced in the background).
+    const catchup = await waitFor(async () => {
+      const response = record(
+        await request(t.app)
+          .post('/api/v1/playback')
+          .set(bearer())
+          .send({ content: { type: 'catchup', sourceId: source.id, key: channels.channels[0]!.key, start: new Date(start).toISOString(), end: new Date(start + 3_600_000).toISOString() }, secureContext: true })
+          .expect(200),
+      ).body as PlaybackPlanDto;
+      return response.content.programme ? response : null;
+    });
+    expect(catchup.content).toMatchObject({ mode: 'catchup', title: 'Morning Show 0', programme: expect.objectContaining({ title: 'Morning Show 0' }) });
+    expect(catchup.candidates.every((candidate) => candidate.via === 'proxy')).toBe(true);
+    record(await request(t.app).get(catchup.candidates[0]!.url).expect(200));
+    expect(archivePaths.at(-1)).toBe(`/SECRETUSER/SECRETPASS/live/master-${start / 1000}-3600.m3u8`);
+  }, 20_000);
+
   it('VOD playlists keep long-lived segment links (a movie is fetched over hours)', async () => {
     const page = record(await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(bearer()).expect(200)).body as ChannelListDto;
     expect(page.channels).toHaveLength(3); // the movie is in the VOD library, not Live TV
@@ -195,8 +221,25 @@ describe.skipIf(!TEST_DATABASE_URL)('Security: proxy delivery hides providers an
     const streamUrl = exported.split('\n').find((line) => line.includes('/api/v1/media/stream/'))!;
     await request(t.app).get(new URL(streamUrl).pathname).expect(200);
 
+    // Catch-up goes through ZIPTV as well: the player fills {utc}/{utcend}, the server redirects into the proxy.
+    const template = /catchup-source="([^"]+)"/.exec(exported)?.[1];
+    expect(exported).toContain('catchup="default" catchup-days="2"');
+    expect(template).toMatch(/\/api\/v1\/media\/archive\/[^/?]+\?utc=\{utc\}&utcend=\{utcend\}$/);
+    const start = Math.floor(Date.now() / 3_600_000) * 3600 - 2 * 3600;
+    const archiveUrl = new URL(template!.replace('{utc}', String(start)).replace('{utcend}', String(start + 3600)));
+    const redirect = record(await request(t.app).get(archiveUrl.pathname + archiveUrl.search).expect(302));
+    const target = new URL(redirect.headers.location as string, archiveUrl).pathname;
+    expect(target).toMatch(/^\/api\/v1\/media\/stream\//);
+    record(await request(t.app).get(target).expect(200));
+    expect(archivePaths.at(-1)).toBe(`/SECRETUSER/SECRETPASS/live/master-${start}-3600.m3u8`);
+    // Outside the archive window: refused without contacting the provider.
+    const old = start - 3 * 86_400;
+    await request(t.app).get(archiveUrl.pathname + `?utc=${old}&utcend=${old + 3600}`).expect(422);
+
     await request(t.app).delete(`/api/v1/playlists/${playlist.id}/export`).set(bearer()).expect(204);
     await request(t.app).get(new URL(streamUrl).pathname).expect(403);
+    await request(t.app).get(archiveUrl.pathname + archiveUrl.search).expect(403);
+    await request(t.app).get(target).expect(403);
   });
 
   it('signing out stops the stream links of that device at once', async () => {

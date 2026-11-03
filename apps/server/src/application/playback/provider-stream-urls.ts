@@ -1,5 +1,6 @@
 import type { StreamKind } from '../../domain/catalog/model.js';
-import { xtreamStreamUrl, type XtreamStreamType } from '../../domain/sources/xtream.js';
+import { zoneOffsetMinutes } from '../../domain/catalog/catchup-url.js';
+import { xtreamStreamUrl, xtreamTimeshiftUrl, type XtreamStreamType } from '../../domain/sources/xtream.js';
 import { AppError } from '../errors.js';
 import type { SourceRecord } from '../ports/source-repository.js';
 import type { SourceSecrets } from '../sources/secrets.js';
@@ -23,5 +24,16 @@ export class ProviderStreamUrls implements StreamUrlResolver {
     const extension = type === 'live' ? (kind === 'hls' ? 'm3u8' : 'ts') : (ref.ext ?? 'mp4');
     const url = xtreamStreamUrl(credential, STREAM_TYPES[type], ref.id, extension);
     return { kind, unplayableReason: null, locator: { url, headers: {} } };
+  }
+
+  async archive(source: SourceRecord, ref: { id: number }, range: { start: Date; end: Date }): Promise<StreamTarget> {
+    const credential = this.secrets.openCredential(source.credential);
+    if (credential.type !== 'xtream') {
+      throw new AppError('UNPLAYABLE', 422, 'This channel has no archive address.', { reason: 'unsupported_format' });
+    }
+    // Panels read the start in their own zone (server_info.timezone, recorded at sync).
+    const offset = zoneOffsetMinutes(source.account?.timezone, range.start);
+    const url = xtreamTimeshiftUrl(credential, ref.id, range.start, (range.end.getTime() - range.start.getTime()) / 60_000, offset);
+    return { kind: 'mpegts', unplayableReason: null, locator: { url, headers: {} } };
   }
 }

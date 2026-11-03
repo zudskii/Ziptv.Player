@@ -1,8 +1,12 @@
 import type { ContentRefDto, ProgrammeDto, SourceDto } from '@ziptv/contracts';
-import { CalendarDays, List, Server } from 'lucide-react';
+import { CalendarDays, History, List, Radio, Server } from 'lucide-react';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
+
+import { Button } from '../../components/ui/Button';
+import { archiveRange, paths } from '../../lib/routes';
+import { formatDay, formatRange } from '../../lib/time';
 
 import { Segmented } from '../../components/ui/Segmented';
 import { errorMessage } from '../../lib/api-client';
@@ -72,7 +76,23 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
   );
 
   const current = channelKey ? byKey.get(channelKey) : undefined;
-  const content: ContentRefDto | undefined = useMemo(() => (current ? { type: 'channel', sourceId: source.id, key: current.key } : undefined), [current, source.id]);
+  // Catch-up: `?at=&until=` replays a past programme of the channel from its archive.
+  const [params] = useSearchParams();
+  const at = params.get('at');
+  const until = params.get('until');
+  const archive = useMemo(() => archiveRange(new URLSearchParams({ ...(at ? { at } : {}), ...(until ? { until } : {}) })), [at, until]);
+  const content: ContentRefDto | undefined = useMemo(() => {
+    if (!current) return undefined;
+    return archive ? { type: 'catchup', sourceId: source.id, key: current.key, start: archive.start, end: archive.end } : { type: 'channel', sourceId: source.id, key: current.key };
+  }, [current, source.id, archive]);
+  const watchArchive = useCallback(
+    (programme: ProgrammeDto) => {
+      setProgramme(null);
+      if (current) navigate(paths.archive(source.id, current.key, programme));
+    },
+    [current, navigate, source.id],
+  );
+  const backToLive = useCallback(() => current && navigate(paths.channel(source.id, current.key)), [current, navigate, source.id]);
 
   // History: remember what was watched (for "Recent" and resume).
   useEffect(() => {
@@ -107,9 +127,20 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
               if (ref.type === 'channel') navigate(`/live/${ref.sourceId}/${ref.key}`);
             }}
             onBack={() => navigate(`/live/${source.id}`)}
-            infoOverlay={current ? <LiveInfoOverlay sourceId={source.id} channel={current} entry={nowNext?.[current.key]} /> : undefined}
+            infoOverlay={current && !archive ? <LiveInfoOverlay sourceId={source.id} channel={current} entry={nowNext?.[current.key]} /> : undefined}
           />
         </div>
+        {archive && current && (
+          <div className="flex items-center gap-3 rounded-xl border border-brand/20 bg-brand/5 px-3 py-2 text-sm">
+            <History className="h-4 w-4 shrink-0 text-brand-soft" aria-hidden />
+            <span className="min-w-0 flex-1 truncate text-fg">
+              From the archive · {current.name} · {formatDay(archive.start)} {formatRange(archive.start, archive.end)}
+            </span>
+            <Button size="sm" icon={<Radio className="h-4 w-4" />} onClick={backToLive}>
+              Back to live
+            </Button>
+          </div>
+        )}
 
         {current ? (
           <>
@@ -127,7 +158,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
                 <h2 className="flex items-center gap-2 px-2 pb-2 pt-1 text-sm font-semibold text-fg">
                   <CalendarDays className="h-4 w-4 text-brand-soft" /> Schedule
                 </h2>
-                <MiniGuide source={source} channel={current} onSelect={setProgramme} className="max-h-[28rem] min-h-0 flex-1" />
+                <MiniGuide source={source} channel={current} onSelect={setProgramme} onWatchArchive={watchArchive} className="max-h-[28rem] min-h-0 flex-1" />
               </section>
             )}
           </>
@@ -138,7 +169,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
         ) : null}
 
         <p className="hidden text-xs text-fg-subtle lg:block">
-          Shortcuts: <Kbd>Space</Kbd> play/pause · <Kbd>M</Kbd> mute · <Kbd>F</Kbd> fullscreen · <Kbd>↑</Kbd>/<Kbd>↓</Kbd> volume · <Kbd>N</Kbd>/<Kbd>P</Kbd> next/previous channel
+          Shortcuts: <Kbd>Space</Kbd> play/pause · <Kbd>M</Kbd> mute · <Kbd>F</Kbd> fullscreen · <Kbd>↑</Kbd>/<Kbd>↓</Kbd> volume · <Kbd>N</Kbd>/<Kbd>P</Kbd> next/previous channel · <Kbd>I</Kbd> picture in picture · <Kbd>?</Kbd> all shortcuts
         </p>
       </section>
 
@@ -169,7 +200,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
         )}
         {!isDesktop && current && panel === 'guide' ? (
           <div className="card min-h-0 flex-1 p-2">
-            <MiniGuide source={source} channel={current} onSelect={setProgramme} className="h-full" />
+            <MiniGuide source={source} channel={current} onSelect={setProgramme} onWatchArchive={watchArchive} className="h-full" />
           </div>
         ) : (
         <div className="min-h-0 flex-1">
@@ -198,7 +229,11 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
         programme={programme}
         channel={current ?? null}
         onClose={() => setProgramme(null)}
-        onWatchLive={() => setProgramme(null)}
+        onWatchLive={() => {
+          setProgramme(null);
+          if (archive) backToLive();
+        }}
+        onWatchArchive={watchArchive}
       />
       <EpgMappingDialog key={current?.key ?? 'none'} sourceId={source.id} channel={mappingOpen && current ? current : null} onClose={() => setMappingOpen(false)} />
     </div>

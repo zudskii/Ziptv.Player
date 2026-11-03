@@ -65,7 +65,11 @@ export class PlaylistExportService {
                   groupName: row.groupName,
                   url: origin + media.streamProxyPath(locator.url, locator.headers, expiresAt, grant),
                   headers: {},
-                  catchup: null,
+                  // The archive goes through ZIPTV too: the player fills {utc}/{utcend}, the server builds the provider URL.
+                  catchup:
+                    row.catchup && row.catchup.mode !== 'xtream'
+                      ? { mode: 'default', days: row.catchup.days, template: origin + media.archiveProxyTemplate(locator.url, locator.headers, row.catchup, expiresAt, grant) }
+                      : null,
                 }
               : { name: row.name, number: row.number, logo: row.logo, tvgId: row.tvgId, groupName: row.groupName, url: locator.url, headers: locator.headers, catchup: row.catchup },
           );

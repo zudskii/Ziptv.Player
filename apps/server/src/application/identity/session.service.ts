@@ -19,6 +19,9 @@ export interface AuthUser {
   role: UserRole;
   /** The session (device) this request came in with. */
   sessionId: string;
+  /** Parental profile gate of this device (see ParentalService). */
+  kidsLockProfileId?: string | null;
+  openProfileId?: string | null;
 }
 
 export interface IssuedSession {
@@ -96,7 +99,7 @@ export class SessionService {
       // Fire-and-forget: activity tracking must never fail a request.
       this.sessions.touch(session.id, user.id, now, slid).catch((error: unknown) => this.logger.warn({ err: error }, 'Failed to update session activity'));
     }
-    return { id: user.id, createdAt: user.createdAt, email: user.email, emailVerified: user.emailVerifiedAt !== null, role: user.role, sessionId: session.id };
+    return { id: user.id, createdAt: user.createdAt, email: user.email, emailVerified: user.emailVerifiedAt !== null, role: user.role, sessionId: session.id, kidsLockProfileId: session.kidsLockProfileId ?? null, openProfileId: session.openProfileId ?? null };
   }
 
   list(userId: string): Promise<SessionRecord[]> {

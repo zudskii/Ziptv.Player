@@ -107,6 +107,8 @@ const EnvSchema = z
      * Can only be turned off outside production (single-developer setups, tests).
      */
     CONSOLE_FOUR_EYES: booleanString.default(true),
+    /** Parental controls (Phase 10): how long one PIN entry unlocks locked content on a device. */
+    PARENTAL_UNLOCK_MINUTES: z.coerce.number().int().min(1).max(240).default(15),
     /**
      * Commerce (Phase 8). subscription = operator channels need an active package entitlement
      * (FAST channels stay free); rights = Phase 6 behaviour, rights windows only (no paywall).
@@ -258,6 +260,7 @@ export interface AppConfig {
   };
   log: { level: string };
   admin: { port: number; host: string; trustProxy: boolean | number | string; distDir: string | null; idleTimeoutMs: number; absoluteTimeoutMs: number; mfaIssuer: string; fourEyes: boolean };
+  parental: { unlockTtlSeconds: number };
   database: { url: string; poolMax: number; runMigrations: boolean };
   auth: { sessionTtlDays: number };
   mail: { smtpUrl: string | null; from: string | null; logOnly: boolean };
@@ -360,6 +363,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       clientDistDir: env.CLIENT_DIST_DIR?.trim() || null,
     },
     log: { level: env.LOG_LEVEL },
+    parental: { unlockTtlSeconds: env.PARENTAL_UNLOCK_MINUTES * 60 },
     admin: {
       port: env.ADMIN_PORT,
       host: env.ADMIN_HOST ?? env.HOST,

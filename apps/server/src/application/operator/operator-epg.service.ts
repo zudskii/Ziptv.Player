@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto';
 
-import type { CreateOperatorGuideRequest, EpgCoverageDto, EpgCoverageStatus, OperatorGuideChannelDto, OperatorGuideDto, OperatorNowNextDto, UpdateOperatorGuideRequest } from '@ziptv/contracts';
+import type { CreateOperatorGuideRequest, EpgCoverageDto, EpgCoverageStatus, OperatorGuideChannelDto, OperatorGuideDto, OperatorNowNextDto, OperatorScheduleDto, ProgrammeDto, UpdateOperatorGuideRequest } from '@ziptv/contracts';
+
+import { catchupProblem } from '../../domain/catalog/catchup-url.js';
 
 import { stateHash } from '../../domain/admin/audit.js';
 import { idMatchKey, matchKey } from '../../domain/epg/epg.js';
@@ -23,6 +25,9 @@ const MAX_GUIDE_CHANNELS = 100_000;
 /** A gap longer than this in the next 24 h counts as a hole in the schedule. */
 const GAP_MS = HOUR;
 const ENDS_SOON_MS = 12 * HOUR;
+/** Past programmes kept for catch-up (the longest licensed archive the console allows is 30 d; 7 covers practice). */
+const PAST_DAYS = 7;
+const MAX_SCHEDULE_MS = 8 * 24 * HOUR;
 
 /**
  * Programme guide of the operator catalog (Phase 9.7). Licensed XMLTV guides are synced in
@@ -189,6 +194,41 @@ export class OperatorEpgService {
     });
   }
 
+  /**
+   * Schedule of one (already authorized) operator channel; `catchupDays` = the viewer's archive
+   * there, which marks the past programmes that can be replayed.
+   */
+  async schedule(channelId: string, range: { from: Date; to: Date }, catchupDays: number): Promise<OperatorScheduleDto> {
+    if (range.to <= range.from || range.to.getTime() - range.from.getTime() > MAX_SCHEDULE_MS) throw AppError.validation('The schedule covers at most 8 days at a time.');
+    const now = this.deps.clock.now();
+    const programmes = await this.deps.epg.programmesFor([channelId], range.from, range.to);
+    return {
+      channelId,
+      catchupDays,
+      programmes: programmes.map((programme) => ({ ...toProgramme(programme), catchup: catchupProblem(catchupDays, { start: programme.start, end: programme.stop }, now) === null })),
+    };
+  }
+
+  /** The guide's programme of a channel that starts at `start` (catch-up titles). */
+  async programmeAt(channelId: string, start: Date): Promise<ProgrammeDto | null> {
+    const programme = (await this.deps.epg.programmesFor([channelId], new Date(start.getTime() - 60_000), new Date(start.getTime() + 60_000))).find((item) => item.start.getTime() === start.getTime());
+    if (!programme) return null;
+    return {
+      id: `${channelId}:${programme.start.getTime()}`,
+      title: programme.title,
+      subtitle: programme.subtitle,
+      description: programme.description,
+      start: programme.start.toISOString(),
+      end: programme.stop.toISOString(),
+      categories: programme.categories,
+      // Provider icon URLs are not handed to viewers here (no proxy context in this read).
+      icon: null,
+      episode: null,
+      rating: null,
+      catchup: true,
+    };
+  }
+
   // --- sync ---------------------------------------------------------------------------------------
 
   async run(guide: OperatorGuideRecord, lease: TaskLease): Promise<void> {
@@ -196,7 +236,7 @@ export class OperatorEpgService {
     const log = this.deps.logger.child({ guideId: guide.id });
     const generation = guide.claimedGeneration ?? guide.generation + 1;
     const now = this.deps.clock.now();
-    const window = { from: new Date(now.getTime() - 24 * HOUR), to: new Date(now.getTime() + this.deps.daysAhead * 24 * HOUR) };
+    const window = { from: new Date(now.getTime() - PAST_DAYS * 24 * HOUR), to: new Date(now.getTime() + this.deps.daysAhead * 24 * HOUR) };
     try {
       const wanted = await this.wanted(guide.id);
       await epg.deleteGeneration(guide.id, generation);

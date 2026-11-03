@@ -92,6 +92,7 @@ function toSession(row: Row<'playback_sessions'>): PlaybackSessionRecord {
     expiresAt: row.expires_at,
     endedAt: row.ended_at,
     endReason: row.end_reason,
+    archive: row.archive_start && row.archive_end ? { start: row.archive_start, end: row.archive_end } : null,
   };
 }
 
@@ -450,6 +451,8 @@ export class PgCommerceRepository implements CommerceRepository {
         expires_at: record.expiresAt,
         ended_at: null,
         end_reason: null,
+        archive_start: record.archive?.start ?? null,
+        archive_end: record.archive?.end ?? null,
       })
       .execute();
   }

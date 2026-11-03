@@ -16,7 +16,7 @@ import type {
 import { remainingSecs } from '../../domain/viewer/progress.js';
 import { AppError } from '../errors.js';
 import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
-import type { CatalogRepository, MovieSummary, SeriesSummary, SourceRevisionRef, StoredEpisode, VodListQuery } from '../ports/catalog-repository.js';
+import type { CatalogRepository, HiddenContent, MovieSummary, SeriesSummary, SourceRevisionRef, StoredEpisode, VodListQuery } from '../ports/catalog-repository.js';
 import type { Cache } from '../ports/cache.js';
 import type { SourceRecord } from '../ports/source-repository.js';
 import { catalogVersion } from '../sources/source-mapper.js';
@@ -66,19 +66,19 @@ export class VodCatalogService {
 
   async movies(viewer: Viewer, sourceId: string, query: { category?: string | undefined; sort: VodSort; cursor?: string | undefined; limit: number }): Promise<MoviePageDto> {
     const source = await this.requireCatalog(viewer, sourceId);
-    return this.moviePage(viewer, source, this.listQuery(viewer, query));
+    return this.moviePage(viewer, source, this.listQuery(viewer, source.id, query));
   }
 
   async series(viewer: Viewer, sourceId: string, query: { category?: string | undefined; sort: VodSort; cursor?: string | undefined; limit: number }): Promise<SeriesPageDto> {
     const source = await this.requireCatalog(viewer, sourceId);
-    return this.seriesPage(viewer, source, this.listQuery(viewer, query));
+    return this.seriesPage(viewer, source, this.listQuery(viewer, source.id, query));
   }
 
   async movieDetails(viewer: Viewer, sourceId: string, key: string): Promise<MovieDetailsDto> {
     const source = await this.requireCatalog(viewer, sourceId);
     const pin = pinOf(source);
     const movie = await this.deps.catalog.findMovie(pin, key);
-    if (!movie || isHiddenForViewer(viewer, movie)) throw AppError.notFound('Movie');
+    if (!movie || isHiddenForViewer(viewer, movie, source.id)) throw AppError.notFound('Movie');
     const [inList, progress] = await Promise.all([
       this.deps.list ? this.deps.list.keys(viewer.profileId, source.id, 'movie') : Promise.resolve(new Set<string>()),
       this.deps.progress ? this.deps.progress.listForMovies(viewer.profileId, source.id, [key]) : Promise.resolve([]),
@@ -99,7 +99,7 @@ export class VodCatalogService {
   async seriesDetails(viewer: Viewer, sourceId: string, seriesKey: string): Promise<SeriesDetailsDto> {
     const source = await this.requireCatalog(viewer, sourceId);
     const series = await this.deps.catalog.findSeries(pinOf(source), seriesKey);
-    if (!series || isHiddenForViewer(viewer, series)) throw AppError.notFound('Series');
+    if (!series || isHiddenForViewer(viewer, series, source.id)) throw AppError.notFound('Series');
     const [episodes, inList, progress] = await Promise.all([
       this.deps.episodes.list(source, series),
       this.deps.list ? this.deps.list.keys(viewer.profileId, source.id, 'series') : Promise.resolve(new Set<string>()),
@@ -128,7 +128,7 @@ export class VodCatalogService {
   ): Promise<VodOverviewDto<T>> {
     const source = await this.requireCatalog(viewer, sourceId);
     // The same for every viewer with the same restrictions until the next sync (key = catalog version).
-    const key = `${sourceCachePrefix(source.id)}vod-overview:${type}:${catalogVersion(source)}:${viewer.restrictionsVersion}:${hidesAdult(viewer)}`;
+    const key = `${sourceCachePrefix(source.id)}vod-overview:${type}:${catalogVersion(source)}:${viewer.restrictionsVersion}:${hidesAdult(viewer)}:${viewer.unlocked ? 'u' : ''}`;
     if (!this.deps.cache) return this.buildOverview(source, viewer, type, page);
     return this.deps.cache.wrap(key, OVERVIEW_TTL_MS, () => this.buildOverview(source, viewer, type, page));
   }
@@ -140,12 +140,13 @@ export class VodCatalogService {
     page: (source: SourceRecord, query: VodListQuery) => Promise<{ items: T[] }>,
   ): Promise<VodOverviewDto<T>> {
     const hideAdult = hidesAdult(viewer);
-    const categories = await this.deps.catalog.vodCategories(pinOf(source), type, hideAdult);
+    const hidden = hiddenFor(viewer, source.id);
+    const categories = await this.deps.catalog.vodCategories(pinOf(source), type, hideAdult, hidden);
     const rail = async (id: string, title: string, category: string | null, sort: VodSort): Promise<VodRailDto<T>> => ({
       id,
       title,
       category,
-      items: (await page(source, { sort, offset: 0, limit: RAIL, hideAdult, skipTotal: true, ...(category ? { category } : {}) })).items,
+      items: (await page(source, { sort, offset: 0, limit: RAIL, hideAdult, skipTotal: true, ...(hidden ? { hidden } : {}), ...(category ? { category } : {}) })).items,
     });
     const rails = await Promise.all([
       rail('recent', 'Recently added', null, 'recent'),
@@ -170,10 +171,11 @@ export class VodCatalogService {
     return { items: items.map(map), nextCursor: next < total && items.length > 0 ? String(next) : null, total };
   }
 
-  private listQuery(viewer: Viewer, query: { category?: string | undefined; sort: VodSort; cursor?: string | undefined; limit: number }): VodListQuery {
+  private listQuery(viewer: Viewer, sourceId: string, query: { category?: string | undefined; sort: VodSort; cursor?: string | undefined; limit: number }): VodListQuery {
     const offset = query.cursor ? Number(query.cursor) : 0;
     if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) throw AppError.validation('Invalid cursor.');
-    return { sort: query.sort, offset, limit: Math.min(Math.max(query.limit, 1), MAX_PAGE), hideAdult: hidesAdult(viewer), ...(query.category ? { category: query.category } : {}) };
+    const hidden = hiddenFor(viewer, sourceId);
+    return { sort: query.sort, offset, limit: Math.min(Math.max(query.limit, 1), MAX_PAGE), hideAdult: hidesAdult(viewer), ...(hidden ? { hidden } : {}), ...(query.category ? { category: query.category } : {}) };
   }
 
   private async requireCatalog(viewer: Viewer, sourceId: string): Promise<SourceRecord> {
@@ -189,6 +191,15 @@ function pinOf(source: SourceRecord): SourceRevisionRef {
 
 function hidesAdult(viewer: Viewer): boolean {
   return viewer.kids || viewer.hideAdult;
+}
+
+/** Kids profiles: this source's locked groups and items are filtered out in the query (pagination stays right). */
+function hiddenFor(viewer: Viewer, sourceId: string): HiddenContent | undefined {
+  if (!viewer.kids) return undefined;
+  const prefix = `${sourceId}|`;
+  const pick = (keys: ReadonlySet<string>) => [...keys].filter((key) => key.startsWith(prefix)).map((key) => key.slice(prefix.length));
+  const hidden = { groups: pick(viewer.lockedGroups), keys: pick(viewer.lockedChannels) };
+  return hidden.groups.length || hidden.keys.length ? hidden : undefined;
 }
 
 function toProgressState(record: ProgressRecord): ProgressStateDto {

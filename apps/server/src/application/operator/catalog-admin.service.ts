@@ -379,7 +379,7 @@ export class CatalogAdminService {
         const span = `${startAt.toISOString().slice(0, 10)} → ${endAt ? endAt.toISOString().slice(0, 10) : 'open-ended'}`;
         return {
           payload: { ...input, contractRef: input.contractRef.trim() },
-          summary: `Rights for “${channel.name}”: ${input.territory === '*' ? 'worldwide' : input.territory} · ${[...new Set(input.deviceClasses)].join(', ')} · ${[...new Set(input.businessModels)].join(', ')} · ${span} · contract ${input.contractRef.trim()}`,
+          summary: `Rights for “${channel.name}”: ${input.territory === '*' ? 'worldwide' : input.territory} · ${[...new Set(input.deviceClasses)].join(', ')} · ${[...new Set(input.businessModels)].join(', ')} · ${span}${input.catchupDays ? ` · catch-up ${input.catchupDays} d` : ''} · contract ${input.contractRef.trim()}`,
           base: revokedGrants(await this.deps.catalog.grantsOf([channel.id])),
         };
       },
@@ -401,6 +401,7 @@ export class CatalogAdminService {
             grant.contractRef === input.contractRef.trim() &&
             grant.startAt.getTime() === startAt.getTime() &&
             (grant.endAt?.getTime() ?? null) === (endAt?.getTime() ?? null) &&
+            grant.catchupDays === (input.catchupDays ?? 0) &&
             [...grant.deviceClasses].sort().join(',') === devices &&
             [...grant.businessModels].sort().join(',') === models,
         );
@@ -414,6 +415,7 @@ export class CatalogAdminService {
           startAt,
           endAt,
           contractRef: input.contractRef.trim(),
+          catchupDays: input.catchupDays ?? 0,
           // The person who asked for it; the approver is in the audit entry.
           createdBy: change.requestedBy,
         });
@@ -571,6 +573,7 @@ function checkGrant(input: CreateGrantRequest): { startAt: Date; endAt: Date | n
   const startAt = new Date(input.startAt);
   const endAt = input.endAt ? new Date(input.endAt) : null;
   if (endAt && endAt <= startAt) throw AppError.validation('The end of a grant must be after its start.');
+  if (input.catchupDays !== undefined && (!Number.isInteger(input.catchupDays) || input.catchupDays < 0 || input.catchupDays > 30)) throw AppError.validation('Catch-up days must be between 0 and 30.');
   return { startAt, endAt };
 }
 
@@ -617,6 +620,7 @@ const grantState = (grant: StoredGrant) => ({
   startAt: grant.startAt,
   endAt: grant.endAt,
   contractRef: grant.contractRef,
+  catchupDays: grant.catchupDays,
   status: grant.status,
 });
 const lineupState = (lineup: LineupRecord, entries: { channelId: string; number: number }[] | null) => ({ name: lineup.name, status: lineup.status, country: lineup.country, ...(entries ? { entries } : {}) });
@@ -720,6 +724,7 @@ function toGrantDto(grant: StoredGrant): RightsGrantDto {
     startAt: grant.startAt.toISOString(),
     endAt: grant.endAt?.toISOString() ?? null,
     contractRef: grant.contractRef,
+    catchupDays: grant.catchupDays,
     status: grant.status,
     createdAt: grant.createdAt.toISOString(),
     revokedAt: grant.revokedAt?.toISOString() ?? null,

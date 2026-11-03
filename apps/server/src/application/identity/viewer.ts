@@ -26,9 +26,13 @@ export function lockKey(sourceId: string, value: string): string {
   return `${sourceId}|${value}`;
 }
 
-/** Content that is filtered out for this viewer (not just locked). */
-export function isHiddenForViewer(viewer: Viewer, item: { adult: boolean }): boolean {
-  return item.adult && (viewer.kids || viewer.hideAdult);
+/**
+ * Content that is filtered out for this viewer (not just locked): adult content when hidden, and
+ * — for kids profiles, which never see locks — locked content too (needs `sourceId`).
+ */
+export function isHiddenForViewer(viewer: Viewer, item: { adult: boolean; key?: string; groups?: readonly string[] }, sourceId?: string): boolean {
+  if (item.adult && (viewer.kids || viewer.hideAdult)) return true;
+  return viewer.kids && sourceId !== undefined && item.key !== undefined && isLockedForViewer(viewer, sourceId, { key: item.key, groups: item.groups ?? [] });
 }
 
 /** Needs the PIN before it can be played (and, for kids, is hidden). */

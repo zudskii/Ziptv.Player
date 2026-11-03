@@ -5,6 +5,7 @@ import type {
   CatalogRepository,
   CatalogSearchResult,
   MovieSummary,
+  HiddenContent,
   RecentlyAddedRow,
   SeriesSummary,
   VodListQuery,
@@ -438,6 +439,8 @@ export class PgCatalogRepository implements CatalogRepository {
   async listMovies(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: MovieSummary[]; total: number }> {
     let base = this.db.selectFrom('movies').where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision);
     if (query.hideAdult) base = base.where('adult', '=', false);
+    if (query.hidden?.groups.length) base = base.where(sql<boolean>`NOT (groups && ${sql.val(query.hidden.groups)}::text[])`);
+    if (query.hidden?.keys.length) base = base.where('key', 'not in', query.hidden.keys);
     if (query.category) base = base.where('groups', '@>', sql<string[]>`ARRAY[${query.category}]::text[]`);
     const [rows, count] = await Promise.all([
       vodOrder(base.select(MOVIE_SUMMARY_COLUMNS), query.sort).limit(query.limit).offset(query.offset).execute(),
@@ -449,6 +452,8 @@ export class PgCatalogRepository implements CatalogRepository {
   async listSeries(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: SeriesSummary[]; total: number }> {
     let base = this.db.selectFrom('series').where('source_id', '=', ref.sourceId).where('revision', '=', ref.revision);
     if (query.hideAdult) base = base.where('adult', '=', false);
+    if (query.hidden?.groups.length) base = base.where(sql<boolean>`NOT (groups && ${sql.val(query.hidden.groups)}::text[])`);
+    if (query.hidden?.keys.length) base = base.where('key', 'not in', query.hidden.keys);
     if (query.category) base = base.where('groups', '@>', sql<string[]>`ARRAY[${query.category}]::text[]`);
     const [rows, count] = await Promise.all([
       vodOrder(base.select(SERIES_SUMMARY_COLUMNS), query.sort).limit(query.limit).offset(query.offset).execute(),
@@ -457,12 +462,14 @@ export class PgCatalogRepository implements CatalogRepository {
     return { items: rows.map(toSeriesSummary), total: Number(count.total) };
   }
 
-  async vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean): Promise<{ name: string; count: number }[]> {
+  async vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean, hidden?: HiddenContent): Promise<{ name: string; count: number }[]> {
     const table = sql.table(type);
+    const hiddenGroups = hidden?.groups.length ? sql`AND NOT (t.groups && ${sql.val(hidden.groups)}::text[])` : sql``;
+    const hiddenKeys = hidden?.keys.length ? sql`AND NOT (t.key = ANY(${sql.val(hidden.keys)}::text[]))` : sql``;
     const rows = await sql<{ name: string; count: string }>`
       SELECT g.name, count(*) AS count, min(t.position) AS first
         FROM ${table} AS t, unnest(t.groups) AS g (name)
-       WHERE t.source_id = ${ref.sourceId} AND t.revision = ${ref.revision} ${hideAdult ? sql`AND t.adult = false` : sql``}
+       WHERE t.source_id = ${ref.sourceId} AND t.revision = ${ref.revision} ${hideAdult ? sql`AND t.adult = false` : sql``} ${hiddenGroups} ${hiddenKeys}
        GROUP BY g.name
        ORDER BY first
        LIMIT 500`.execute(this.db);

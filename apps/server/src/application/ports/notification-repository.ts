@@ -19,10 +19,13 @@ export type NewNotification = Omit<NotificationRecord, 'id' | 'read' | 'createdA
 export interface NotificationRepository {
   /** Inserts, or refreshes an unread notification with the same dedupe key. */
   upsert(notification: NewNotification, now: Date): Promise<NotificationRecord>;
-  list(ownerId: string, limit: number): Promise<NotificationRecord[]>;
-  unreadCount(ownerId: string): Promise<number>;
-  markRead(ownerId: string, ids: string[] | 'all'): Promise<void>;
-  deleteOwned(ownerId: string, id: string): Promise<boolean>;
+  /** Newest first; `exclude` leaves out types this viewer must not see (kids profiles). */
+  list(ownerId: string, limit: number, exclude?: readonly NotificationType[]): Promise<NotificationRecord[]>;
+  unreadCount(ownerId: string, exclude?: readonly NotificationType[]): Promise<number>;
+  markRead(ownerId: string, ids: string[] | 'all', exclude?: readonly NotificationType[]): Promise<void>;
+  deleteOwned(ownerId: string, id: string, exclude?: readonly NotificationType[]): Promise<boolean>;
+  /** Removes the owner's read notifications; returns how many. */
+  deleteRead(ownerId: string, exclude?: readonly NotificationType[]): Promise<number>;
   deleteOlderThan(cutoff: Date): Promise<number>;
   deleteForOwner(ownerId: string): Promise<void>;
 }
