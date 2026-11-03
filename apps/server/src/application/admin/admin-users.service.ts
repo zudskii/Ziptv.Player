@@ -21,6 +21,8 @@ function toSummary(user: AdminUserRecord): AdminUserSummaryDto {
     lastSeenAt: user.lastSeenAt.toISOString(),
     sources: user.sources,
     sessions: user.sessions,
+    subscription: user.subscription,
+    blocked: user.blocked,
   };
 }
 

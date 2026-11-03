@@ -3,13 +3,70 @@ import { useInfiniteQuery, useMutation } from '@tanstack/react-query';
 import { ShieldAlert, ShieldCheck } from 'lucide-react';
 import { useState } from 'react';
 
-import { Badge, Button, DataTable, ErrorNote, PageHeader } from '../components/ui';
+import { Badge, Button, DataTable, ErrorNote, PageHeader, Tabs } from '../components/ui';
+import { SecurityPanel } from './SecurityPanel';
 import { api } from '../lib/api';
 import { formatTime } from '../lib/nav';
 
-const ACTIONS = ['', 'staff.login', 'staff.login_failed', 'staff.created', 'staff.updated', 'staff.mfa_enrolled', 'staff.mfa_reset', 'staff.password_changed', 'staff.password_reset', 'staff.logout', 'user.sessions_revoked'];
+const ACTIONS = [
+  '',
+  'staff.login',
+  'staff.login_failed',
+  'staff.created',
+  'staff.updated',
+  'staff.mfa_enrolled',
+  'staff.mfa_reset',
+  'staff.password_changed',
+  'staff.password_reset',
+  'staff.logout',
+  'user.sessions_revoked',
+  'user.blocked',
+  'user.unblocked',
+  'change.requested',
+  'change.approved',
+  'change.rejected',
+  'change.withdrawn',
+  'change.failed',
+  'change.awaiting_review',
+  'change.reviewed',
+  'package.created',
+  'package.updated',
+  'rights.granted',
+  'rights.revoked',
+  'entitlement.granted',
+  'entitlement.revoked',
+  'subscription.refund_requested',
+  'subscription.canceled',
+  'provider.created',
+  'provider.updated',
+  'channel.created',
+  'channel.updated',
+  'epg.guide_created',
+  'epg.mapping_set',
+  'support.note_added',
+];
 
+/** 9.9 — the tamper-evident audit trail and staff security. */
 export function AuditPage() {
+  const [tab, setTab] = useState<'log' | 'security'>('log');
+  return (
+    <>
+      <PageHeader title="Audit & security" description="Append-only and hash-chained: any edit or deletion is detectable." />
+      <Tabs
+        label="Audit"
+        value={tab}
+        onChange={setTab}
+        items={[
+          { value: 'log', label: 'Audit log' },
+          { value: 'security', label: 'Staff security' },
+        ]}
+      />
+      {tab === 'log' ? <AuditLog /> : <SecurityPanel />}
+    </>
+  );
+}
+
+function AuditLog() {
   const [action, setAction] = useState('');
   const pages = useInfiniteQuery({
     queryKey: ['audit', action],
@@ -22,15 +79,11 @@ export function AuditPage() {
 
   return (
     <>
-      <PageHeader
-        title="Audit log"
-        description="Append-only and hash-chained: any edit or deletion is detectable."
-        actions={
-          <Button busy={verify.isPending} onClick={() => verify.mutate()}>
-            <ShieldCheck className="h-4 w-4" aria-hidden /> Verify integrity
-          </Button>
-        }
-      />
+      <div className="mb-4 flex justify-end">
+        <Button busy={verify.isPending} onClick={() => verify.mutate()}>
+          <ShieldCheck className="h-4 w-4" aria-hidden /> Verify integrity
+        </Button>
+      </div>
       {verify.data && (
         <p role="status" className={`mb-4 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${verify.data.intact ? 'bg-ok/10 text-green-300' : 'bg-danger/10 text-red-300'}`}>
           {verify.data.intact ? <ShieldCheck className="h-4 w-4" aria-hidden /> : <ShieldAlert className="h-4 w-4" aria-hidden />}

@@ -77,7 +77,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Commerce and playback authorization', () =>
       if ((req.url ?? '').split('?')[0]?.endsWith('.ts')) return void res.writeHead(200, { 'content-type': 'video/mp2t' }).end(TS);
       res.writeHead(404).end();
     });
-    t = await startTestApp({ JOBS_ENABLED: 'true', PROBES_ENABLED: 'false', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE', DEFAULT_MAX_STREAMS: '1' }, { clock });
+    t = await startTestApp({ JOBS_ENABLED: 'true', CONSOLE_FOUR_EYES: 'false', PROBES_ENABLED: 'false', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE', DEFAULT_MAX_STREAMS: '1' }, { clock });
     t.container.jobs.start();
     fake = t.container.commerce.fakeProcessor!;
     admin = createAdminApp({ config: t.config, logger: createLogger({ log: { level: 'silent' }, env: 'test' }), container: t.container });

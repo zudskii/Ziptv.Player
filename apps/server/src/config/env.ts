@@ -102,6 +102,12 @@ const EnvSchema = z
     /** Development providers whose channel list is typed into the console. Default: off in production. */
     OPERATOR_ALLOW_MOCK_PROVIDERS: booleanString.optional(),
     /**
+     * Four-eyes control in the console (Phase 9): package/price changes and new rights grants wait
+     * for a second staff member; rights revocations apply at once and are reviewed afterwards.
+     * Can only be turned off outside production (single-developer setups, tests).
+     */
+    CONSOLE_FOUR_EYES: booleanString.default(true),
+    /**
      * Commerce (Phase 8). subscription = operator channels need an active package entitlement
      * (FAST channels stay free); rights = Phase 6 behaviour, rights windows only (no paywall).
      */
@@ -221,6 +227,9 @@ const EnvSchema = z
       ctx.addIssue({ code: 'custom', path: ['PLAYLIST_EXPORT_MODE'], message: 'PLAYLIST_EXPORT_MODE=direct would publish upstream URLs that STREAM_DELIVERY=proxy hides; use proxied or off' });
     }
     if (env.NODE_ENV !== 'production') return;
+    if (!env.CONSOLE_FOUR_EYES) {
+      ctx.addIssue({ code: 'custom', path: ['CONSOLE_FOUR_EYES'], message: 'CONSOLE_FOUR_EYES=false lets one person change prices and licences alone; it is for development only' });
+    }
     if (env.PAYMENT_PROCESSOR === 'fake' && !env.PAYMENT_ALLOW_FAKE_IN_PRODUCTION) {
       ctx.addIssue({ code: 'custom', path: ['PAYMENT_PROCESSOR'], message: 'PAYMENT_PROCESSOR=fake hands out subscriptions without payment; set PAYMENT_ALLOW_FAKE_IN_PRODUCTION=true only for a public demo' });
     }
@@ -248,7 +257,7 @@ export interface AppConfig {
     clientDistDir: string | null;
   };
   log: { level: string };
-  admin: { port: number; host: string; trustProxy: boolean | number | string; distDir: string | null; idleTimeoutMs: number; absoluteTimeoutMs: number; mfaIssuer: string };
+  admin: { port: number; host: string; trustProxy: boolean | number | string; distDir: string | null; idleTimeoutMs: number; absoluteTimeoutMs: number; mfaIssuer: string; fourEyes: boolean };
   database: { url: string; poolMax: number; runMigrations: boolean };
   auth: { sessionTtlDays: number };
   mail: { smtpUrl: string | null; from: string | null; logOnly: boolean };
@@ -359,6 +368,7 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       idleTimeoutMs: env.ADMIN_SESSION_IDLE_MINUTES * 60_000,
       absoluteTimeoutMs: env.ADMIN_SESSION_MAX_HOURS * 3600_000,
       mfaIssuer: env.ADMIN_MFA_ISSUER,
+      fourEyes: env.CONSOLE_FOUR_EYES,
     },
     database: { url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX, runMigrations: env.RUN_MIGRATIONS },
     auth: { sessionTtlDays: env.SESSION_TTL_DAYS },

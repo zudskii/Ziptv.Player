@@ -1,4 +1,8 @@
+import type { ChangeKind, ChangeMode, ChangeStatus } from '../../domain/admin/change-requests.js';
 import type { StaffRole } from '../../domain/admin/rbac.js';
+import type { SubscriptionStatus } from '../../domain/commerce/subscription.js';
+import type { ConsoleQueries } from './console.js';
+import type { OperatorEpgRepository } from './operator-epg.js';
 import type { CommerceRepository } from './commerce.js';
 import type { HealthRepository } from './health.js';
 import type { OperatorCatalogRepository } from './operator.js';
@@ -138,6 +142,9 @@ export interface AdminTransaction {
   catalog: OperatorCatalogRepository;
   health: HealthRepository;
   commerce: CommerceRepository;
+  changeRequests: ChangeRequestRepository;
+  console: Pick<ConsoleQueries, 'addSupportNote'>;
+  operatorEpg: OperatorEpgRepository;
 }
 
 export interface AdminUnitOfWork {
@@ -152,6 +159,8 @@ export interface AdminUserRecord {
   lastSeenAt: Date;
   sources: number;
   sessions: number;
+  blocked: boolean;
+  subscription: SubscriptionStatus | null;
 }
 
 /** Read models of the console (subscribers, system counters). */
@@ -165,4 +174,42 @@ export interface AdminQueries {
     sessions: { active: number };
     staff: { total: number; withoutMfa: number };
   }>;
+}
+
+// --- four-eyes change requests --------------------------------------------------------------------
+
+export interface ChangeRequestRecord {
+  id: string;
+  kind: ChangeKind;
+  mode: ChangeMode;
+  status: ChangeStatus;
+  targetType: string;
+  targetId: string | null;
+  payload: Record<string, unknown>;
+  summary: string;
+  baseHash: string | null;
+  requestedBy: { id: string; email: string; name: string };
+  requestedAt: Date;
+  decidedBy: { id: string; email: string; name: string } | null;
+  decidedAt: Date | null;
+  decisionNote: string | null;
+  error: string | null;
+}
+
+export interface ChangeRequestFilter {
+  /** `open` = pending, or applied and awaiting review. */
+  status?: ChangeStatus | 'open' | undefined;
+  kinds: readonly ChangeKind[];
+  targetType?: string | undefined;
+  targetId?: string | undefined;
+  offset: number;
+  limit: number;
+}
+
+export interface ChangeRequestRepository {
+  create(record: Omit<ChangeRequestRecord, 'requestedBy' | 'decidedBy'> & { requestedBy: string; decidedBy: string | null }): Promise<void>;
+  find(id: string, options?: { lock?: boolean }): Promise<ChangeRequestRecord | null>;
+  list(filter: ChangeRequestFilter): Promise<{ items: ChangeRequestRecord[]; total: number }>;
+  countOpen(kinds: readonly ChangeKind[]): Promise<number>;
+  decide(id: string, decision: { status: ChangeStatus; decidedBy: string | null; decidedAt: Date; note: string | null; error: string | null }): Promise<void>;
 }

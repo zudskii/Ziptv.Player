@@ -86,6 +86,7 @@ function toSession(row: Row<'playback_sessions'>): PlaybackSessionRecord {
     access: row.access,
     packageId: row.package_id,
     country: row.country,
+    providerId: row.provider_id,
     startedAt: row.started_at,
     lastHeartbeatAt: row.last_heartbeat_at,
     expiresAt: row.expires_at,
@@ -443,6 +444,7 @@ export class PgCommerceRepository implements CommerceRepository {
         access: record.access,
         package_id: record.packageId,
         country: record.country,
+        provider_id: record.providerId,
         started_at: record.startedAt,
         last_heartbeat_at: record.lastHeartbeatAt,
         expires_at: record.expiresAt,
@@ -505,6 +507,19 @@ export class PgCommerceRepository implements CommerceRepository {
   async endExpiredSessions(now: Date): Promise<{ id: string; userId: string }[]> {
     const rows = await this.db.updateTable('playback_sessions').set({ ended_at: sql`expires_at`, end_reason: 'timeout' }).where('ended_at', 'is', null).where('expires_at', '<=', now).returning(['id', 'user_id']).execute();
     return rows.map((row) => ({ id: row.id, userId: row.user_id }));
+  }
+
+  async servingProvider(channelId: string): Promise<string | null> {
+    if (!isEntityId(channelId)) return null;
+    const row = await sql<{ provider_id: string }>`
+      SELECT f.provider_id FROM channel_feeds f
+      JOIN providers p ON p.id = f.provider_id
+      JOIN provider_streams s ON s.id = f.provider_stream_id
+      LEFT JOIN channel_failover cf ON cf.channel_id = f.channel_id
+      WHERE f.channel_id = ${channelId} AND f.status = 'active' AND p.status = 'active' AND s.status = 'matched'
+      ORDER BY (f.id = cf.active_feed_id) DESC NULLS LAST, f.priority
+      LIMIT 1`.execute(this.db);
+    return row.rows[0]?.provider_id ?? null;
   }
 
   async pruneCommerce(before: { endedSessions: Date; expiredCheckouts: Date }): Promise<{ sessions: number; checkouts: number }> {

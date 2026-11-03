@@ -86,6 +86,8 @@ export default tseslint.config(
   {
     // The console must never import viewer-app or server code: it talks to /admin/v1 only.
     files: ['apps/admin/src/**/*.{ts,tsx}'],
+    // Test fixtures boot the real server for the browser tests; app code stays on the contract.
+    ignores: ['apps/admin/src/test/**'],
     rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['**/apps/server/**', '**/apps/client/**', '../../server/**', '../../client/**'], message: 'The console uses the admin API contract only.' }] }] },
   },
   {

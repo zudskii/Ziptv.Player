@@ -64,7 +64,18 @@ export interface ProviderDto {
   stats: { streams: number; matched: number; pending: number; gone: number };
   /** Where the credential lives — never the credential: `env:NAME` or `stored`. */
   credential: { source: string; rotatedAt: string } | null;
+  contract: ProviderContractDto;
   createdAt: string;
+}
+
+export interface ProviderContractDto {
+  ref: string | null;
+  startAt: string | null;
+  endAt: string | null;
+  /** Availability the licensor committed to (e.g. 99.5). */
+  slaTargetPct: number | null;
+  monthlyCost: { currency: string; amountMinor: number } | null;
+  notes: string;
 }
 
 /**
@@ -89,6 +100,14 @@ export interface UpdateProviderRequest {
   status?: ProviderStatus;
   config?: Record<string, unknown>;
   syncIntervalHours?: number;
+  contract?: {
+    ref?: string | null;
+    startAt?: string | null;
+    endAt?: string | null;
+    slaTargetPct?: number | null;
+    monthlyCost?: { currency: string; amountMinor: number } | null;
+    notes?: string;
+  };
 }
 
 export interface ProviderHealthDto {
@@ -146,8 +165,17 @@ export interface MasterChannelDto {
 }
 
 export interface MasterChannelPageDto {
-  items: MasterChannelDto[];
+  items: (MasterChannelDto & MasterChannelStatsDto)[];
   total: number;
+}
+
+/** Console list columns: feeds, rights and the health of the feed on air. */
+export interface MasterChannelStatsDto {
+  feeds: number;
+  playableFeeds: number;
+  activeGrants: number;
+  /** Health of the active (or best) feed; null = no feed. */
+  health: 'HEALTHY' | 'UNHEALTHY' | 'GEO_BLOCKED' | 'NOT_ENTITLED' | 'MAINTENANCE' | 'PROVIDER_OUTAGE' | 'UNKNOWN' | null;
 }
 
 export interface FeedDto {

@@ -1,6 +1,6 @@
 import { clsx } from 'clsx';
 import { Loader2, X } from 'lucide-react';
-import { useEffect, useId, useRef, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
 
 type Tone = 'primary' | 'ghost' | 'danger';
 
@@ -158,5 +158,134 @@ export function Stat({ label, value, note, tone }: { label: string; value: numbe
       <p className={clsx('mt-2 text-2xl font-semibold tabular-nums', tone === 'warn' && 'text-amber-300', tone === 'danger' && 'text-red-300')}>{value}</p>
       {note && <p className="mt-1 text-xs text-fg-muted">{note}</p>}
     </div>
+  );
+}
+
+export function Section({ title, description, actions, children }: { title: string; description?: ReactNode; actions?: ReactNode; children: ReactNode }) {
+  return (
+    <section className="mb-8" aria-label={title}>
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h2 className="text-sm font-semibold text-fg">{title}</h2>
+          {description && <p className="mt-0.5 text-xs text-fg-muted">{description}</p>}
+        </div>
+        {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+export function Tabs<T extends string>({ value, onChange, items, label }: { value: T; onChange: (value: T) => void; items: { value: T; label: ReactNode }[]; label: string }) {
+  return (
+    <div role="tablist" aria-label={label} className="mb-5 flex gap-1 overflow-x-auto border-b border-line/[0.07]">
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          role="tab"
+          aria-selected={item.value === value}
+          onClick={() => onChange(item.value)}
+          className={clsx('-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm', item.value === value ? 'border-accent text-amber-200' : 'border-transparent text-fg-muted hover:text-fg')}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+export function SelectField({ label, children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { label: string }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm text-fg-muted">
+        {label}
+      </label>
+      <select {...props} id={id} className={clsx('field', props.className)}>
+        {children}
+      </select>
+    </div>
+  );
+}
+
+export function TextArea({ label, hint, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement> & { label: string; hint?: string }) {
+  const id = useId();
+  return (
+    <div className="space-y-1.5">
+      <label htmlFor={id} className="block text-sm text-fg-muted">
+        {label}
+      </label>
+      <textarea {...props} id={id} className={clsx('field min-h-[80px]', props.className)} />
+      {hint && <p className="text-xs text-fg-subtle">{hint}</p>}
+    </div>
+  );
+}
+
+export function KeyValues({ rows }: { rows: [string, ReactNode][] }) {
+  return (
+    <dl className="card grid gap-x-6 gap-y-3 p-4 text-sm sm:grid-cols-2">
+      {rows.map(([key, value]) => (
+        <div key={key} className="min-w-0">
+          <dt className="text-xs uppercase tracking-wide text-fg-subtle">{key}</dt>
+          <dd className="mt-0.5 break-words text-fg">{value}</dd>
+        </div>
+      ))}
+    </dl>
+  );
+}
+
+export function Pager({ offset, limit, total, onChange }: { offset: number; limit: number; total: number; onChange: (offset: number) => void }) {
+  if (total <= limit) return null;
+  return (
+    <div className="mt-4 flex items-center gap-3 text-sm text-fg-muted">
+      <Button disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}>
+        Previous
+      </Button>
+      <span>
+        {offset + 1}–{Math.min(offset + limit, total)} of {total}
+      </span>
+      <Button disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
+        Next
+      </Button>
+    </div>
+  );
+}
+
+/** A confirmation with an optional or required note (approvals, rejections, revocations). */
+export function ConfirmDialog(props: {
+  open: boolean;
+  title: string;
+  description?: ReactNode;
+  confirmLabel: string;
+  tone?: 'primary' | 'danger';
+  note?: { label: string; required?: boolean };
+  busy?: boolean;
+  error?: unknown;
+  onConfirm: (note: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <Dialog open={props.open} title={props.title} onClose={props.onClose}>
+      {/* Mounted per opening: the note starts empty every time. */}
+      {props.open && <ConfirmBody {...props} />}
+    </Dialog>
+  );
+}
+
+function ConfirmBody({ description, confirmLabel, tone = 'primary', note, busy, error, onConfirm, onClose }: Parameters<typeof ConfirmDialog>[0]) {
+  const [text, setText] = useState('');
+  return (
+    <>
+      {description && <div className="text-sm text-fg-muted">{description}</div>}
+      {note && <TextArea label={note.label} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />}
+      <ErrorNote error={error} />
+      <div className="flex justify-end gap-2">
+        <Button onClick={onClose}>Cancel</Button>
+        <Button tone={tone} busy={busy} disabled={Boolean(note?.required) && !text.trim()} onClick={() => onConfirm(text.trim())}>
+          {confirmLabel}
+        </Button>
+      </div>
+    </>
   );
 }

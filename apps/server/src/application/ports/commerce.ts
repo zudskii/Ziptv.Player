@@ -64,6 +64,8 @@ export interface PlaybackSessionRecord {
   access: 'package' | 'fast' | 'rights';
   packageId: string | null;
   country: string | null;
+  /** Provider of the feed on air when the viewing started (partner reporting). */
+  providerId: string | null;
   startedAt: Date;
   lastHeartbeatAt: Date;
   expiresAt: Date;
@@ -241,6 +243,8 @@ export interface CommerceRepository {
   endSessionsWhere(filter: { deviceId?: string; userId?: string }, now: Date, reason: string): Promise<string[]>;
   /** Ends viewings whose heartbeats stopped; returns them so their leases and links can be released. */
   endExpiredSessions(now: Date): Promise<{ id: string; userId: string }[]>;
+  /** The provider whose feed is on air for a channel (failover's active feed, else the best playable one). */
+  servingProvider(channelId: string): Promise<string | null>;
   /** Retention: viewings that ended long ago, abandoned checkouts. Invoices and payment events stay (accounting). */
   pruneCommerce(before: { endedSessions: Date; expiredCheckouts: Date }): Promise<{ sessions: number; checkouts: number }>;
 

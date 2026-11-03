@@ -19,10 +19,14 @@ import type {
 } from '../../../../application/ports/admin.js';
 import { AUDIT_GENESIS, auditHash } from '../../../../domain/admin/audit.js';
 import type { StaffRole } from '../../../../domain/admin/rbac.js';
+import type { SubscriptionStatus } from '../../../../domain/commerce/subscription.js';
 import { isEntityId } from '../../../../domain/shared/ids.js';
 import type { Db } from '../database.js';
 import { json, type AdminAuditLogsTable, type StaffSessionsTable, type StaffUsersTable } from '../schema.js';
 import { PgSessionRepository } from './session.repository.js';
+import { PgChangeRequestRepository } from './change-request.repository.js';
+import { PgConsoleQueries } from './console.queries.js';
+import { PgOperatorEpgRepository } from './operator-epg.repository.js';
 import { PgCommerceRepository } from './commerce.repository.js';
 import { PgHealthRepository } from './health.repository.js';
 import { PgOperatorCatalogRepository } from './operator-catalog.repository.js';
@@ -398,6 +402,9 @@ export class PgAdminUnitOfWork implements AdminUnitOfWork {
         catalog: new PgOperatorCatalogRepository(trx),
         health: new PgHealthRepository(trx, true),
         commerce: new PgCommerceRepository(trx, true),
+        console: new PgConsoleQueries(trx),
+        operatorEpg: new PgOperatorEpgRepository(trx),
+        changeRequests: new PgChangeRequestRepository(trx),
       }),
     );
   }
@@ -411,9 +418,10 @@ export class PgAdminQueries implements AdminQueries {
     const filter = text ? (isEntityId(text) ? sql`u.id::text = ${text}` : sql`u.email LIKE ${`%${text.replace(/[\\%_]/g, (c) => `\\${c}`)}%`}`) : sql`true`;
     const [rows, total] = await Promise.all([
       sql<UserRow>`
-        SELECT u.id, u.email, u.email_verified_at, u.created_at, u.last_seen_at,
+        SELECT u.id, u.email, u.email_verified_at, u.created_at, u.last_seen_at, u.blocked_at,
           (SELECT count(*) FROM sources s WHERE s.owner_id = u.id) AS sources,
-          (SELECT count(*) FROM sessions x WHERE x.user_id = u.id) AS sessions
+          (SELECT count(*) FROM sessions x WHERE x.user_id = u.id) AS sessions,
+          (SELECT b.status FROM subscriptions b WHERE b.user_id = u.id AND b.status NOT IN ('canceled', 'expired') LIMIT 1) AS subscription
         FROM users u WHERE ${filter}
         ORDER BY u.last_seen_at DESC
         OFFSET ${query.offset} LIMIT ${query.limit}`.execute(this.db),
@@ -424,9 +432,10 @@ export class PgAdminQueries implements AdminQueries {
 
   async findUser(id: string): Promise<AdminUserRecord | null> {
     const rows = await sql<UserRow>`
-      SELECT u.id, u.email, u.email_verified_at, u.created_at, u.last_seen_at,
+      SELECT u.id, u.email, u.email_verified_at, u.created_at, u.last_seen_at, u.blocked_at,
         (SELECT count(*) FROM sources s WHERE s.owner_id = u.id) AS sources,
-        (SELECT count(*) FROM sessions x WHERE x.user_id = u.id) AS sessions
+        (SELECT count(*) FROM sessions x WHERE x.user_id = u.id) AS sessions,
+        (SELECT b.status FROM subscriptions b WHERE b.user_id = u.id AND b.status NOT IN ('canceled', 'expired') LIMIT 1) AS subscription
       FROM users u WHERE u.id::text = ${id}`.execute(this.db);
     return rows.rows[0] ? toAdminUser(rows.rows[0]) : null;
   }
@@ -473,6 +482,8 @@ interface UserRow {
   last_seen_at: Date;
   sources: string;
   sessions: string;
+  blocked_at: Date | null;
+  subscription: SubscriptionStatus | null;
 }
 
 function toAdminUser(row: UserRow): AdminUserRecord {
@@ -484,5 +495,7 @@ function toAdminUser(row: UserRow): AdminUserRecord {
     lastSeenAt: row.last_seen_at,
     sources: Number(row.sources),
     sessions: Number(row.sessions),
+    blocked: row.blocked_at !== null,
+    subscription: row.subscription,
   };
 }

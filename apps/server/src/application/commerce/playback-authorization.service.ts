@@ -127,6 +127,7 @@ export class PlaybackAuthorizationService {
     }
 
     const expiresAt = new Date(now.getTime() + LEASE_TTL_MS);
+    const providerId = decision.via.kind === 'package' ? await this.deps.commerce.servingProvider(channel.id).catch(() => null) : null;
     try {
       await this.deps.commerce.createPlaybackSession({
         id,
@@ -137,6 +138,7 @@ export class PlaybackAuthorizationService {
         access: decision.via.kind,
         packageId: decision.via.kind === 'package' ? decision.via.packageId : null,
         country: where.country,
+        providerId,
         startedAt: now,
         lastHeartbeatAt: now,
         expiresAt,

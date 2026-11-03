@@ -142,3 +142,83 @@ export interface ChannelEpgLinkDto {
     match: 'manual' | 'tvg-id' | 'name';
   } | null;
 }
+
+// --- operator catalog EPG (Phase 9) ------------------------------------------------------------
+
+export interface OperatorGuideDto {
+  id: string;
+  name: string;
+  /** Host of the XMLTV URL (the URL itself is stored encrypted and never shown again). */
+  host: string;
+  status: 'active' | 'paused';
+  /** Lower first when two guides could serve the same channel automatically. */
+  priority: number;
+  syncIntervalHours: number;
+  sync: { status: 'idle' | 'queued' | 'running' | 'failed'; lastAttemptAt: string | null; lastSuccessAt: string | null; nextAt: string | null; error: string | null };
+  stats: { channels: number; programmes: number; from: string | null; to: string | null };
+  /** Master channels currently mapped to this guide. */
+  mappedChannels: number;
+  createdAt: string;
+}
+
+export interface CreateOperatorGuideRequest {
+  name: string;
+  url: string;
+  priority?: number;
+  syncIntervalHours?: number;
+}
+
+export interface UpdateOperatorGuideRequest {
+  name?: string;
+  url?: string;
+  status?: 'active' | 'paused';
+  priority?: number;
+  syncIntervalHours?: number;
+}
+
+/**
+ * ok: a schedule for the next 24 h without big gaps · unmapped: no guide channel · no_data: mapped,
+ * but nothing scheduled in the next 24 h · ends_soon: the schedule runs out within 12 h · gaps:
+ * more than an hour without programmes in the next 24 h.
+ */
+export type EpgCoverageStatus = 'ok' | 'unmapped' | 'no_data' | 'ends_soon' | 'gaps';
+
+export interface EpgCoverageDto {
+  generatedAt: string;
+  summary: Record<EpgCoverageStatus, number>;
+  channels: {
+    channelId: string;
+    name: string;
+    status: EpgCoverageStatus;
+    mapping: { guideId: string; guideName: string; epgChannelId: string; method: 'auto' | 'manual' } | null;
+    programmes24h: number;
+    scheduleEndsAt: string | null;
+    gapMinutes24h: number;
+  }[];
+}
+
+export interface OperatorGuideChannelDto {
+  guideId: string;
+  id: string;
+  names: string[];
+  icon: string | null;
+}
+
+export interface SetChannelEpgRequest {
+  guideId: string;
+  epgChannelId: string;
+}
+
+/** `GET /api/v1/operator/guide?channels=` — what is on now and next on operator channels. */
+export interface OperatorNowNextDto {
+  channelId: string;
+  now: OperatorProgrammeDto | null;
+  next: OperatorProgrammeDto | null;
+}
+
+export interface OperatorProgrammeDto {
+  title: string;
+  subtitle: string | null;
+  start: string;
+  stop: string;
+}

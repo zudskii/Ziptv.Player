@@ -7,7 +7,7 @@ import { toast } from 'sonner';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Img, Initials } from '../components/ui/Img';
 import { Spinner } from '../components/ui/Spinner';
-import { useOperatorChannels, useToggleOperatorFavorite } from '../features/operator/api';
+import { useOperatorChannels, useOperatorGuide, useToggleOperatorFavorite } from '../features/operator/api';
 import { VideoPlayer } from '../features/player/components/VideoPlayer';
 import { errorMessage } from '../lib/api-client';
 import { cn } from '../lib/cn';
@@ -43,6 +43,8 @@ export function ChannelsPage() {
   }, [channels, filter, deferredSearch]);
 
   const current = channelId ? channels.find((channel) => channel.id === channelId) : undefined;
+  const guide = useOperatorGuide(useMemo(() => channels.map((channel) => channel.id), [channels]));
+  const currentGuide = current ? guide.data?.get(current.id) : undefined;
   const content = useMemo<ContentRefDto | undefined>(() => (channelId ? { type: 'operator', channelId } : undefined), [channelId]);
   const zapList = visible.length > 0 ? visible : channels;
   const zap = useCallback(
@@ -78,6 +80,14 @@ export function ChannelsPage() {
                 {current.name}
               </h1>
               <p className="truncate text-sm text-fg-muted">{[current.category, current.languages.map((language) => language.toUpperCase()).join(', ')].filter(Boolean).join(' · ')}</p>
+              {currentGuide?.now && (
+                <p className="mt-1 truncate text-sm text-fg" aria-label="On now">
+                  <span className="mr-1.5 text-xs font-semibold uppercase text-brand">Now</span>
+                  {currentGuide.now.title}
+                  <span className="ml-1.5 text-xs text-fg-subtle">until {clock(currentGuide.now.stop)}</span>
+                  {currentGuide.next && <span className="ml-3 text-xs text-fg-subtle">Next {clock(currentGuide.next.start)} · {currentGuide.next.title}</span>}
+                </p>
+              )}
             </div>
             {current.locked && (
               <Link to="/plans" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-brand px-2.5 text-xs font-medium text-white hover:bg-brand-strong">
@@ -155,7 +165,11 @@ export function ChannelsPage() {
                       {channel.name}
                       {channel.locked && <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-label="Needs a subscription" />}
                     </span>
-                    {channel.category && <span className="block truncate text-xs text-fg-subtle">{channel.category}</span>}
+                    {guide.data?.get(channel.id)?.now ? (
+                      <span className="block truncate text-xs text-fg-subtle">{guide.data.get(channel.id)!.now!.title}</span>
+                    ) : (
+                      channel.category && <span className="block truncate text-xs text-fg-subtle">{channel.category}</span>
+                    )}
                   </span>
                 </button>
                 <FavoriteButton channel={channel} onToggle={() => toggleFavorite(channel)} />
@@ -167,6 +181,8 @@ export function ChannelsPage() {
     </div>
   );
 }
+
+const clock = (iso: string) => new Date(iso).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 
 function ChannelLogo({ channel, className }: { channel: OperatorChannelDto; className?: string }) {
   return <Img sources={imageSources(channel.logo)} fit="contain" className={cn('shrink-0 rounded-md bg-fg/5', className)} imgClassName="p-1" fallback={<Initials name={channel.name} />} />;

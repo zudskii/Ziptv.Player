@@ -39,7 +39,8 @@ export const ROLE_PERMISSIONS: Readonly<Record<StaffRole, readonly Permission[]>
   CONTENT_MANAGER: [...READ_ALL, 'catalog:write', 'providers:write', 'rights:write', 'audit:read'],
   NOC_OPERATOR: [...READ_ALL, 'monitoring:operate', 'support:read'],
   SUPPORT_AGENT: ['system:read', 'users:read', 'users:write', 'support:read', 'support:write', 'catalog:read', 'monitoring:read'],
-  FINANCE: ['system:read', 'billing:read', 'billing:write', 'users:read', 'audit:read', 'rights:read'],
+  // catalog:read: packages are built from channels.
+  FINANCE: ['system:read', 'billing:read', 'billing:write', 'users:read', 'audit:read', 'rights:read', 'catalog:read'],
   VIEW_ONLY: [...READ_ALL, 'billing:read', 'support:read'],
 };
 
