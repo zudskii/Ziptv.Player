@@ -11,11 +11,11 @@ export function useProfiles() {
   return useQuery({ queryKey: profileKeys.all, queryFn: ({ signal }) => apiRequest<ProfileDto[]>(BASE, { signal }), staleTime: 60_000 });
 }
 
-/** The profile requests are made as (the selected one, else the default). */
+/** The profile requests are made as (the selected one, else the kids profile this device is held in, else the default). */
 export function useActiveProfile(): ProfileDto | undefined {
   const profiles = useProfiles().data;
   const selected = useProfileStore((state) => state.profileId);
-  return profiles?.find((profile) => profile.id === selected) ?? profiles?.find((profile) => profile.isDefault);
+  return profiles?.find((profile) => profile.id === selected) ?? profiles?.find((profile) => profile.heldHere) ?? profiles?.find((profile) => profile.isDefault);
 }
 
 export function useCreateProfile() {
@@ -37,8 +37,8 @@ export function useUpdateProfile() {
 export function useDeleteProfile() {
   const client = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => apiRequest<void>(`${BASE}/${id}`, { method: 'DELETE' }),
-    onSuccess: (_result, id) => {
+    mutationFn: ({ id, pin }: { id: string; pin?: string }) => apiRequest<void>(`${BASE}/${id}`, { method: 'DELETE', body: pin ? { pin } : {} }),
+    onSuccess: (_result, { id }) => {
       if (useProfileStore.getState().profileId === id) useProfileStore.getState().select(null);
       return client.invalidateQueries({ queryKey: profileKeys.all });
     },

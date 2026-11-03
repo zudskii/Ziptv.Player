@@ -147,6 +147,26 @@ is not race-proof against two simultaneous demotions (both actors would need to 
 - **CSP** of the console allows `img-src https:` (channel and provider logos are remote images);
   scripts, styles and connections stay `'self'`.
 
+## Catch-up and parental controls (Phase 10)
+
+- **Archive addresses are built server-side** from encrypted stream addresses / Xtream accounts;
+  catch-up plans are proxied like live ones. Exported (`proxied`) playlists carry catch-up as an
+  encrypted, export-bound archive token (`/media/archive/<token>?utc=&utcend=`) — the provider URL
+  never appears; the server checks the archive window before redirecting into the stream proxy,
+  and revoking the export link stops it. Unknown template placeholders are refused, not guessed.
+- **Licensed catch-up needs its own rights**: grants with `catchup_days`, covering the viewer now
+  and the broadcast then (no archive before the licence began), in a playback session whose
+  heartbeats re-check them.
+- **Parental gate**: one scrypt-hashed PIN per account; 5 wrong PINs (counted atomically) lock it
+  for 15 minutes; unlock tokens are HMAC-signed, short-lived and bound to account, device session,
+  profile and a random per-PIN version. Locks are enforced on lists, search, Home, EPG, VOD,
+  details, My List and every playback path (BYO plans, catch-up, operator sessions); kids profiles
+  never see locked or adult content and cannot change the rules, add content or buy. PIN-protected
+  profiles and the kids lock are held on the device session server-side, so a cleared client or a
+  forged `X-Profile-Id` does not escape them. Export links need the PIN once one is set.
+- **Provider connection limits** of the subscriber's own Xtream accounts are leased per viewing
+  (Multi-view), so a player over the limit is refused cleanly.
+
 ## Tests that enforce this
 
 - `api/security.e2e.test.ts` — with proxy delivery, scans every response body/header a client
@@ -170,6 +190,13 @@ is not race-proof against two simultaneous demotions (both actors would need to 
   cannot approve, wrong role cannot decide, stale and expired requests fail without applying, one
   pending price change per package, revocation review, merge refused with active rights, MFA
   re-enrolment rule, finance cannot see the staff roster.
+- `api/parental.e2e.test.ts` — the Phase 10 gate: PIN rules and lock-out, locked content refused
+  without a token on every playback path (BYO and licensed), tokens bound to profile / device /
+  PIN version, kids profiles strict (lists, VOD, search, Home, details, playback, rules, sources,
+  playlists), device kids lock and protected profiles, export links need the PIN.
+- `api/catchup.e2e.test.ts`, `api/security.e2e.test.ts`, `api/xtream.e2e.test.ts` — licensed
+  catch-up rights (window, licence start, revocation), proxied archive and archive export tokens,
+  Xtream archive time zone and connection limits.
 - `apps/admin/src/roles.ui.test.tsx` — the console per role in a browser DOM against the real
   server: visible sections match the permissions and no screen calls an API that answers 401/403.
 
@@ -181,7 +208,8 @@ is not race-proof against two simultaneous demotions (both actors would need to 
 | The device class behind device-class rights is declared by the client | Attested TV / STB apps (Phase 11) |
 | All proxied video flows through Node.js | Phase 11: CDN signed URLs; the proxy stays for BYO sources |
 | MPEG-DASH cannot be proxied | DASH manifest rewriting or CDN delivery (Phase 11) |
-| Catch-up templates are left out of `proxied` exports | Phase 10 catch-up through the proxy |
+| Locked channels keep their names / guide titles visible to grown-up profiles (only kids profiles hide them) | Optional "hide" per rule |
+| Export links created before a parental PIN was set keep working until revoked | Revoke on first PIN (product decision) |
 | A SUPER_ADMIN can create a fresh staff account and approve their own change with it | Staff creation under four-eyes or an external IdP (Phase 12) |
 | `STREAM_TOKEN_SECRET` has no rotation list | Tokens live hours; rotate by deploying a new secret (in-flight streams re-plan) |
 | Rolling deploy from the 2.x token format: links issued by old instances get 403 on new ones | Clients re-plan automatically on a fatal stream error |

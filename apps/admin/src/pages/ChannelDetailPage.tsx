@@ -153,6 +153,7 @@ export function ChannelDetailPage() {
             { header: 'Devices', cell: (row) => row.deviceClasses.join(', ') },
             { header: 'Model', cell: (row) => row.businessModels.join(', ') },
             { header: 'Window', cell: (row) => `${formatDate(row.startAt)} → ${row.endAt ? formatDate(row.endAt) : 'open-ended'}`, className: 'whitespace-nowrap' },
+            { header: 'Catch-up', cell: (row) => (row.catchupDays > 0 ? `${row.catchupDays} d` : '—'), className: 'tabular-nums' },
             { header: 'Contract', cell: (row) => <code className="text-xs">{row.contractRef}</code> },
             { header: 'Status', cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{row.status}</Badge> },
             {
@@ -264,7 +265,7 @@ function GrantDialog({ open, channelId, onClose }: { open: boolean; channelId: s
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const value = (key: string) => String(form.get(key) ?? '').trim();
-    request.mutate({ territory: value('territory').toUpperCase() || '*', deviceClasses: devices, businessModels: models, startAt: fromDateInput(value('start')) ?? new Date().toISOString(), endAt: fromDateInput(value('end')), contractRef: value('contract') });
+    request.mutate({ territory: value('territory').toUpperCase() || '*', deviceClasses: devices, businessModels: models, startAt: fromDateInput(value('start')) ?? new Date().toISOString(), endAt: fromDateInput(value('end')), contractRef: value('contract'), catchupDays: Number(value('catchup') || 0) });
   };
   return (
     <Dialog open={open} title="Request a rights grant" onClose={onClose}>
@@ -294,6 +295,7 @@ function GrantDialog({ open, channelId, onClose }: { open: boolean; channelId: s
           <Field label="From" name="start" type="date" defaultValue={dateInput(new Date().toISOString())} required />
           <Field label="Until (optional)" name="end" type="date" />
         </div>
+        <Field label="Catch-up days (0 = live only)" name="catchup" type="number" min={0} max={30} defaultValue="0" />
         <Field label="Contract reference" name="contract" required maxLength={200} />
         <ErrorNote error={request.error} />
         <div className="flex justify-end gap-2">

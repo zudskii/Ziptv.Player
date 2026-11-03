@@ -177,6 +177,21 @@ History older than the profile's retention (default 180 days) and zapping leftov
 are pruned by the hourly cleanup job. Search matches the start of every word of a name
 (`pg_trgm`-indexed `search` columns on channels, movies, series and programmes).
 
+## Catch-up, Multi-view and parental controls
+
+Past programmes play from the channel archive (▶ Watch in the mini guide, TV Guide and search):
+M3U `catchup` modes (default / append / shift / flussonic, Kodi/TiviMate placeholders) and Xtream
+`timeshift` in the panel's time zone, always built on the server. Licensed channels have their own
+catch-up rights (`catchup_days` on a grant) and play the archive through a playback session.
+`/multiview` shows up to four players with one audio focus; licensed tiles use the plan's stream
+slots, Xtream tiles the account's `max_connections`. Parental controls: one PIN per account,
+locked groups / channels per profile, short-lived unlock tokens, PIN-protected profiles and strict
+kids profiles — all enforced by the server. Details: `docs/architecture/VIEWER_CONTROLS.md`.
+
+| Variable | Meaning |
+| --- | --- |
+| `PARENTAL_UNLOCK_MINUTES` | How long one PIN entry unlocks locked content on a device (default 15). |
+
 ## Operator catalog (licensed channels)
 
 Next to the subscriber's own sources, the operator runs one **master catalog**: licensed providers

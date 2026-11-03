@@ -112,6 +112,8 @@ export interface StartPlaybackSessionRequest {
   replaces?: string;
   /** Reconnect of the same viewing: the previous plan's `sessionId`, so watch history keeps one entry. */
   continueSession?: string;
+  /** Catch-up: replay this past programme (ISO instants) instead of the live channel. Needs catch-up rights. */
+  archive?: { start: string; end: string };
 }
 
 export interface PlaybackSessionDto {

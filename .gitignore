@@ -17,3 +17,4 @@ coverage/
 legacy-m3ulist/
  
 node_modules/
+dump.rdb

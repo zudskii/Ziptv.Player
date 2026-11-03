@@ -44,6 +44,8 @@ export interface EngineHandle {
   qualityLevels(): QualityLevel[];
   /** -1 = automatic. */
   currentQuality(): number;
+  /** What is actually playing (e.g. "720p" while on Auto); reported through `onTracksChanged`. */
+  playingQuality?(): string | null;
   setQuality(index: number): void;
   /** Jump to the live edge (after a pause on a live stream). */
   goLive(): void;

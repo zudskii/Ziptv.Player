@@ -21,6 +21,10 @@ export interface OperatorChannelDto {
   /** Licensed here, but not in the viewer's packages (subscribe to one of `packages` to watch). */
   locked: boolean;
   packages: { slug: string; name: string }[];
+  /** Days of archive this viewer may replay here (licensed catch-up × the feeds' archive); 0 = live only. */
+  catchupDays: number;
+  /** Locked by this profile's parental controls: playing it needs the PIN (unlock token). */
+  parentalLock: boolean;
 }
 
 export interface OperatorLineupDto {
@@ -198,6 +202,8 @@ export interface RightsGrantDto {
   startAt: string;
   endAt: string | null;
   contractRef: string;
+  /** Catch-up rights: how many days back viewers may replay (0 = live only). */
+  catchupDays: number;
   status: 'active' | 'revoked';
   createdAt: string;
   revokedAt: string | null;
@@ -239,6 +245,8 @@ export interface CreateGrantRequest {
   startAt: string;
   endAt?: string | null;
   contractRef: string;
+  /** Catch-up rights in days (0–30; default 0 = live only). */
+  catchupDays?: number;
 }
 
 export interface LineupDto {

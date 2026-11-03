@@ -44,9 +44,9 @@ export class OperatorPlaybackSessions {
     this.lostListener = listener;
   }
 
-  /** Authorizes a viewing of `channelId` and returns its plan (links bound to the session). */
-  resolve(channelId: string, secureContext: boolean, signal: AbortSignal, continueSession?: string): Promise<PlaybackPlanDto> {
-    const run = this.chain.then(() => this.start(channelId, secureContext, signal, continueSession));
+  /** Authorizes a viewing of `channelId` (or of a past programme: `archive`) and returns its plan (links bound to the session). */
+  resolve(channelId: string, secureContext: boolean, signal: AbortSignal, continueSession?: string, archive?: { start: string; end: string }): Promise<PlaybackPlanDto> {
+    const run = this.chain.then(() => this.start(channelId, secureContext, signal, continueSession, archive));
     this.chain = run.catch(noop);
     return run;
   }
@@ -69,12 +69,12 @@ export class OperatorPlaybackSessions {
     return this.current?.id ?? null;
   }
 
-  private async start(channelId: string, secureContext: boolean, signal: AbortSignal, continueSession: string | undefined): Promise<PlaybackPlanDto> {
+  private async start(channelId: string, secureContext: boolean, signal: AbortSignal, continueSession: string | undefined, archive?: { start: string; end: string }): Promise<PlaybackPlanDto> {
     if (signal.aborted || this.disposed) throw aborted();
     const identity = this.identity();
     // Not passing `signal` to the request: an aborted POST may still have created a session on
     // the server, and only its id lets us end it. The result is checked against `signal` instead.
-    const attempt = async (deviceId: string) => this.api.startSession({ channelId, deviceId, secureContext, ...(this.current ? { replaces: this.current.id } : {}), ...(continueSession ? { continueSession } : {}) });
+    const attempt = async (deviceId: string) => this.api.startSession({ channelId, deviceId, secureContext, ...(this.current ? { replaces: this.current.id } : {}), ...(continueSession ? { continueSession } : {}), ...(archive ? { archive } : {}) });
     let session: PlaybackSessionDto;
     try {
       try {

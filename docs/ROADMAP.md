@@ -24,7 +24,7 @@
 | 7 | Stream Health და Failover ✅ | Opus |
 | 8 | Commerce და Playback Authorization ✅ | Opus |
 | 9 | Admin Console ✅ | Sonnet |
-| 10 | Catch-up, Multi-view, Parental | Sonnet + Opus |
+| 10 | Catch-up, Multi-view, Parental ✅ | Sonnet + Opus |
 | 11 | რეალური ინტეგრაციები | Opus + Sonnet |
 | 12 | Pilot Hardening | Opus + დამოუკიდებელი review |
 | 13 | Scale | — |
@@ -47,7 +47,7 @@
 
 > **სტატუსი:** 1.1–1.11 გაკეთებულია. დეტალები და დარჩენილი ხარვეზები: `docs/architecture/THREAT_MODEL.md`.
 > გადატანილია: playback session/heartbeat-ზე მიბმა (ფაზა 8, `LeaseStore` უკვე მზადაა), DASH-ის proxy (ფაზა 11),
-> catch-up `proxied` export-ში (ფაზა 10), dev-dependency-ების major განახლება (vitest 5, tailwind 4).
+> catch-up `proxied` export-ში (ფაზა 10 ✅), dev-dependency-ების major განახლება (vitest 5, tailwind 4).
 
 მიზანი: არცერთ კლიენტთან არ მიდის provider-ის URL, პაროლი ან header.
 
@@ -201,7 +201,9 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 9.10 Finance & Partner Reporting (MRR, churn, ლიცენზიარის მიხედვით)
 - **მოდელი:** Sonnet; four-eyes ლოგიკა (9.6) Opus-ის review-ით.
 
-## ფაზა 10 — Catch-up, Multi-view, Parental
+## ფაზა 10 — Catch-up, Multi-view, Parental · ✅ დასრულდა
+
+> **სტატუსი:** 10.1–10.7 გაკეთებულია (`0012-viewer-controls`). **Catch-up:** არქივის მისამართს სერვერი აგებს — M3U `default/append/shift/flussonic` (Kodi/TiviMate placeholder-ები, უცნობი placeholder → უარი და არა გამოცნობა) და Xtream `timeshift` პანელის დროის სარტყელში (`server_info.timezone`); პროგრამა უნდა იყოს დასრულებული, არქივის ფანჯარაში და ≤12 სთ. ▶ Watch მინი-გიდში, TV Guide-ში და ძიებაში, deep link `?at=&until=`. `proxied` export-ში catch-up ახლა მუშაობს export-ზე მიბმული დაშიფრული archive token-ით (`/media/archive/…`). **ოპერატორის catch-up:** ცალკე უფლება grant-ზე (`catchup_days`, four-eyes-ით), feed-ის არქივი provider sync-იდან; ყურება playback session-ით (lease, entitlement), არქივი ვერ სცდება grant-ის დაწყებას, revoke-ისას სესია მაშინვე წყდება. **Multi-view 2×2:** აუდიო მხოლოდ ფოკუსირებულ ფილაზე, `1`–`4`; ოპერატორის ფილა = playback session, BYO Xtream ფილები `max_connections`-ით სერვერზე (lease, `replaces`). **Parental:** ერთი PIN ანგარიშზე (scrypt, 5 შეცდომა → 15 წთ ბლოკი, ატომურად), წესები პროფილზე (BYO და ოპერატორის ჯგუფები/არხები), unlock token HMAC-ით (device + profile + PIN version, 15 წთ), აღსრულება სერვერზე სიებში, VOD-ში, ძიებაში, Home-ში, EPG-ში, My List-ში და ყველა playback გზაზე; kids პროფილი მკაცრია (დაბლოკილი/adult საერთოდ არ ჩანს, PIN არ ხსნის, წესების/წყაროების/ყიდვის ცვლილება აკრძალულია), PIN-ით დაცული პროფილი და kids lock device session-ზე ინახება სერვერზე. **Notifications:** დღეების მიხედვით, unread ფილტრი, dismiss, clear read, უსაფრთხოების შეტყობინებები (kids-ს არ უჩანს). **Player:** `I` PiP, `C` სუბტიტრები, `0–9`, `?`, Media Session, Auto-ს ფაქტობრივი ხარისხი. Gate შემოწმებულია e2e-ით (`parental.e2e`, `catchup.e2e`), UI ტესტით და lab-ში (11 ნაბიჯი რეალურ ბრაუზერში). სტრატეგია: `docs/architecture/VIEWER_CONTROLS.md`. ღია: დაბლოკილი არხის სახელი/გიდი ზრდასრულ პროფილს ჩანს (locked ნიშნით); PIN-მდე შექმნილი export ბმულები არ უქმდება ავტომატურად; catch-up წუთები პარტნიორის რეპორტში live-ის ტოლფასია — ფაზა 11.
 
 - 10.1 **Catch-up ტემპლეიტები:** `catchup`, `catchup-source`, Xtream timeshift; `{utc}`, `{start}`, `{duration}` და ა.შ. *(Opus)*
 - 10.2 **▶ Watch** მინი-გიდში, TV Guide-ში, ძიებაში; ხელმისაწვდომობა `catchupDays`-ით. *(Sonnet)*

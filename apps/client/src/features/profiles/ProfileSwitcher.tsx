@@ -1,11 +1,13 @@
 import type { ProfileDto } from '@ziptv/contracts';
-import { Check, Users } from 'lucide-react';
+import { Check, Lock, Users } from 'lucide-react';
+import { toast } from 'sonner';
 import { Link } from 'react-router';
 
 import { Popover } from '../../components/ui/Popover';
 import { cn } from '../../lib/cn';
 import { useActiveProfile, useProfiles } from './api';
-import { useProfileStore } from './profile-store';
+import { errorMessage } from '../../lib/api-client';
+import { openProfile } from '../parental/api';
 
 export function ProfileAvatar({ profile, className }: { profile: Pick<ProfileDto, 'name' | 'color' | 'kind'>; className?: string }) {
   return (
@@ -23,7 +25,6 @@ export function ProfileAvatar({ profile, className }: { profile: Pick<ProfileDto
 export function ProfileSwitcher() {
   const profiles = useProfiles().data ?? [];
   const active = useActiveProfile();
-  const select = useProfileStore((state) => state.select);
   if (!active) return null;
   return (
     <Popover
@@ -51,8 +52,10 @@ export function ProfileSwitcher() {
               role="menuitemradio"
               aria-checked={profile.id === active.id}
               onClick={() => {
-                select(profile.isDefault ? null : profile.id);
                 close();
+                if (profile.id === active.id) return;
+                // The server decides whether this device may open it (PIN-protected profile, kids lock).
+                void openProfile(profile).catch((error: unknown) => toast.error('Profile not opened', { description: errorMessage(error) }));
               }}
               className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-fg hover:bg-fg/5"
             >
@@ -61,6 +64,7 @@ export function ProfileSwitcher() {
                 {profile.name}
                 {profile.kind === 'kids' && <span className="ml-1.5 text-xs text-fg-subtle">Kids</span>}
               </span>
+              {profile.pinProtected && profile.id !== active.id && <Lock className="h-3.5 w-3.5 text-fg-subtle" aria-label="PIN protected" />}
               {profile.id === active.id && <Check className="h-4 w-4 text-brand-soft" />}
             </button>
           ))}

@@ -11,6 +11,9 @@ import { errorMessage } from '../../lib/api-client';
 import { cn } from '../../lib/cn';
 import { useActiveProfile, useCreateProfile, useDeleteProfile, useProfiles, useUpdateProfile } from './api';
 import { ProfileAvatar } from './ProfileSwitcher';
+import { isPinRequired, useParental } from '../parental/api';
+import { askPin } from '../parental/pin-prompt';
+import { Switch } from '../../components/ui/Switch';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#ec4899', '#64748b'];
 const MAX_PROFILES = 5;
@@ -41,7 +44,7 @@ export function ProfilesSection() {
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-fg">{profile.name}</span>
               <span className="block text-xs text-fg-subtle">
-                {[profile.isDefault ? 'Main profile' : null, profile.kind === 'kids' ? 'Kids' : 'Standard', profile.id === active?.id ? 'Active on this device' : null].filter(Boolean).join(' · ')}
+                {[profile.isDefault ? 'Main profile' : null, profile.kind === 'kids' ? 'Kids' : 'Standard', profile.pinProtected ? 'PIN protected' : null, profile.id === active?.id ? 'Active on this device' : null].filter(Boolean).join(' · ')}
               </span>
             </span>
             <IconButton label={`Edit ${profile.name}`} onClick={() => setEditing(profile)}>
@@ -64,7 +67,12 @@ export function ProfilesSection() {
         confirmLabel="Delete profile"
         onConfirm={async () => {
           if (!deleting) return;
-          await remove.mutateAsync(deleting.id);
+          try {
+            await remove.mutateAsync({ id: deleting.id });
+          } catch (failure) {
+            if (!isPinRequired(failure)) throw failure;
+            if (!(await askPin({ title: 'Enter the PIN', description: 'Deleting a profile needs the parental PIN.', verify: async (pin) => void (await remove.mutateAsync({ id: deleting.id, pin })) }))) return;
+          }
           toast.success(`Profile “${deleting.name}” deleted`);
         }}
       />
@@ -87,6 +95,8 @@ function ProfileForm({ profile, onClose, usedColors }: { profile: ProfileDto | n
   const [name, setName] = useState(profile?.name ?? '');
   const [kind, setKind] = useState<ProfileKind>(profile?.kind ?? 'standard');
   const [color, setColor] = useState(profile?.color ?? COLORS.find((value) => !usedColors.includes(value)) ?? COLORS[0]!);
+  const [pinProtected, setPinProtected] = useState(profile?.pinProtected ?? false);
+  const pinSet = useParental().data?.pinSet ?? false;
   const [error, setError] = useState<string | null>(null);
   const pending = create.isPending || update.isPending;
 
@@ -94,8 +104,15 @@ function ProfileForm({ profile, onClose, usedColors }: { profile: ProfileDto | n
     event.preventDefault();
     setError(null);
     try {
-      if (profile) await update.mutateAsync({ id: profile.id, patch: { name, kind, color } });
-      else await create.mutateAsync({ name, kind, color });
+      const patch = { name, kind, color, ...(pinSet ? { pinProtected } : {}) };
+      // Changing who a profile is for (kind, PIN protection) needs the parental PIN once one is set.
+      const save = (pin?: string) => (profile ? update.mutateAsync({ id: profile.id, patch: { ...patch, ...(pin ? { pin } : {}) } }) : create.mutateAsync({ ...patch, ...(pin ? { pin } : {}) }));
+      try {
+        await save();
+      } catch (failure) {
+        if (!isPinRequired(failure)) throw failure;
+        if (!(await askPin({ title: 'Enter the PIN', description: 'Changing this profile needs the parental PIN.', verify: async (pin) => void (await save(pin)) }))) return;
+      }
       onClose();
     } catch (failure) {
       setError(errorMessage(failure));
@@ -119,6 +136,9 @@ function ProfileForm({ profile, onClose, usedColors }: { profile: ProfileDto | n
           { value: 'kids', label: 'Kids' },
         ]}
       />
+      {pinSet && (
+        <Switch checked={pinProtected} onChange={setPinProtected} label="Require the PIN to open" description="Other devices ask for the parental PIN before using this profile." />
+      )}
       <fieldset>
         <legend className="mb-1.5 text-sm text-fg-muted">Colour</legend>
         <div className="flex flex-wrap gap-2">

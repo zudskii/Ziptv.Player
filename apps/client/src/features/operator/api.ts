@@ -1,4 +1,4 @@
-import type { OperatorChannelListDto, OperatorFavoritesImportDto, OperatorNowNextDto } from '@ziptv/contracts';
+import type { OperatorChannelListDto, OperatorFavoritesImportDto, OperatorNowNextDto, OperatorScheduleDto } from '@ziptv/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../lib/api-client';
@@ -43,6 +43,16 @@ export function useOperatorGuide(channelIds: string[]) {
     enabled: channelIds.length > 0,
     staleTime: 60_000,
     refetchInterval: 60_000,
+  });
+}
+
+/** One licensed channel's schedule (past programmes flagged when this viewer may replay them). */
+export function useOperatorSchedule(channelId: string | undefined, enabled = true) {
+  return useQuery({
+    queryKey: ['operator', 'schedule', channelId],
+    queryFn: ({ signal }) => apiRequest<OperatorScheduleDto>(`${BASE}/channels/${encodeURIComponent(channelId!)}/schedule`, { signal }),
+    enabled: Boolean(channelId) && enabled,
+    staleTime: 60_000,
   });
 }
 

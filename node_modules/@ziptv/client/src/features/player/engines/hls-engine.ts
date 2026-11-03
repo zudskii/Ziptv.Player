@@ -82,7 +82,7 @@ export const createHlsEngine: EngineFactory = (video, url) => {
 
   const trackListeners = new Set<() => void>();
   const tracksChanged = () => trackListeners.forEach((listener) => listener());
-  for (const event of [Events.AUDIO_TRACKS_UPDATED, Events.AUDIO_TRACK_SWITCHED, Events.SUBTITLE_TRACKS_UPDATED, Events.SUBTITLE_TRACK_SWITCH, Events.MANIFEST_PARSED] as const) {
+  for (const event of [Events.AUDIO_TRACKS_UPDATED, Events.AUDIO_TRACK_SWITCHED, Events.SUBTITLE_TRACKS_UPDATED, Events.SUBTITLE_TRACK_SWITCH, Events.MANIFEST_PARSED, Events.LEVEL_SWITCHED] as const) {
     hls.on(event, tracksChanged);
   }
 
@@ -107,6 +107,10 @@ export const createHlsEngine: EngineFactory = (video, url) => {
           ]
         : [],
     currentQuality: () => (hls.autoLevelEnabled ? -1 : hls.currentLevel),
+    playingQuality: () => {
+      const level = hls.levels[hls.currentLevel];
+      return level ? (level.height ? `${level.height}p` : `${Math.round(level.bitrate / 1000)} kbps`) : null;
+    },
     setQuality: (index) => {
       hls.currentLevel = index;
     },
