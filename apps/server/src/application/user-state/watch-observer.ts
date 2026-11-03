@@ -39,9 +39,8 @@ export class WatchObserver implements PlaybackObserver {
         {
           id: session.sessionId,
           profileId: viewer.profileId,
-          sourceId: ref.sourceId,
+          ...owner(ref),
           contentType: ref.type,
-          key: ref.key,
           seriesKey: ref.type === 'episode' ? ref.seriesKey : null,
           season: session.episode?.season ?? null,
           episode: session.episode?.episode ?? null,
@@ -56,15 +55,16 @@ export class WatchObserver implements PlaybackObserver {
       );
     } catch (error) {
       // History is best-effort: playback must never fail because of it.
-      this.deps.logger.warn({ err: error, sourceId: ref.sourceId }, 'Recording a viewing failed');
+      this.deps.logger.warn({ err: error, ...owner(ref) }, 'Recording a viewing failed');
     }
   }
 
   async onEvent(viewer: Viewer, event: PlaybackEventRequest): Promise<void> {
+    // (operator channels are live: watch time only, no progress)
     if (event.type === 'error') return;
     const now = this.deps.clock.now();
     const row = await this.deps.history.touch(event.sessionId, viewer.profileId, now, event.type === 'start' ? 0 : MAX_HEARTBEAT_CREDIT_SECS);
-    if (!row || (row.contentType !== 'movie' && row.contentType !== 'episode')) return;
+    if (!row || !row.sourceId || (row.contentType !== 'movie' && row.contentType !== 'episode')) return;
     if (event.position === undefined || event.duration === undefined) return;
 
     const ref = { profileId: viewer.profileId, sourceId: row.sourceId, contentType: row.contentType, seriesKey: row.seriesKey ?? '', key: row.key };
@@ -90,7 +90,8 @@ export class WatchObserver implements PlaybackObserver {
 
   async continues(viewer: Viewer, sessionId: string, ref: ContentRefDto): Promise<boolean> {
     const row = await this.deps.history.find(sessionId, viewer.profileId);
-    if (!row || row.sourceId !== ref.sourceId || row.contentType !== ref.type || row.key !== ref.key) return false;
+    const expected = owner(ref);
+    if (!row || row.sourceId !== expected.sourceId || row.channelId !== expected.channelId || row.contentType !== ref.type || row.key !== expected.key) return false;
     if (ref.type === 'episode' && row.seriesKey !== ref.seriesKey) return false;
     if (ref.type === 'catchup' && row.programmeStart?.getTime() !== new Date(ref.start).getTime()) return false;
     // Only a recent viewing is continued (a reconnect, not a replay hours later).
@@ -109,4 +110,9 @@ export class WatchObserver implements PlaybackObserver {
     });
     return resumeFrom(progress);
   }
+}
+
+/** History owner of a content reference: a user source item, or an operator channel. */
+function owner(ref: ContentRefDto): { sourceId: string | null; channelId: string | null; key: string } {
+  return ref.type === 'operator' ? { sourceId: null, channelId: ref.channelId, key: ref.channelId } : { sourceId: ref.sourceId, channelId: null, key: ref.key };
 }

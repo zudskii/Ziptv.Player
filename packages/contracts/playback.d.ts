@@ -11,7 +11,9 @@ export type ContentRefDto =
   | { type: 'movie'; sourceId: string; key: string }
   | { type: 'episode'; sourceId: string; seriesKey: string; key: string }
   /** A past programme from the channel archive; `start`/`end` are ISO instants. */
-  | { type: 'catchup'; sourceId: string; key: string; start: string; end: string };
+  | { type: 'catchup'; sourceId: string; key: string; start: string; end: string }
+  /** A channel of the operator catalog (rights-checked, always delivered through the proxy). */
+  | { type: 'operator'; channelId: string };
 
 export type PlaybackEngineName = 'hls' | 'mpegts' | 'flv' | 'native' | 'dash';
 
@@ -33,6 +35,8 @@ export interface ResolvePlaybackRequest {
    * profile and the same content, the new plan keeps it (one history entry per viewing).
    */
   continueSession?: string;
+  /** Device class for licensed (operator) channels; rights can be device-specific. Default: web. */
+  device?: 'web' | 'mobile' | 'tv' | 'stb';
 }
 
 export interface PlaybackContentDto {

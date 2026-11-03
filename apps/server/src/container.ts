@@ -35,6 +35,12 @@ import { HISTORY_MIN_SECS } from './domain/viewer/progress.js';
 import { DEFAULT_SETTINGS } from './domain/viewer/settings.js';
 import { PgProfileRepository } from './infrastructure/persistence/postgres/repositories/profile.repository.js';
 import { PgHistoryRepository, PgListRepository, PgProgressRepository } from './infrastructure/persistence/postgres/repositories/user-state.repository.js';
+import { CatalogAdminService } from './application/operator/catalog-admin.service.js';
+import { OperatorService } from './application/operator/operator.service.js';
+import { ProviderConnections } from './application/operator/provider-connections.js';
+import { createProviderSyncWorker, ProviderSyncService } from './application/operator/provider-sync.js';
+import { createProviderAdapters } from './infrastructure/operator/provider-adapters.js';
+import { PgOperatorCatalogRepository } from './infrastructure/persistence/postgres/repositories/operator-catalog.repository.js';
 import { JobRunner, periodicWorker } from './application/jobs/job-runner.js';
 import { NotificationService } from './application/notifications/notification.service.js';
 import { MediaGrantChecker } from './application/playback/media-grants.js';
@@ -118,6 +124,7 @@ export interface Container {
     audit: AuditService;
     users: AdminUsersService;
     system: SystemOverviewService;
+    catalog: CatalogAdminService;
   };
   sessions: SessionService;
   accounts: AccountService;
@@ -137,6 +144,7 @@ export interface Container {
   vod: VodCatalogService;
   epg: EpgService;
   playback: PlaybackService;
+  operator: OperatorService;
   notifications: NotificationService;
   jobs: JobRunner;
   media: {
@@ -313,7 +321,25 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const live = new LiveCatalogService({ sources: sourceRepository, catalog: catalogRepository, cache, artwork });
   const seriesEpisodes = new SeriesEpisodes({ catalog: catalogRepository, secrets, details: xtream, cache, clock, logger: logger.child({ module: 'series-episodes' }) });
   const vod = new VodCatalogService({ live, catalog: catalogRepository, episodes: seriesEpisodes, list: listRepository, progress: progressRepository, cache, artwork });
-  const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork });
+  // --- operator catalog (licensed channels, ZP-ENT-03) --------------------------------------------
+  const secretStore = new LocalSecretStore(cipher);
+  const operatorCatalog = new PgOperatorCatalogRepository(db);
+  const providerAdapters = createProviderAdapters({ m3u, xtream, openLocator: (sealed) => secrets.openLocator(sealed) });
+  const providerConnections = new ProviderConnections({ secrets: secretStore, urlPolicy });
+  const operator = new OperatorService({
+    catalog: operatorCatalog,
+    adapters: providerAdapters,
+    connections: providerConnections,
+    sources: sourceRepository,
+    byoCatalog: catalogRepository,
+    list: listRepository,
+    cache,
+    clock,
+    logger: logger.child({ module: 'operator' }),
+    artwork,
+  });
+  const providerSync = new ProviderSyncService({ catalog: operatorCatalog, adapters: providerAdapters, connections: providerConnections, secrets, clock, logger: logger.child({ module: 'provider-sync' }) });
+  const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork, operatorFavorites: (viewer) => operator.favoriteListItems(viewer) });
   const watch = new WatchStateService({ progress: progressRepository, history: historyRepository, cache, artwork });
   const epg = new EpgService({
     live,
@@ -361,6 +387,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     artwork,
     streamUrls: new ProviderStreamUrls(secrets),
     episodes: seriesEpisodes,
+    operator,
     observer: new WatchObserver({
       history: historyRepository,
       progress: progressRepository,
@@ -407,6 +434,18 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     audit: new AuditService(new PgAuditRepository(db, false)),
     users: new AdminUsersService({ queries: adminQueries, sessions: sessionRepository, uow: adminUow, clock, onSessionsRevoked: forgetSessionGrants, jobs }),
     system: new SystemOverviewService({ queries: adminQueries, outbox: outboxRepository, clock }),
+    catalog: new CatalogAdminService({
+      catalog: operatorCatalog,
+      uow: adminUow,
+      adapters: providerAdapters,
+      connections: providerConnections,
+      secrets: secretStore,
+      sync: providerSync,
+      jobs,
+      clock,
+      allowMockProviders: config.operator.allowMockProviders,
+      onChange: () => operator.forget(),
+    }),
   };
 
   // Side effects committed with their cause (outbox) — handlers must be idempotent.
@@ -438,6 +477,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   jobs.register(
     createSourceSyncWorker({ sources: sourceRepository, pipeline, concurrency: config.jobs.sourceSyncConcurrency }),
     createEpgSyncWorker({ guides: guideRepository, pipeline: epgPipeline, concurrency: config.jobs.epgSyncConcurrency }),
+    createProviderSyncWorker({ catalog: operatorCatalog, sync: providerSync }),
     createOutboxWorker({ outbox: outboxRepository, handlers: outboxHandlers, clock, logger: logger.child({ module: 'outbox' }) }),
     periodicWorker({
       name: 'cleanup',
@@ -478,7 +518,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     secrets,
     rateLimitStores: redis ? redisRateLimitStores(redis, logger.child({ module: 'rate-limit' })) : null,
     leases,
-    secretStore: new LocalSecretStore(cipher),
+    secretStore,
     admin,
     sessions,
     accounts,
@@ -514,6 +554,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     vod,
     epg,
     playback,
+    operator,
     notifications,
     jobs,
     media,

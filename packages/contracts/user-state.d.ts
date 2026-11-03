@@ -7,7 +7,8 @@ import type { SourceDto } from './sources';
 // My List (favorites for channels, movies and series) — per profile
 // ---------------------------------------------------------------------------
 
-export type ListItemType = 'channel' | 'movie' | 'series';
+/** `operator`: a channel of the operator catalog — `key` is the master channel id, `sourceId` is ''. */
+export type ListItemType = 'channel' | 'movie' | 'series' | 'operator';
 
 export interface ListItemDto {
   type: ListItemType;
@@ -63,7 +64,8 @@ export interface SaveProgressRequest {
 // Watch history — separate from progress: every viewing, live channels included
 // ---------------------------------------------------------------------------
 
-export type HistoryContentType = 'channel' | 'movie' | 'episode' | 'catchup';
+/** `operator`: a channel of the operator catalog (`key` = master channel id, `sourceId` = ''). */
+export type HistoryContentType = 'channel' | 'movie' | 'episode' | 'catchup' | 'operator';
 
 export interface HistoryItemDto {
   id: string;

@@ -20,7 +20,7 @@
 | 3 | EPG ✅ | Opus + Sonnet |
 | 4 | Xtream + VOD მოდელი ✅ | Opus |
 | 5 | მაყურებლის გამოცდილება ✅ | Sonnet + Opus |
-| 6 | Master Catalog და კონტენტ-ოპერაციები | Opus |
+| 6 | Master Catalog და კონტენტ-ოპერაციები ✅ | Opus |
 | 7 | Stream Health და Failover | Opus |
 | 8 | Commerce და Playback Authorization | Opus |
 | 9 | Admin Console | Sonnet |
@@ -134,7 +134,9 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 5.12 საბოლოო ნავიგაცია: Home · Live TV · TV Guide · Movies · Series · My List · History · Sources · Settings. *(Haiku/Sonnet)*
 - **Gate:** progress sync-ებს გადარჩება (სტაბილური გასაღებები); წყაროს წაშლა წმენდს მის user-state-ს.
 
-## ფაზა 6 — Master Catalog და კონტენტ-ოპერაციები (ZP-ENT-03)
+## ფაზა 6 — Master Catalog და კონტენტ-ოპერაციები (ZP-ENT-03) · ✅ დასრულდა
+
+> **სტატუსი:** 6.1–6.9 გაკეთებულია (`0008-operator-catalog`). პროვაიდერები credential-ით `secret_ref`-ის მიღმა (`env:` ან დაშიფრული `enc:`), `ProviderAdapter` (M3U / Xtream / Mock; Mock production-ში გამორთულია), provider sync worker lease-ით → `provider_streams` review რიგი → alias-ებით ავტო-მატჩი (tvg-id ▶ ნორმალიზებული სახელი, მხოლოდ კურირებული არხებისთვის), ხელით create/match/ignore და merge. `rights_grants` (ტერიტორია × მოწყობილობა × ბიზნესმოდელი × ვადა × კონტრაქტი) — ქვეყანას სერვერი წყვეტს (edge header / default), არა კლიენტი; grant-ის გარეშე არხი არ ჩანს და `403 NOT_ENTITLED`. Lineups ნომრებით. Viewer API `GET /operator/channels`, ოპერატორის playback ყოველთვის proxy-თ, ყველა feed კანდიდატად (primary → backup). ფავორიტები/ისტორია `channel_master.id`-ზე; BYO My List-დან იმპორტი alias-ებით. Admin API — ყოველი write აუდიტში. კლიენტი: **Channels** გვერდი (ნავიგაციაში მხოლოდ მაშინ ჩანს, როცა არხები არსებობს). Gate შემოწმებულია e2e-ით და lab-ში (M3U + Xtream → ერთ არხს ორი feed; უფლების გარეშე არ ჩანს). სტრატეგია: `docs/architecture/OPERATOR_CATALOG.md`. ღია საკითხები: master არხების EPG (ფაზა 7/11); `package`/ბიზნესმოდელის შემოწმება — ფაზა 8 (Commerce); console ეკრანები — ფაზა 9; device class კლიენტის მიერ დეკლარირებულია (არა უსაფრთხოების საზღვარი).
 
 დღეს არხი მომხმარებლის წყაროს ეკუთვნის; ოპერატორს ერთიანი კატალოგი სჭირდება.
 

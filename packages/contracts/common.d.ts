@@ -33,6 +33,7 @@ export type ApiErrorCode =
   | 'EPG_UNAVAILABLE'
   | 'EPG_INVALID'
   // Playback
+  | 'NOT_ENTITLED'
   | 'UNPLAYABLE'
   | 'UNSUPPORTED_FORMAT'
   | 'UPSTREAM_ERROR'
@@ -69,7 +70,9 @@ export type ProblemKind =
   | 'source_unavailable'
   | 'epg_unavailable'
   | 'unsupported_format'
-  | 'parental_locked';
+  | 'parental_locked'
+  /** Operator channel not licensed for the viewer's country / device / time. */
+  | 'not_entitled';
 
 // ---------------------------------------------------------------------------
 // Shared shapes

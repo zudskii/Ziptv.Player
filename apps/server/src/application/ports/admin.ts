@@ -1,4 +1,5 @@
 import type { StaffRole } from '../../domain/admin/rbac.js';
+import type { OperatorCatalogRepository } from './operator.js';
 import type { SessionRepository } from './session-repository.js';
 
 /** Persistence ports of the operator console. */
@@ -132,6 +133,7 @@ export interface AdminTransaction {
   audit: AuditRepository;
   outbox: OutboxRepository;
   sessions: SessionRepository;
+  catalog: OperatorCatalogRepository;
 }
 
 export interface AdminUnitOfWork {

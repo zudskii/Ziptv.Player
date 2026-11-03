@@ -5,7 +5,7 @@
 
 export type ListItemKind = 'channel' | 'movie' | 'series';
 export type ProgressKind = 'movie' | 'episode';
-export type HistoryKind = 'channel' | 'movie' | 'episode' | 'catchup';
+export type HistoryKind = 'channel' | 'movie' | 'episode' | 'catchup' | 'operator';
 
 export interface ListItemRecord {
   profileId: string;
@@ -39,7 +39,9 @@ export interface ProgressRecord {
 export interface HistoryRecord {
   id: string;
   profileId: string;
-  sourceId: string;
+  /** Exactly one of sourceId (user source) / channelId (operator catalog) is set. */
+  sourceId: string | null;
+  channelId: string | null;
   contentType: HistoryKind;
   key: string;
   seriesKey: string | null;

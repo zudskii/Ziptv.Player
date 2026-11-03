@@ -112,6 +112,7 @@ export class ViewerDataService {
               id: newEntityId(now.getTime() - index * 60_000),
               profileId: viewer.profileId,
               sourceId,
+              channelId: null,
               contentType: 'channel',
               key,
               seriesKey: null,

@@ -15,11 +15,14 @@ import { createVodRouter } from './vod.routes.js';
 import { createDiscoverRouter } from './discover.routes.js';
 import { createMeRouter } from './me.routes.js';
 import { createProfileRouter } from './profile.routes.js';
+import { createOperatorRouter } from './operator.routes.js';
+import { viewingContextResolver } from '../middleware/viewing-context.js';
 
 /** Every JSON API router under /api/v1. Routes only validate input and call use cases. */
 export function createApiRouters(deps: { container: Container; auth: RequestHandler; optionalAuth: RequestHandler; withUnlock: RequestHandler; config: AppConfig; limit: RateLimiterFactory }): Router {
   const { container, auth, config, limit } = deps;
   const router = Router();
+  const viewingContext = viewingContextResolver({ header: config.operator.countryHeader, defaultCountry: config.operator.defaultCountry });
   router.use('/sessions', createSessionRouter(container.sessions, auth, limit));
   router.use('/auth', createAuthRouter({ accounts: container.accounts, emailFlow: container.emailFlow, auth, optionalAuth: deps.optionalAuth, limit }));
   router.use('/sources', createSourceRouter({ sources: container.sources, auth, maxSourceBytes: config.limits.maxSourceBytes, limit }));
@@ -29,8 +32,9 @@ export function createApiRouters(deps: { container: Container; auth: RequestHand
   router.use('/', createDiscoverRouter({ home: container.home, search: container.search, auth, limit }));
   router.use('/vod', createVodRouter({ vod: container.vod, auth, limit }));
   router.use('/epg', createEpgRouter({ epg: container.epg, auth, limit }));
-  router.use('/playback', createPlaybackRouter({ playback: container.playback, auth, withUnlock: deps.withUnlock, limit }));
+  router.use('/playback', createPlaybackRouter({ playback: container.playback, auth, withUnlock: deps.withUnlock, viewingContext, limit }));
   router.use('/playlists', createPlaylistRouter({ playlists: container.playlists, entries: container.playlistEntries, auth, publicUrl: config.publicUrl, limit }));
+  router.use('/operator', createOperatorRouter({ operator: container.operator, auth, viewingContext, limit }));
   router.use('/notifications', createNotificationRouter({ notifications: container.notifications, auth }));
   return router;
 }

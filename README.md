@@ -86,7 +86,8 @@ Native Rollup/esbuild packages are platform-specific.
 | `GET/POST /profiles`, `PATCH/DELETE /profiles/:id` | Profiles of the account; send `X-Profile-Id` to act as one |
 | `GET /home`, `GET /search?q=` | Every Home rail in one response; unified search |
 | `/me/list`, `/me/progress`, `/me/history`, `/me/settings`, `/me/storage`, `/me/data/:kind`, `/me/import-local` | The active profile's My List, Continue Watching, History, Settings, Data & Storage |
-| `POST /playback` | Playback candidates and signed proxy URLs |
+| `GET /operator/channels?lineup&device`, `PUT/DELETE /operator/favorites/:channelId`, `POST /operator/favorites/import-from-my-list` | Operator (licensed) channels the viewer may watch; see *Operator catalog* |
+| `POST /playback` | Playback candidates and signed proxy URLs (`content.type: "operator"` for operator channels) |
 | `POST /playback/events` | Playback event reporting |
 | `GET /notifications`, `POST /notifications/read`, `DELETE /notifications/:id` | Notifications |
 | `GET /media/stream/:token` | Signed media proxy |
@@ -175,6 +176,22 @@ reconnect             → `continueSession` keeps the same viewing (one history 
 History older than the profile's retention (default 180 days) and zapping leftovers (< 10 s)
 are pruned by the hourly cleanup job. Search matches the start of every word of a name
 (`pg_trgm`-indexed `search` columns on channels, movies, series and programmes).
+
+## Operator catalog (licensed channels)
+
+Next to the subscriber's own sources, the operator runs one **master catalog**: licensed providers
+(M3U / Xtream) are synced into a review queue, curated into master channels (one channel, several
+provider feeds — primary and backups), and shown to viewers only where an active **rights grant**
+covers their country, device class and the current time. Operator playback is always proxied.
+
+| Variable | Meaning |
+| --- | --- |
+| `OPERATOR_COUNTRY_HEADER` | Header carrying the viewer's country, set by your edge (e.g. `cf-ipcountry`). Only use a header the edge always overwrites. |
+| `OPERATOR_DEFAULT_COUNTRY` | ISO country used when the header is absent or unknown. Unset = only worldwide grants apply. |
+| `OPERATOR_ALLOW_MOCK_PROVIDERS` | Development providers whose channel list is typed into the console (default: off in production). |
+
+Console API, ingestion/dedup rules, the rights invariant and the BYO → operator migration strategy:
+`docs/architecture/OPERATOR_CATALOG.md`.
 
 ## Operator console (`apps/admin`)
 

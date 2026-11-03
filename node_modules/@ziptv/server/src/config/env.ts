@@ -92,6 +92,15 @@ const EnvSchema = z
      * proxy = upstream URLs never reach clients: no direct candidates, artwork proxied (operator / licensed content).
      */
     STREAM_DELIVERY: z.enum(['auto', 'proxy']).default('auto'),
+    /**
+     * Operator catalog (licensed channels): the viewer's market decides which channels are listed
+     * and playable. The country comes from a header set by the edge (e.g. Cloudflare's
+     * cf-ipcountry) — only trust a header your edge overwrites — else the default; never the client.
+     */
+    OPERATOR_COUNTRY_HEADER: optional(z.string().trim().toLowerCase().regex(/^[a-z0-9-]{1,64}$/, 'OPERATOR_COUNTRY_HEADER must be a header name')),
+    OPERATOR_DEFAULT_COUNTRY: optional(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'OPERATOR_DEFAULT_COUNTRY must be an ISO 3166-1 alpha-2 code')),
+    /** Development providers whose channel list is typed into the console. Default: off in production. */
+    OPERATOR_ALLOW_MOCK_PROVIDERS: booleanString.optional(),
     /** Playlist export links: direct = upstream URLs, proxied = ZIPTV proxy URLs bound to the link, off = disabled. Default: direct (proxied with STREAM_DELIVERY=proxy). */
     PLAYLIST_EXPORT_MODE: optional(z.enum(['direct', 'proxied', 'off'])),
     /** Lifetime of proxy URLs written into an exported playlist (players re-download the playlist). */
@@ -194,6 +203,7 @@ export interface AppConfig {
     ephemeralSecret: boolean;
   };
   playlistExport: { mode: 'direct' | 'proxied' | 'off'; linkTtlSeconds: number };
+  operator: { countryHeader: string | null; defaultCountry: string | null; allowMockProviders: boolean };
   redis: { url: string | null; keyPrefix: string };
   encryption: {
     key: string;
@@ -277,6 +287,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       ephemeralSecret: !env.STREAM_TOKEN_SECRET,
     },
     playlistExport: { mode: env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct'), linkTtlSeconds: env.PLAYLIST_EXPORT_LINK_TTL_HOURS * 3600 },
+    operator: {
+      countryHeader: env.OPERATOR_COUNTRY_HEADER ?? null,
+      defaultCountry: env.OPERATOR_DEFAULT_COUNTRY ?? null,
+      allowMockProviders: env.OPERATOR_ALLOW_MOCK_PROVIDERS ?? env.NODE_ENV !== 'production',
+    },
     redis: { url: env.REDIS_URL ?? null, keyPrefix: env.REDIS_KEY_PREFIX },
     encryption: {
       key: env.DATA_ENCRYPTION_KEY ?? DEV_ENCRYPTION_KEY,

@@ -7,6 +7,7 @@ import * as emailTokens from './0004-email-tokens.js';
 import * as operatorFoundation from './0005-operator-foundation.js';
 import * as epg from './0006-epg.js';
 import * as viewer from './0007-viewer.js';
+import * as operatorCatalog from './0008-operator-catalog.js';
 
 /**
  * Forward-only migrations, applied in key order. Add a new file and register it here;
@@ -20,4 +21,5 @@ export const MIGRATIONS: Record<string, Migration> = {
   '0005-operator-foundation': operatorFoundation,
   '0006-epg': epg,
   '0007-viewer': viewer,
+  '0008-operator-catalog': operatorCatalog,
 };
