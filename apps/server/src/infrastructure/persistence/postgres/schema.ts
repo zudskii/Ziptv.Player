@@ -1,4 +1,5 @@
-import type { GuideOrigin, HistoryContentType, ListItemType, ProfileKind, ProgressContentType } from '@ziptv/contracts';
+import type { GuideOrigin, HistoryContentType, ProfileKind, ProgressContentType } from '@ziptv/contracts';
+import type { ListItemKind } from '../../../application/ports/user-state-repository.js';
 import type { ColumnType, Generated } from 'kysely';
 
 import type { CatalogStats, CatalogWarning, EpgLink, CatchupInfo, StreamKind, UnplayableReason } from '../../../domain/catalog/model.js';
@@ -7,6 +8,9 @@ import type { UserRole } from '../../../domain/identity/credentials.js';
 import type { HealthState, SourceProblem, SourceType, SyncStage, SyncStatus } from '../../../domain/sources/source.js';
 import type { SourceOrigin } from '../../../application/ports/source-repository.js';
 import type { StoredProfileSettings } from '../../../domain/viewer/settings.js';
+import type { FeedHealthState, ProbeOutcome, RegionState } from '../../../domain/health/feed-health.js';
+import type { FailoverEventReason, IncidentKind, IncidentStatus, ProbeStepKind } from '../../../application/ports/health.js';
+import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../../domain/operator/catalog.js';
 
 /**
  * Typed view of the database. This file is the single place where table and column names
@@ -24,8 +28,9 @@ export interface StoredHealth {
   state: HealthState;
   checkedAt: string | null;
   latencyMs: number | null;
-  unstableStreams: number;
-  offlineStreams: number;
+  /** Rows written before Phase 7 have no plays/failedPlays. */
+  plays?: number;
+  failedPlays?: number;
   message: string | null;
 }
 
@@ -398,7 +403,7 @@ export interface ProfilesTable {
 export interface ListItemsTable {
   profile_id: string;
   source_id: string;
-  type: ListItemType;
+  type: ListItemKind;
   key: string;
   title: string;
   subtitle: string | null;
@@ -426,7 +431,8 @@ export interface ProgressTable {
 export interface HistoryTable {
   id: string;
   profile_id: string;
-  source_id: string;
+  source_id: string | null;
+  channel_id: string | null;
   content_type: HistoryContentType;
   key: string;
   series_key: string | null;
@@ -441,6 +447,232 @@ export interface HistoryTable {
   watched_secs: Generated<number>;
   programme_start: Date | null;
   programme_end: Date | null;
+}
+
+export interface ProvidersTable {
+  id: string;
+  slug: string;
+  name: string;
+  status: ProviderStatus;
+  integration_type: ProviderType;
+  config: JsonDefault<Record<string, unknown>>;
+  host: Generated<string>;
+  sync_interval_hours: Generated<number>;
+  sync_status: Generated<SyncStatus>;
+  sync_last_attempt_at: Date | null;
+  sync_last_success_at: Date | null;
+  sync_next_at: Date | null;
+  sync_error: string | null;
+  sync_failures: Generated<number>;
+  lease_owner: string | null;
+  lease_until: Date | null;
+  stats: JsonDefault<{ streams: number; matched: number; pending: number; gone: number }>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ProviderCredentialsTable {
+  provider_id: string;
+  secret_ref: string;
+  rotated_at: Generated<Date>;
+}
+
+export interface CategoriesTable {
+  id: string;
+  slug: string;
+  name: string;
+  created_at: Generated<Date>;
+}
+
+export interface ChannelMasterTable {
+  id: string;
+  slug: string;
+  name: string;
+  origin_country: string | null;
+  languages: Generated<string[]>;
+  category_id: string | null;
+  logo: string | null;
+  global_uid: string | null;
+  status: Generated<'active' | 'hidden'>;
+  search: Generated<string>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ChannelAliasesTable {
+  kind: AliasKind;
+  key: string;
+  channel_id: string;
+  created_at: Generated<Date>;
+}
+
+export interface ProviderStreamsTable {
+  id: string;
+  provider_id: string;
+  external_id: string;
+  name: string;
+  tvg_id: string | null;
+  groups: Generated<string[]>;
+  logo: string | null;
+  kind: StreamKind;
+  locator: string | null;
+  xtream: NullableJson<{ id: number }>;
+  status: Generated<StreamStatus>;
+  channel_id: string | null;
+  match_method: MatchMethod | null;
+  suggestion: string | null;
+  first_seen_at: Generated<Date>;
+  last_seen_at: Generated<Date>;
+}
+
+export interface ChannelFeedsTable {
+  id: string;
+  channel_id: string;
+  provider_id: string;
+  provider_stream_id: string;
+  priority: Generated<number>;
+  delivery_mode: Generated<'proxy'>;
+  status: Generated<'active' | 'disabled'>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface RightsGrantsTable {
+  id: string;
+  channel_id: string;
+  territory: string;
+  device_classes: DeviceClass[];
+  business_models: BusinessModel[];
+  start_at: Date;
+  end_at: Date | null;
+  contract_ref: string;
+  status: Generated<'active' | 'revoked'>;
+  created_by: string | null;
+  created_at: Generated<Date>;
+  revoked_at: Date | null;
+}
+
+export interface LineupsTable {
+  id: string;
+  slug: string;
+  name: string;
+  country: string;
+  status: Generated<'draft' | 'active'>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface LineupChannelsTable {
+  lineup_id: string;
+  channel_id: string;
+  number: number;
+}
+
+export interface OperatorFavoritesTable {
+  profile_id: string;
+  channel_id: string;
+  added_at: Generated<Date>;
+}
+
+export interface FeedProbeStateTable {
+  feed_id: string;
+  region: string;
+  state: Generated<RegionState>;
+  failures: Generated<number>;
+  successes: Generated<number>;
+  last_outcome: ProbeOutcome | null;
+  last_error: string | null;
+  last_probe_at: Date | null;
+  last_ok_at: Date | null;
+  next_probe_at: Generated<Date>;
+  media_sequence: string | null;
+  last_segment: string | null;
+  sequence_at: Date | null;
+  last_decode_at: Date | null;
+  lease_owner: string | null;
+  lease_until: Date | null;
+}
+
+export interface StreamProbeResultsTable {
+  id: Generated<string>;
+  feed_id: string;
+  region: string;
+  probed_at: Date;
+  kind: ProbeStepKind;
+  outcome: ProbeOutcome;
+  http_status: number | null;
+  ttfb_ms: number | null;
+  duration_ms: number | null;
+  bytes: number | null;
+  media_sequence: string | null;
+  error: string | null;
+}
+
+export interface FeedHealthTable {
+  feed_id: string;
+  status: Generated<FeedHealthState>;
+  since: Generated<Date>;
+  maintenance: Generated<boolean>;
+  maintenance_note: string | null;
+  updated_at: Generated<Date>;
+}
+
+export interface ChannelFailoverTable {
+  channel_id: string;
+  active_feed_id: string | null;
+  pinned_feed_id: string | null;
+  pinned_until: Date | null;
+  pinned_by: string | null;
+  pin_note: string | null;
+  last_switch_at: Date | null;
+  updated_at: Generated<Date>;
+}
+
+export interface FailoverEventsTable {
+  id: Generated<string>;
+  channel_id: string;
+  occurred_at: Date;
+  from_feed_id: string | null;
+  to_feed_id: string | null;
+  reason: FailoverEventReason;
+  actor_id: string | null;
+  actor_email: string | null;
+  details: JsonDefault<Record<string, unknown>>;
+}
+
+export interface IncidentsTable {
+  id: string;
+  kind: IncidentKind;
+  severity: 'warning' | 'critical';
+  status: Generated<IncidentStatus>;
+  target_type: 'feed' | 'channel' | 'provider';
+  target_id: string;
+  title: string;
+  details: JsonDefault<Record<string, unknown>>;
+  opened_at: Date;
+  last_seen_at: Date;
+  acknowledged_at: Date | null;
+  acknowledged_by: string | null;
+  resolved_at: Date | null;
+  resolved_by: string | null;
+}
+
+export interface PlaybackTelemetryTable {
+  subject_type: 'feed' | 'source';
+  subject_id: string;
+  bucket: Date;
+  starts: Generated<number>;
+  errors: Generated<number>;
+  startup_ms_sum: Generated<string>;
+  startup_count: Generated<number>;
+}
+
+export interface SourceProbeStateTable {
+  source_id: string;
+  next_check_at: Generated<Date>;
+  checks: JsonDefault<{ ok: boolean; latencyMs: number | null; at: string }[]>;
+  lease_owner: string | null;
+  lease_until: Date | null;
 }
 
 export interface Database {
@@ -470,6 +702,25 @@ export interface Database {
   list_items: ListItemsTable;
   progress: ProgressTable;
   history: HistoryTable;
+  providers: ProvidersTable;
+  provider_credentials: ProviderCredentialsTable;
+  categories: CategoriesTable;
+  channel_master: ChannelMasterTable;
+  channel_aliases: ChannelAliasesTable;
+  provider_streams: ProviderStreamsTable;
+  channel_feeds: ChannelFeedsTable;
+  rights_grants: RightsGrantsTable;
+  lineups: LineupsTable;
+  lineup_channels: LineupChannelsTable;
+  operator_favorites: OperatorFavoritesTable;
+  feed_probe_state: FeedProbeStateTable;
+  stream_probe_results: StreamProbeResultsTable;
+  feed_health: FeedHealthTable;
+  channel_failover: ChannelFailoverTable;
+  failover_events: FailoverEventsTable;
+  incidents: IncidentsTable;
+  playback_telemetry: PlaybackTelemetryTable;
+  source_probe_state: SourceProbeStateTable;
 }
 
 /** Serialises a value for a JSON column. */

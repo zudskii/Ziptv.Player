@@ -92,6 +92,43 @@ const EnvSchema = z
      * proxy = upstream URLs never reach clients: no direct candidates, artwork proxied (operator / licensed content).
      */
     STREAM_DELIVERY: z.enum(['auto', 'proxy']).default('auto'),
+    /**
+     * Operator catalog (licensed channels): the viewer's market decides which channels are listed
+     * and playable. The country comes from a header set by the edge (e.g. Cloudflare's
+     * cf-ipcountry) — only trust a header your edge overwrites — else the default; never the client.
+     */
+    OPERATOR_COUNTRY_HEADER: optional(z.string().trim().toLowerCase().regex(/^[a-z0-9-]{1,64}$/, 'OPERATOR_COUNTRY_HEADER must be a header name')),
+    OPERATOR_DEFAULT_COUNTRY: optional(z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'OPERATOR_DEFAULT_COUNTRY must be an ISO 3166-1 alpha-2 code')),
+    /** Development providers whose channel list is typed into the console. Default: off in production. */
+    OPERATOR_ALLOW_MOCK_PROVIDERS: booleanString.optional(),
+    /**
+     * Stream health (Phase 7). Every instance that runs jobs probes operator feeds from its
+     * PROBE_REGION; PROBE_REGIONS lists the regions the deployment expects (console shows gaps).
+     * A feed is failing only when every region that probed it recently sees it failing.
+     */
+    PROBES_ENABLED: booleanString.optional(),
+    PROBE_REGION: z.string().trim().toLowerCase().regex(/^[a-z0-9-]{1,40}$/, 'PROBE_REGION: lowercase letters, digits, dashes').default('default'),
+    PROBE_REGIONS: csv,
+    PROBE_INTERVAL_SECONDS: z.coerce.number().int().min(10).max(3600).default(60),
+    PROBE_FAILING_INTERVAL_SECONDS: z.coerce.number().int().min(5).max(3600).default(20),
+    PROBE_CONCURRENCY: z.coerce.number().int().min(1).max(64).default(4),
+    /** Concurrent probes per provider across the whole fleet (IPTV accounts limit connections). */
+    PROBE_PROVIDER_CONCURRENCY: z.coerce.number().int().min(1).max(32).default(1),
+    /** Decode check (ffprobe on a downloaded sample) per feed every N hours; 0 = off. */
+    PROBE_DECODE_EVERY_HOURS: z.coerce.number().int().min(0).max(168).default(6),
+    FFPROBE_PATH: z.string().min(1).default('ffprobe'),
+    PROBE_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(14),
+    HEALTH_FAIL_AFTER: z.coerce.number().int().min(1).max(20).default(3),
+    HEALTH_RECOVER_AFTER: z.coerce.number().int().min(1).max(20).default(3),
+    FAILOVER_COOLDOWN_MINUTES: z.coerce.number().int().min(0).max(24 * 60).default(10),
+    SOURCE_HEALTH_INTERVAL_MINUTES: z.coerce.number().int().min(5).max(24 * 60).default(30),
+    /** Incident alerts (any combination). */
+    ALERT_WEBHOOK_URL: optional(z.string().url()),
+    ALERT_WEBHOOK_SECRET: optional(z.string().min(16, 'ALERT_WEBHOOK_SECRET must be at least 16 characters')),
+    ALERT_SLACK_WEBHOOK_URL: optional(z.string().url()),
+    ALERT_EMAIL_TO: csv,
+    /** GET /metrics (Prometheus) needs `Authorization: Bearer <METRICS_TOKEN>`; unset = disabled. */
+    METRICS_TOKEN: optional(z.string().min(16, 'METRICS_TOKEN must be at least 16 characters')),
     /** Playlist export links: direct = upstream URLs, proxied = ZIPTV proxy URLs bound to the link, off = disabled. Default: direct (proxied with STREAM_DELIVERY=proxy). */
     PLAYLIST_EXPORT_MODE: optional(z.enum(['direct', 'proxied', 'off'])),
     /** Lifetime of proxy URLs written into an exported playlist (players re-download the playlist). */
@@ -140,6 +177,14 @@ const EnvSchema = z
     MAX_PROFILES_PER_USER: z.coerce.number().int().min(1).max(20).default(6),
   })
   .superRefine((env, ctx) => {
+    // Every running probe may hold a transaction while it re-evaluates: leave connections for the API.
+    if (env.PROBE_CONCURRENCY >= env.DATABASE_POOL_MAX) ctx.addIssue({ code: 'custom', path: ['PROBE_CONCURRENCY'], message: 'PROBE_CONCURRENCY must be lower than DATABASE_POOL_MAX' });
+    for (const region of env.PROBE_REGIONS) {
+      if (!/^[a-z0-9-]{1,40}$/i.test(region)) ctx.addIssue({ code: 'custom', path: ['PROBE_REGIONS'], message: `PROBE_REGIONS: "${region}" is not a region name (letters, digits, dashes)` });
+    }
+    for (const email of env.ALERT_EMAIL_TO) {
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) ctx.addIssue({ code: 'custom', path: ['ALERT_EMAIL_TO'], message: `ALERT_EMAIL_TO: "${email}" is not an email address` });
+    }
     if (env.SMTP_URL && !env.MAIL_FROM) ctx.addIssue({ code: 'custom', path: ['MAIL_FROM'], message: 'MAIL_FROM is required when SMTP_URL is set, e.g. "ZIPTV <no-reply@example.com>"' });
     if (env.SMTP_URL && !env.PUBLIC_URL) {
       ctx.addIssue({ code: 'custom', path: ['PUBLIC_URL'], message: 'PUBLIC_URL is required when SMTP_URL is set (links in emails must not depend on the request)' });
@@ -194,6 +239,25 @@ export interface AppConfig {
     ephemeralSecret: boolean;
   };
   playlistExport: { mode: 'direct' | 'proxied' | 'off'; linkTtlSeconds: number };
+  operator: { countryHeader: string | null; defaultCountry: string | null; allowMockProviders: boolean };
+  health: {
+    probesEnabled: boolean;
+    region: string;
+    regions: string[];
+    intervalMs: number;
+    failingIntervalMs: number;
+    concurrency: number;
+    providerConcurrency: number;
+    decodeEveryMs: number;
+    ffprobePath: string;
+    retentionDays: number;
+    failAfter: number;
+    recoverAfter: number;
+    failoverCooldownMs: number;
+    sourceIntervalMs: number;
+  };
+  alerts: { webhookUrl: string | null; webhookSecret: string | null; slackWebhookUrl: string | null; emailTo: string[] };
+  metrics: { token: string | null };
   redis: { url: string | null; keyPrefix: string };
   encryption: {
     key: string;
@@ -277,6 +341,29 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       ephemeralSecret: !env.STREAM_TOKEN_SECRET,
     },
     playlistExport: { mode: env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct'), linkTtlSeconds: env.PLAYLIST_EXPORT_LINK_TTL_HOURS * 3600 },
+    operator: {
+      countryHeader: env.OPERATOR_COUNTRY_HEADER ?? null,
+      defaultCountry: env.OPERATOR_DEFAULT_COUNTRY ?? null,
+      allowMockProviders: env.OPERATOR_ALLOW_MOCK_PROVIDERS ?? env.NODE_ENV !== 'production',
+    },
+    health: {
+      probesEnabled: env.PROBES_ENABLED ?? env.NODE_ENV !== 'test',
+      region: env.PROBE_REGION,
+      regions: [...new Set([env.PROBE_REGION, ...env.PROBE_REGIONS.map((region) => region.toLowerCase())])],
+      intervalMs: env.PROBE_INTERVAL_SECONDS * 1000,
+      failingIntervalMs: Math.min(env.PROBE_FAILING_INTERVAL_SECONDS, env.PROBE_INTERVAL_SECONDS) * 1000,
+      concurrency: env.PROBE_CONCURRENCY,
+      providerConcurrency: env.PROBE_PROVIDER_CONCURRENCY,
+      decodeEveryMs: env.PROBE_DECODE_EVERY_HOURS * 3600_000,
+      ffprobePath: env.FFPROBE_PATH,
+      retentionDays: env.PROBE_RETENTION_DAYS,
+      failAfter: env.HEALTH_FAIL_AFTER,
+      recoverAfter: env.HEALTH_RECOVER_AFTER,
+      failoverCooldownMs: env.FAILOVER_COOLDOWN_MINUTES * 60_000,
+      sourceIntervalMs: env.SOURCE_HEALTH_INTERVAL_MINUTES * 60_000,
+    },
+    alerts: { webhookUrl: env.ALERT_WEBHOOK_URL ?? null, webhookSecret: env.ALERT_WEBHOOK_SECRET ?? null, slackWebhookUrl: env.ALERT_SLACK_WEBHOOK_URL ?? null, emailTo: env.ALERT_EMAIL_TO },
+    metrics: { token: env.METRICS_TOKEN ?? null },
     redis: { url: env.REDIS_URL ?? null, keyPrefix: env.REDIS_KEY_PREFIX },
     encryption: {
       key: env.DATA_ENCRYPTION_KEY ?? DEV_ENCRYPTION_KEY,

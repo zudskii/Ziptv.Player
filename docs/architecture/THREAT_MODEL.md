@@ -95,6 +95,20 @@ Known gaps: no recovery codes (another super admin or the CLI `recover` resets a
 authenticator); no four-eyes approval yet (Phase 9 for rights/prices); the last-super-admin guard
 is not race-proof against two simultaneous demotions (both actors would need to be super admins).
 
+## Stream health (Phase 7)
+
+- **Probes reach providers only through the upstream client** (SSRF policy on every hop,
+  timeouts, size caps). The decode check runs `ffprobe` on bytes ZIPTV already downloaded, through
+  stdin only (`-protocol_whitelist pipe`): a hostile playlist cannot make it open URLs or files.
+- **Provider etiquette**: at most `PROBE_PROVIDER_CONCURRENCY` probes per provider across the whole
+  fleet (an IPTV account's connection limit), cheapest variant, first 1 MB of a segment; BYO
+  sources are never probed with a stream (playlist head / account call only).
+- **Client telemetry cannot steer delivery**: reports carry an HMAC token bound to the viewing's
+  session, are capped per viewing and rate limited, and only trigger re-probes — probes decide.
+- **Alerts and metrics carry no secrets**: incident titles/details name channels and providers,
+  never upstream URLs or credentials; webhooks are HMAC-signed (`X-ZIPTV-Signature`) and carry an
+  idempotency key; `/metrics` answers only with `METRICS_TOKEN` (404 when unset).
+
 ## Tests that enforce this
 
 - `api/security.e2e.test.ts` — with proxy delivery, scans every response body/header a client
@@ -107,6 +121,8 @@ is not race-proof against two simultaneous demotions (both actors would need to 
 - `infrastructure/http/upstream-client.test.ts` — SSRF and redirect rules.
 - `infrastructure/redis/shared-state.test.ts` — lease contract (memory + Redis), cross-instance
   rate limit and invalidation.
+- `api/health.e2e.test.ts` — failover, pins, incidents, signed alerts, telemetry token binding and
+  caps, metrics token, no upstream address in alerts/metrics.
 
 ## Known gaps (accepted for now)
 

@@ -69,33 +69,6 @@ export function problemFromAccount(account: { status: string; expiresAt: Date | 
   return null;
 }
 
-export interface HealthInput {
-  reachable: boolean;
-  latencyMs: number | null;
-  /** Streams that failed in recent real playback or a sample probe. */
-  offlineStreams: number;
-  unstableStreams: number;
-  /** Streams checked in the sample (0 = none checked). */
-  sampled: number;
-}
-
-const SLOW_LATENCY_MS = 2_500;
-
-/**
- * Source health from a reachability check plus stream telemetry.
- *  offline  — the provider itself does not answer
- *  unstable — streams fail/flap (≥ 1 failing in the sample or in real playback)
- *  slow     — answers, but slowly
- *  online   — everything fine
- */
-export function evaluateHealth(input: HealthInput): HealthState {
-  if (!input.reachable) return 'offline';
-  if (input.sampled > 0 && input.offlineStreams >= input.sampled) return 'offline';
-  if (input.offlineStreams > 0 || input.unstableStreams > 0) return 'unstable';
-  if (input.latencyMs !== null && input.latencyMs > SLOW_LATENCY_MS) return 'slow';
-  return 'online';
-}
-
 /** Hides credentials when showing an Xtream username (`zurab123` → `zu•••23`). */
 export function maskUsername(username: string): string {
   if (username.length <= 4) return `${username.slice(0, 1)}•••`;

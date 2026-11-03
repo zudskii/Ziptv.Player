@@ -241,7 +241,7 @@ describe.skipIf(!TEST_DATABASE_URL)('PostgreSQL repositories', () => {
       const created = await sources.create(newSource());
       const expiresAt = new Date('2030-01-02T03:04:05.000Z');
       await sources.updateAccount(created.id, { status: 'Active', expiresAt, maxConnections: 2, activeConnections: 0, trial: false });
-      await sources.updateHealth(created.id, { state: 'online', checkedAt: new Date('2026-01-01T00:00:00.000Z'), latencyMs: 12, unstableStreams: 0, offlineStreams: 0, message: null });
+      await sources.updateHealth(created.id, { state: 'online', checkedAt: new Date('2026-01-01T00:00:00.000Z'), latencyMs: 12, plays: 0, failedPlays: 0, message: null });
       const found = await sources.findById(created.id);
       expect(found?.account?.expiresAt).toEqual(expiresAt);
       expect(found?.health.checkedAt).toEqual(new Date('2026-01-01T00:00:00.000Z'));

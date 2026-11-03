@@ -67,6 +67,19 @@ export const IDLE_SNAPSHOT: PlaybackSnapshot = {
   tracks: NO_TRACKS,
 };
 
+/**
+ * Stream health telemetry of one candidate: it started (time to first frame) or failed. Sent to
+ * the server with the candidate's opaque token, so operators see which feed/source fails.
+ */
+export interface TelemetryReport {
+  sessionId: string;
+  type: 'start' | 'error';
+  telemetry: string;
+  via: PlaybackCandidateDto['via'];
+  startupMs?: number;
+  error?: { kind: string; message: string };
+}
+
 /** `continueSession`: a reconnect of the current viewing (keeps one history entry). */
 export type PlanResolver = (signal: AbortSignal, context: { continueSession?: string }) => Promise<PlaybackPlanDto>;
 
@@ -96,6 +109,9 @@ export class PlaybackController {
 
   private snapshot: PlaybackSnapshot = IDLE_SNAPSHOT;
   private readonly listeners = new Set<() => void>();
+  private readonly reporters = new Set<(report: TelemetryReport) => void>();
+  /** The candidate currently playing (runtime failures are reported against it). */
+  private current: { sessionId: string; candidate: PlaybackCandidateDto } | null = null;
   private engine: EngineHandle | null = null;
   private generation = 0;
   private abort: AbortController | null = null;
@@ -128,6 +144,17 @@ export class PlaybackController {
   };
 
   getSnapshot = (): PlaybackSnapshot => this.snapshot;
+
+  /** Candidate-level telemetry (start / error); returns the unsubscribe function. */
+  onTelemetry(listener: (report: TelemetryReport) => void): () => void {
+    this.reporters.add(listener);
+    return () => this.reporters.delete(listener);
+  }
+
+  private report(sessionId: string, candidate: PlaybackCandidateDto, report: Omit<TelemetryReport, 'sessionId' | 'telemetry' | 'via'>): void {
+    if (!candidate.telemetry) return;
+    for (const listener of this.reporters) listener({ sessionId, telemetry: candidate.telemetry, via: candidate.via, ...report });
+  }
 
   // --- commands --------------------------------------------------------------------------------
   play(resolver: PlanResolver): void {
@@ -190,6 +217,7 @@ export class PlaybackController {
     this.stop();
     this.detachVideoListeners();
     this.listeners.clear();
+    this.reporters.clear();
   }
 
   // --- internals -----------------------------------------------------------------------------
@@ -217,8 +245,10 @@ export class PlaybackController {
 
     const details: string[] = [];
     const kinds = new Set<string>();
+    this.current = null;
     for (const [index, candidate] of plan.candidates.entries()) {
       this.update({ status: status === 'reconnecting' ? 'reconnecting' : 'connecting', attempt: { index, total: plan.candidates.length, engine: candidate.engine, via: candidate.via } });
+      const attemptStarted = Date.now();
       try {
         const factory = await this.loadEngine(candidate.engine);
         if (generation !== this.generation) return;
@@ -234,12 +264,20 @@ export class PlaybackController {
         this.refreshTracks();
         this.seekToStart(plan);
         await this.startPlayback(generation);
+        if (generation !== this.generation) return; // zapped away meanwhile
         this.startStallWatchdog(generation);
+        this.current = { sessionId: plan.sessionId, candidate };
+        // Time to first frame only means something when it actually started (not autoplay-off/blocked).
+        if (!this.video.paused) this.report(plan.sessionId, candidate, { type: 'start', startupMs: Date.now() - attemptStarted });
         return;
       } catch (error) {
         if (generation !== this.generation) return;
         details.push(`${candidate.engine} · ${candidate.via}: ${errorMessage(error)}`);
         kinds.add(error instanceof EngineError ? error.kind : 'other');
+        // Stream health, not browser capability: codec/format errors (this browser) and failed direct
+        // attempts (CORS, mixed content — the proxy candidate follows) say nothing about the stream.
+        const kind = error instanceof EngineError ? error.kind : 'other';
+        if (candidate.via === 'proxy' && kind !== 'unsupported' && kind !== 'media') this.report(plan.sessionId, candidate, { type: 'error', error: { kind, message: errorMessage(error).slice(0, 300) } });
         this.teardownEngine();
       }
     }
@@ -284,6 +322,10 @@ export class PlaybackController {
 
   private onRuntimeFailure(generation: number, error: EngineError | Error): void {
     if (generation !== this.generation) return;
+    if (this.current) {
+      this.report(this.current.sessionId, this.current.candidate, { type: 'error', error: { kind: error instanceof EngineError ? `runtime_${error.kind}` : 'runtime', message: errorMessage(error).slice(0, 300) } });
+      this.current = null;
+    }
     if (this.reconnects >= this.maxReconnects) {
       this.fail({
         problem: 'stream_unavailable',
@@ -431,7 +473,7 @@ function planFailure(error: unknown): PlaybackFailure {
       message: error.message,
       details: error.requestId ? [`request ${error.requestId}`] : [],
       externalUrl: typeof details.url === 'string' ? details.url : undefined,
-      retryable: error.code !== 'UNPLAYABLE' && error.code !== 'NOT_FOUND' && error.code !== 'PARENTAL_LOCKED',
+      retryable: error.code !== 'UNPLAYABLE' && error.code !== 'NOT_FOUND' && error.code !== 'PARENTAL_LOCKED' && error.code !== 'NOT_ENTITLED',
       alternates: [],
     };
   }

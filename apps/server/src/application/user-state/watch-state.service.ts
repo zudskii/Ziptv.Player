@@ -83,7 +83,8 @@ export class WatchStateService {
     return {
       id: row.id,
       contentType: row.contentType,
-      sourceId: row.sourceId,
+      // Operator channels: no user source; `key` is the master channel id.
+      sourceId: row.sourceId ?? '',
       key: row.key,
       seriesKey: row.seriesKey,
       title: row.title,

@@ -24,8 +24,8 @@ export interface SourceHealth {
   state: HealthState;
   checkedAt: Date | null;
   latencyMs: number | null;
-  unstableStreams: number;
-  offlineStreams: number;
+  plays: number;
+  failedPlays: number;
   message: string | null;
 }
 

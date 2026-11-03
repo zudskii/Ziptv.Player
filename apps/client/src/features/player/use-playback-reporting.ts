@@ -3,7 +3,7 @@ import { useEffect, useRef } from 'react';
 
 import { apiRequest } from '../../lib/api-client';
 import { queryClient } from '../../lib/query-client';
-import type { PlaybackSnapshot } from './playback-controller';
+import type { PlaybackController, PlaybackSnapshot } from './playback-controller';
 
 const HEARTBEAT_MS = 30_000;
 
@@ -22,7 +22,15 @@ function refreshPersonalState(): void {
  * playing (and on pause/seek end), `stop` when the viewing ends (next item, page closed).
  * The server turns these into Watch History and, for movies/episodes, Continue Watching.
  */
-export function usePlaybackReporting(video: HTMLVideoElement | null, snapshot: PlaybackSnapshot): void {
+export function usePlaybackReporting(video: HTMLVideoElement | null, snapshot: PlaybackSnapshot, controller?: PlaybackController | null): void {
+  // Stream health telemetry: which candidate started (and how fast) or failed.
+  useEffect(() => {
+    if (!controller) return;
+    return controller.onTelemetry((report) => {
+      void send({ sessionId: report.sessionId, type: report.type, telemetry: report.telemetry, via: report.via, ...(report.startupMs !== undefined ? { startupMs: report.startupMs } : {}), ...(report.error ? { error: report.error } : {}) });
+    });
+  }, [controller]);
+
   const sessionId = snapshot.plan?.sessionId ?? null;
   const vod = snapshot.plan ? snapshot.plan.content.mode !== 'live' : false;
   // Buffering is part of watching (no new 'start' after every stall); pause is not.

@@ -8,6 +8,7 @@ import { NotificationBell } from '../../features/notifications/NotificationBell'
 import { ProfileSwitcher } from '../../features/profiles/ProfileSwitcher';
 import { SearchBox } from '../../features/search/SearchBox';
 import { useImportLocalLibrary } from '../../features/library/use-import-local';
+import { useHasOperatorChannels } from '../../features/operator/api';
 import { useRefreshOnSyncCompletion, useSources } from '../../features/sources/api';
 import { useApplySettings } from '../../features/user-state/use-apply-settings';
 import { useThemeStore } from '../../features/theme/theme-store';
@@ -20,7 +21,7 @@ import { Brand } from './Brand';
  * search / notifications / profile. Pages render into the outlet.
  */
 export function AppShell({ topBarExtra }: { topBarExtra?: ReactNode }) {
-  const items = navItems();
+  const items = navItems({ operatorChannels: useHasOperatorChannels() });
   // Background syncs finishing refresh Home rails and the notification center.
   useRefreshOnSyncCompletion(useSources().data);
   useApplySettings();

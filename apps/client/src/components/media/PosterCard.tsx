@@ -3,14 +3,14 @@ import type { ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import { cn } from '../../lib/cn';
-import { catalogImageProxy, imageSources, type CatalogImageType } from '../../lib/images';
+import { itemImageSources, type CatalogImageType } from '../../lib/images';
 import { Img, Initials } from '../ui/Img';
 import { ProgressBar } from '../ui/ProgressBar';
 
 interface PosterCardProps {
   to: string;
   sourceId: string;
-  type: CatalogImageType;
+  type: CatalogImageType | 'operator';
   itemKey: string;
   title: string;
   image: string | null;
@@ -25,6 +25,7 @@ interface PosterCardProps {
 
 /** 2:3 poster card for movies and series (also used for channels with a logo). */
 export function PosterCard({ to, sourceId, type, itemKey, title, image, subtitle, progress, locked, badge, layout = 'rail' }: PosterCardProps) {
+  const logo = type === 'channel' || type === 'operator';
   return (
     <Link
       to={to}
@@ -35,10 +36,10 @@ export function PosterCard({ to, sourceId, type, itemKey, title, image, subtitle
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-fg/5 ring-1 ring-inset ring-line/5">
         <Img
           key={`${sourceId}:${type}:${itemKey}`}
-          sources={imageSources(image, catalogImageProxy(sourceId, type, itemKey))}
-          fit={type === 'channel' ? 'contain' : 'cover'}
+          sources={itemImageSources(image, { sourceId, type, key: itemKey })}
+          fit={logo ? 'contain' : 'cover'}
           className="h-full w-full transition-transform duration-300 group-hover:scale-[1.03]"
-          imgClassName={type === 'channel' ? 'p-4' : undefined}
+          imgClassName={logo ? 'p-4' : undefined}
           fallback={<Initials name={title} className="text-2xl" />}
         />
         {locked && (

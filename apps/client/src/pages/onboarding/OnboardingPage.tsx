@@ -1,10 +1,11 @@
 import type { SourceDto } from '@ziptv/contracts';
-import { ArrowRight, Clapperboard, LayoutGrid, MonitorPlay, Sparkles, Tv } from 'lucide-react';
+import { ArrowRight, Clapperboard, LayoutGrid, MonitorPlay, RadioTower, Sparkles, Tv } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
 
 import { Brand } from '../../components/layout/Brand';
 import { Button } from '../../components/ui/Button';
+import { useHasOperatorChannels } from '../../features/operator/api';
 import { useSources } from '../../features/sources/api';
 import { AddSourceForm } from '../../features/sources/components/AddSourceForm';
 import { SourceProblemNotice } from '../../features/sources/components/SourceProblemNotice';
@@ -20,6 +21,7 @@ type Step = 'welcome' | 'add' | 'building';
 export function OnboardingPage() {
   const navigate = useNavigate();
   const sources = useSources();
+  const operatorChannels = useHasOperatorChannels();
   const [step, setStep] = useState<Step>('welcome');
   const [sourceId, setSourceId] = useState<string | null>(null);
   const source = sources.data?.find((item) => item.id === sourceId);
@@ -49,6 +51,11 @@ export function OnboardingPage() {
             <Button variant="primary" size="lg" className="mt-8 w-full" icon={<Sparkles className="h-5 w-5" />} onClick={() => setStep('add')}>
               Add your source
             </Button>
+            {operatorChannels && (
+              <Button variant="ghost" size="lg" className="mt-2 w-full" icon={<RadioTower className="h-5 w-5" />} onClick={() => navigate('/channels')}>
+                Watch ZIPTV channels
+              </Button>
+            )}
           </div>
         )}
 

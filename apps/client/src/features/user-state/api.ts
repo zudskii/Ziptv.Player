@@ -81,7 +81,10 @@ export function useToggleListItem() {
   const invalidate = useInvalidatePersonal();
   return useMutation({
     mutationFn: ({ item, add }: { item: { type: ListItemType; sourceId: string; key: string }; add: boolean }) =>
-      apiRequest<ListItemDto | undefined>(`${ME}/list/${item.type}/${item.sourceId}/${item.key}`, { method: add ? 'PUT' : 'DELETE' }),
+      // Operator channels are favourites of the master catalog (keyed by channel id), not of a source.
+      item.type === 'operator'
+        ? apiRequest<undefined>(`/api/v1/operator/favorites/${item.key}`, { method: add ? 'PUT' : 'DELETE' })
+        : apiRequest<ListItemDto | undefined>(`${ME}/list/${item.type}/${item.sourceId}/${item.key}`, { method: add ? 'PUT' : 'DELETE' }),
     // Optimistic: the star flips immediately.
     onMutate: async ({ item, add }) => {
       await client.cancelQueries({ queryKey: userStateKeys.list });
@@ -96,7 +99,10 @@ export function useToggleListItem() {
     onError: (_error, _input, context) => {
       if (context?.previous) client.setQueryData(userStateKeys.list, context.previous);
     },
-    onSettled: () => invalidate(),
+    onSettled: (_data, _error, { item }) => {
+      if (item.type === 'operator') void client.invalidateQueries({ queryKey: ['operator'] });
+      return invalidate();
+    },
   });
 }
 

@@ -110,6 +110,22 @@ describe('PlaybackController', () => {
     expect(controller.getSnapshot()).toMatchObject({ status: 'playing', attempt: { index: 1, via: 'proxy' } });
   });
 
+  it('reports stream telemetry: failed proxy candidates, then the one that started (with startup time)', async () => {
+    const { controller } = create(['fail', 'fail', 'ok']);
+    const reports: unknown[] = [];
+    controller.onTelemetry((report) => reports.push(report));
+    const tagged = plan('http://a', '/api/v1/media/stream/t1', '/api/v1/media/stream/t2');
+    tagged.candidates = tagged.candidates.map((candidate, index) => ({ ...candidate, telemetry: `token-${index}` }));
+    controller.play(async () => tagged);
+    await settle();
+    await settle();
+    // The failed *direct* attempt is not a stream fault (CORS, mixed content) and is not reported.
+    expect(reports).toEqual([
+      { sessionId: tagged.sessionId, type: 'error', telemetry: 'token-1', via: 'proxy', error: { kind: 'network', message: 'failed /api/v1/media/stream/t1' } },
+      { sessionId: tagged.sessionId, type: 'start', telemetry: 'token-2', via: 'proxy', startupMs: expect.any(Number) },
+    ]);
+  });
+
   it('reports every failed candidate when nothing plays', async () => {
     const { controller } = create(['fail', 'fail']);
     controller.play(async () => plan('http://a', 'http://b'));

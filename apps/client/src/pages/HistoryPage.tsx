@@ -11,12 +11,12 @@ import { Img, Initials } from '../components/ui/Img';
 import { Spinner } from '../components/ui/Spinner';
 import { useClearData, useHistory, useRemoveHistory } from '../features/user-state/api';
 import { errorMessage } from '../lib/api-client';
-import { catalogImageProxy, imageSources } from '../lib/images';
-import { paths } from '../lib/routes';
+import { historyImageSources } from '../lib/images';
+import { historyPath } from '../lib/routes';
 import { formatClock, formatDay, formatDuration } from '../lib/time';
 import { LoadMore } from './vod/VodBrowsePage';
 
-const KIND_LABELS = { channel: 'Live', catchup: 'Catch-up', movie: 'Movie', episode: 'Episode' } as const;
+const KIND_LABELS = { channel: 'Live', operator: 'Channel', catchup: 'Catch-up', movie: 'Movie', episode: 'Episode' } as const;
 
 /** /history — every viewing of this profile, newest first, grouped by day. */
 export function HistoryPage() {
@@ -76,14 +76,13 @@ export function HistoryPage() {
 }
 
 function HistoryRow({ item, onRemove }: { item: HistoryItemDto; onRemove: () => void }) {
-  const channel = item.contentType === 'channel' || item.contentType === 'catchup';
-  const to = item.contentType === 'movie' ? paths.movie(item.sourceId, item.key) : item.contentType === 'episode' && item.seriesKey ? paths.series(item.sourceId, item.seriesKey) : paths.channel(item.sourceId, item.key);
-  const imageType = channel ? 'channel' : item.contentType === 'movie' ? 'movie' : 'series';
+  const channel = item.contentType === 'channel' || item.contentType === 'catchup' || item.contentType === 'operator';
+  const to = historyPath(item);
   return (
     <li className="card flex items-center gap-3 p-2.5">
       <Link to={to} className="flex min-w-0 flex-1 items-center gap-3 hover:text-brand-soft">
         <Img
-          sources={imageSources(item.image, catalogImageProxy(item.sourceId, imageType, item.contentType === 'episode' && item.seriesKey ? item.seriesKey : item.key))}
+          sources={historyImageSources(item)}
           fit={channel ? 'contain' : 'cover'}
           className="h-12 w-20 shrink-0 rounded-md bg-fg/5"
           fallback={<Initials name={item.title} />}

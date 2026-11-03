@@ -7,8 +7,8 @@ import { ProgressBar } from '../../components/ui/ProgressBar';
 import { programmeProgress } from '../../features/epg/programme';
 import { ChannelLogo } from '../../features/live/components/ChannelLogo';
 import { cn } from '../../lib/cn';
-import { catalogImageProxy, imageSources } from '../../lib/images';
-import { paths } from '../../lib/routes';
+import { catalogImageProxy, historyImageSources, imageSources } from '../../lib/images';
+import { historyPath, paths } from '../../lib/routes';
 import { formatAgo, formatDuration } from '../../lib/time';
 
 const CARD = 'group block w-60 shrink-0 snap-start rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand sm:w-72';
@@ -73,21 +73,14 @@ export function LiveTile({ item, now }: { item: LiveNowItemDto; now: number }) {
 
 /** Recently Watched: back to the channel / details of what was watched. */
 export function RecentCard({ item, now }: { item: HistoryItemDto; now: number }) {
-  const to =
-    item.contentType === 'movie'
-      ? paths.movie(item.sourceId, item.key)
-      : item.contentType === 'episode' && item.seriesKey
-        ? paths.series(item.sourceId, item.seriesKey)
-        : paths.channel(item.sourceId, item.key);
-  const channel = item.contentType === 'channel' || item.contentType === 'catchup';
-  const imageType = channel ? 'channel' : item.contentType === 'movie' ? 'movie' : 'series';
-  const imageKey = item.contentType === 'episode' && item.seriesKey ? item.seriesKey : item.key;
+  const to = historyPath(item);
+  const channel = item.contentType === 'channel' || item.contentType === 'catchup' || item.contentType === 'operator';
   return (
     <Link role="listitem" to={to} className={cn(CARD, 'w-40 sm:w-44')} title={item.title}>
       <div className="relative aspect-video overflow-hidden rounded-lg bg-fg/5 ring-1 ring-inset ring-line/5">
         <Img
           key={item.id}
-          sources={imageSources(item.image, catalogImageProxy(item.sourceId, imageType, imageKey))}
+          sources={historyImageSources(item)}
           fit={channel ? 'contain' : 'cover'}
           imgClassName={channel ? 'p-3' : undefined}
           className="h-full w-full"

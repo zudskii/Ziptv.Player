@@ -11,7 +11,9 @@ export type ContentRefDto =
   | { type: 'movie'; sourceId: string; key: string }
   | { type: 'episode'; sourceId: string; seriesKey: string; key: string }
   /** A past programme from the channel archive; `start`/`end` are ISO instants. */
-  | { type: 'catchup'; sourceId: string; key: string; start: string; end: string };
+  | { type: 'catchup'; sourceId: string; key: string; start: string; end: string }
+  /** A channel of the operator catalog (rights-checked, always delivered through the proxy). */
+  | { type: 'operator'; channelId: string };
 
 export type PlaybackEngineName = 'hls' | 'mpegts' | 'flv' | 'native' | 'dash';
 
@@ -20,6 +22,8 @@ export interface PlaybackCandidateDto {
   /** Absolute upstream URL (direct) or API-relative path (proxy), resolve against the API origin. */
   url: string;
   via: 'direct' | 'proxy';
+  /** Opaque: echo it in `start` / `error` playback events of this candidate (stream health telemetry). */
+  telemetry?: string;
 }
 
 export interface ResolvePlaybackRequest {
@@ -33,6 +37,8 @@ export interface ResolvePlaybackRequest {
    * profile and the same content, the new plan keeps it (one history entry per viewing).
    */
   continueSession?: string;
+  /** Device class for licensed (operator) channels; rights can be device-specific. Default: web. */
+  device?: 'web' | 'mobile' | 'tv' | 'stb';
 }
 
 export interface PlaybackContentDto {
@@ -86,4 +92,6 @@ export interface PlaybackEventRequest {
   via?: 'direct' | 'proxy';
   /** For `start`: time to first frame. */
   startupMs?: number;
+  /** The candidate's `telemetry` token: which stream the `start` / `error` is about. */
+  telemetry?: string;
 }

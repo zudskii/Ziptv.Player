@@ -46,6 +46,8 @@ export function contentKey(content: ContentRefDto | undefined | null): string {
       return `episode:${content.sourceId}:${content.seriesKey}:${content.key}`;
     case 'catchup':
       return `catchup:${content.sourceId}:${content.key}:${content.start}`;
+    case 'operator':
+      return `operator:${content.channelId}`;
     default:
       return `${content.type}:${content.sourceId}:${content.key}`;
   }

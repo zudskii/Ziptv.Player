@@ -48,7 +48,7 @@ async function main(): Promise<void> {
   const runsJobs = config.role !== 'api' && config.jobs.enabled;
 
   // A worker instance serves no API at all — only health probes (and runs jobs).
-  const app = runsApi ? createApp({ config, logger, container, isReady: database.ping }) : healthOnlyApp(database.ping);
+  const app = runsApi ? createApp({ config, logger, container, isReady: database.ping }) : healthOnlyApp(database.ping, container.metrics.handler(config.metrics.token));
   const server = createServer(app);
   // Must outlive the load balancer's idle timeout (Render/ALB: 60 s) to avoid random 502s.
   server.keepAliveTimeout = 65_000;
@@ -101,9 +101,10 @@ async function main(): Promise<void> {
   });
 }
 
-function healthOnlyApp(isReady: () => Promise<boolean>): express.Express {
+function healthOnlyApp(isReady: () => Promise<boolean>, metrics: express.RequestHandler): express.Express {
   const app = express();
   app.disable('x-powered-by');
+  app.get('/metrics', metrics);
   app.get('/healthz', (_req, res) => {
     res.json({ status: 'ok', role: 'worker' });
   });

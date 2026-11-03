@@ -1,4 +1,4 @@
-import type { ListItemDto, ListItemType, ListStateDto } from '@ziptv/contracts';
+import type { ListItemDto, ListStateDto } from '@ziptv/contracts';
 
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { AppError } from '../errors.js';
@@ -6,7 +6,7 @@ import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository, SourceRevisionRef } from '../ports/catalog-repository.js';
 import type { SourceRepository } from '../ports/source-repository.js';
-import type { ListItemRecord, ListRepository } from '../ports/user-state-repository.js';
+import type { ListItemKind, ListItemRecord, ListRepository } from '../ports/user-state-repository.js';
 import { invalidateHome } from './cache-keys.js';
 import { groupBy, usableSources } from './viewer-sources.js';
 
@@ -32,6 +32,8 @@ export class MyListService {
       catalog: CatalogRepository;
       cache: Cache;
       artwork?: ArtworkUrls;
+      /** Operator catalog favourites (keyed by master channel id), listed with the rest. */
+      operatorFavorites?: (viewer: Viewer) => Promise<ListItemDto[]>;
     },
   ) {}
 
@@ -64,10 +66,14 @@ export class MyListService {
         available: Boolean(item),
       });
     }
-    return { items };
+    if (this.deps.operatorFavorites) {
+      items.push(...(await this.deps.operatorFavorites(viewer)));
+      items.sort((a, b) => b.addedAt.localeCompare(a.addedAt));
+    }
+    return { items: items.slice(0, limit) };
   }
 
-  async add(viewer: Viewer, input: { type: ListItemType; sourceId: string; key: string }): Promise<ListItemDto> {
+  async add(viewer: Viewer, input: { type: ListItemKind; sourceId: string; key: string }): Promise<ListItemDto> {
     const { byId } = await usableSources(this.deps.sources, viewer);
     const source = byId.get(input.sourceId);
     if (!source) throw AppError.notFound('Source');
@@ -90,17 +96,17 @@ export class MyListService {
     };
   }
 
-  async remove(viewer: Viewer, input: { type: ListItemType; sourceId: string; key: string }): Promise<void> {
+  async remove(viewer: Viewer, input: { type: ListItemKind; sourceId: string; key: string }): Promise<void> {
     await this.deps.list.remove(viewer.profileId, input.sourceId, input.type, input.key);
     invalidateHome(this.deps.cache, viewer.profileId);
   }
 
-  keys(viewer: Viewer, sourceId: string, type: ListItemType): Promise<Set<string>> {
+  keys(viewer: Viewer, sourceId: string, type: ListItemKind): Promise<Set<string>> {
     return this.deps.list.keys(viewer.profileId, sourceId, type);
   }
 
   private async lookup(ref: SourceRevisionRef, items: Pick<ListItemRecord, 'type' | 'key'>[]): Promise<Map<string, CatalogItem>> {
-    const keysOf = (type: ListItemType) => items.filter((item) => item.type === type).map((item) => item.key);
+    const keysOf = (type: ListItemKind) => items.filter((item) => item.type === type).map((item) => item.key);
     const [channels, movies, series] = await Promise.all([
       this.deps.catalog.findLiveMany(ref, keysOf('channel')),
       this.deps.catalog.findMoviesMany(ref, keysOf('movie')),
@@ -120,6 +126,6 @@ export class MyListService {
   }
 }
 
-function itemId(item: { sourceId: string; type: ListItemType; key: string }): string {
+function itemId(item: { sourceId: string; type: ListItemKind; key: string }): string {
   return `${item.sourceId}|${item.type}|${item.key}`;
 }
