@@ -1,32 +1,19 @@
-import { AppError } from '../errors.js';
-import type { ProfileService } from './profile.service.js';
+import type { ParentalService } from './parental.service.js';
 import type { AuthUser } from './session.service.js';
 import type { ViewerResolver } from './viewer-resolver.js';
 import type { Viewer } from './viewer.js';
 
 /**
- * Viewer of a request from the account's profiles: `X-Profile-Id` selects one, otherwise the
- * default profile. Kids profiles never see adult content. An unknown profile id is a 404 (the
- * client drops its stored selection) — never a silent fallback to another profile's data.
+ * Viewer of a request from the account's profiles and parental controls: `X-Profile-Id` selects
+ * one (else the device's kids profile, else the default profile); its restrictions and the
+ * `X-Unlock-Token` decide what it sees. An unknown profile id is a 404 (the client drops its
+ * stored selection) — never a silent fallback to another profile's data — and a profile the
+ * device may not open without the PIN is a 403 PIN_REQUIRED.
  */
 export class ProfileViewerResolver implements ViewerResolver {
-  constructor(private readonly profiles: Pick<ProfileService, 'records'>) {}
+  constructor(private readonly parental: Pick<ParentalService, 'viewerFor'>) {}
 
-  async resolve(user: AuthUser, input: { profileId?: string | undefined; unlockToken?: string | undefined }): Promise<Viewer> {
-    const profiles = await this.profiles.records(user.id);
-    const profile = input.profileId ? profiles.find((item) => item.id === input.profileId) : profiles.find((item) => item.isDefault);
-    if (!profile) throw new AppError('NOT_FOUND', 404, 'Profile not found.', { reason: 'profile' });
-    const kids = profile.kind === 'kids';
-    return {
-      userId: user.id,
-      sessionId: user.sessionId,
-      profileId: profile.id,
-      kids,
-      hideAdult: kids,
-      lockedGroups: new Set(),
-      lockedChannels: new Set(),
-      unlocked: false,
-      restrictionsVersion: profile.kind,
-    };
+  resolve(user: AuthUser, input: { profileId?: string | undefined; unlockToken?: string | undefined }): Promise<Viewer> {
+    return this.parental.viewerFor(user, input);
   }
 }

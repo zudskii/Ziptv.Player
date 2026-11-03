@@ -9,6 +9,8 @@ import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 export function createMediaRouter(deps: {
   cors: RequestHandler;
   streamProxy: RequestHandler | null;
+  /** Catch-up of exported (proxied) channels → redirects into the stream proxy. */
+  archive: RequestHandler | null;
   catalogImages: RequestHandler;
   signedImages: RequestHandler;
   limit: RateLimiterFactory;
@@ -24,6 +26,7 @@ export function createMediaRouter(deps: {
   });
 
   if (deps.streamProxy) router.get('/stream/:token', streamLimiter, deps.streamProxy);
+  if (deps.archive) router.get('/archive/:token', streamLimiter, deps.archive);
   router.get('/images/t/:token', imageLimiter, deps.signedImages);
   router.get('/images/:sourceId/:type/:key', imageLimiter, deps.catalogImages);
   // 2.x logo URLs (playlist id = source id after the 3.0 migration).

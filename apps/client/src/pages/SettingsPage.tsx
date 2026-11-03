@@ -10,6 +10,7 @@ import { Segmented } from '../components/ui/Segmented';
 import { Spinner } from '../components/ui/Spinner';
 import { Switch } from '../components/ui/Switch';
 import { AccountSection } from '../features/auth/components/AccountSection';
+import { ParentalSection } from '../features/parental/ParentalSection';
 import { ProfilesSection } from '../features/profiles/ProfilesSection';
 import { useThemeStore } from '../features/theme/theme-store';
 import { useClearData, useSettings, useStorageUsage, useUpdateSettings } from '../features/user-state/api';
@@ -28,7 +29,7 @@ const LANGUAGES = [
   { value: 'uk', label: 'Ukrainian' },
 ];
 
-/** Settings: General, Playback, Appearance, EPG, Profiles, Data & Storage, Sources, Account, About. */
+/** Settings: General, Playback, Appearance, EPG, Profiles, Parental controls, Data & Storage, Sources, Account, About. */
 export function SettingsPage() {
   const settings = useSettings();
   const update = useUpdateSettings();
@@ -56,6 +57,7 @@ export function SettingsPage() {
         <p className="text-sm text-red-500">{errorMessage(settings.error)}</p>
       )}
       <ProfilesSection />
+      <ParentalSection />
       {data && <DataSection settings={data} save={save} />}
       <AccountSection />
       <Section id="sources" title="Sources">
@@ -65,7 +67,7 @@ export function SettingsPage() {
       </Section>
       <Section id="about" title="About">
         <p className="text-sm text-fg-muted">ZIPTV {__APP_VERSION__} — personal streaming hub for your own sources.</p>
-        <p className="text-xs text-fg-subtle">Shortcuts: Space play/pause · ←/→ seek · ↑/↓ volume · M mute · F fullscreen · N/P next/previous · / search</p>
+        <p className="text-xs text-fg-subtle">Shortcuts: Space play/pause · ←/→ seek · 0–9 jump · ↑/↓ volume · M mute · F fullscreen · I picture in picture · C subtitles · N/P next/previous · ? all shortcuts · / search</p>
       </Section>
     </div>
   );

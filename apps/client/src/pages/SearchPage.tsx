@@ -1,4 +1,4 @@
-import { Search } from 'lucide-react';
+import { Play, Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 
 import { Rail } from '../components/media/Rail';
@@ -74,7 +74,8 @@ export function SearchPage() {
               <ul className="space-y-2">
                 {data!.programmes.map(({ sourceId, channel, programme }) => (
                   <li key={`${sourceId}:${channel.key}:${programme.id}`}>
-                    <Link to={paths.channel(sourceId, channel.key)} className="card flex items-center gap-3 p-2.5 hover:bg-fg/5">
+                    {/* A past programme in the archive (decided by the server) opens the replay; anything else the channel. */}
+                    <Link to={programme.catchup ? paths.archive(sourceId, channel.key, programme) : paths.channel(sourceId, channel.key)} className="card flex items-center gap-3 p-2.5 hover:bg-fg/5">
                       <ChannelLogo sourceId={sourceId} channel={channel} className="h-9 w-12" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-fg">{programme.title}</span>
@@ -82,6 +83,11 @@ export function SearchPage() {
                           {channel.name} · {formatDay(programme.start)} {formatRange(programme.start, programme.end)}
                         </span>
                       </span>
+                      {programme.catchup && (
+                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-soft">
+                          <Play className="h-3 w-3 fill-current" /> Watch
+                        </span>
+                      )}
                     </Link>
                   </li>
                 ))}

@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { ActivePlaybackDto, ConcurrencyLimitDetails, DeviceDto, PlaybackHeartbeatDto, PlaybackSessionDto, RegisterDeviceRequest, StartPlaybackSessionRequest } from '@ziptv/contracts';
 
 import type { AccessDecision } from '../../domain/commerce/entitlement.js';
+import { catchupGrants } from '../../domain/operator/rights.js';
 import { AppError } from '../errors.js';
 import { unrestrictedViewer, type Viewer } from '../identity/viewer.js';
 import type { Clock } from '../ports/clock.js';
@@ -47,7 +48,7 @@ export class PlaybackAuthorizationService {
     private readonly deps: {
       commerce: CommerceRepository;
       entitlements: EntitlementService;
-      operator: Pick<OperatorService, 'accessContext'>;
+      operator: Pick<OperatorService, 'accessContext' | 'assertViewable'>;
       playback: Pick<PlaybackService, 'operatorPlan'>;
       leases: LeaseStore;
       clock: Clock;
@@ -111,10 +112,15 @@ export class PlaybackAuthorizationService {
     const device = await this.requireDevice(viewer, input.deviceId);
     const where: ViewingContext = { country: context.country, device: device.platform };
 
-    // 2. channel, rights, entitlement
+    // 2. channel, rights (catch-up rights for an archive viewing), entitlement
+    const archive = input.archive ? { start: new Date(input.archive.start), end: new Date(input.archive.end) } : null;
+    // Parental locks are checked when a viewing starts (the unlock token is short-lived; heartbeats do not need it).
+    await this.deps.operator.assertViewable(viewer, input.channelId);
     const { channel, grants } = await this.deps.operator.accessContext(viewer, input.channelId);
     const access = await this.deps.entitlements.viewerAccess(viewer);
-    const decision = await this.deps.entitlements.decide(access, channel.id, grants, where);
+    const usable = archive ? catchupGrants(grants, { country: where.country, device: where.device, at: now }, archive.start) : grants;
+    if (archive && usable.length === 0) throw new AppError('NOT_ENTITLED', 403, 'Catch-up is not licensed for this programme.', { reason: 'catchup_not_licensed' });
+    const decision = await this.deps.entitlements.decide(access, channel.id, usable, where);
     if (!decision.allowed) throw denied(decision.reason);
 
     // 3. concurrency lease (atomic across instances)
@@ -142,6 +148,7 @@ export class PlaybackAuthorizationService {
         startedAt: now,
         lastHeartbeatAt: now,
         expiresAt,
+        archive,
       });
     } catch (error) {
       // No session row = nobody would ever release this slot.
@@ -152,7 +159,12 @@ export class PlaybackAuthorizationService {
 
     // 4–5. feeds and links bound to this session
     try {
-      const plan = await this.deps.playback.operatorPlan(viewer, { channelId: channel.id, secureContext: input.secureContext, ...(continueSession ? { continueSession } : {}) }, where, { kind: 'playback', id });
+      const plan = await this.deps.playback.operatorPlan(
+        viewer,
+        { channelId: channel.id, secureContext: input.secureContext, ...(continueSession ? { continueSession } : {}), ...(archive ? { archive } : {}) },
+        where,
+        { kind: 'playback', id },
+      );
       this.deps.logger.info({ userId: viewer.userId, playbackSessionId: id, channelId: channel.id, deviceId: device.id, access: decision.via.kind, country: where.country }, 'Playback session started');
       return {
         playbackSessionId: id,
@@ -266,7 +278,11 @@ export class PlaybackAuthorizationService {
       return { allowed: false, reason: 'not_licensed' };
     }
     const access = await this.deps.entitlements.viewerAccess(viewer);
-    return this.deps.entitlements.decide(access, session.channelId, grants, { country: context.country, device: device.platform });
+    const where = { country: context.country, device: device.platform };
+    // A catch-up viewing keeps needing catch-up rights (revoked or narrowed → it ends too).
+    const usable = session.archive ? catchupGrants(grants, { ...where, at: this.deps.clock.now() }, session.archive.start) : grants;
+    if (session.archive && usable.length === 0) return { allowed: false, reason: 'not_licensed' };
+    return this.deps.entitlements.decide(access, session.channelId, usable, where);
   }
 
   private async end(viewer: Pick<Viewer, 'userId'>, id: string, reason: string): Promise<void> {

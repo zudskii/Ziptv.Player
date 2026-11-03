@@ -67,6 +67,10 @@ export interface SessionsTable {
   last_seen_at: Generated<Date>;
   /** NULL = never expires (guest sessions). */
   expires_at: Date | null;
+  /** This device entered a kids profile: other profiles need the parental PIN. */
+  kids_lock_profile_id: Generated<string | null>;
+  /** The PIN-protected profile opened on this device with the PIN. */
+  open_profile_id: Generated<string | null>;
 }
 
 export interface SourcesTable {
@@ -400,7 +404,25 @@ export interface ProfilesTable {
   kind: ProfileKind;
   is_default: Generated<boolean>;
   settings: JsonDefault<StoredProfileSettings>;
+  pin_protected: Generated<boolean>;
   created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface ParentalPinsTable {
+  user_id: string;
+  pin_hash: string;
+  version: Generated<number>;
+  failures: Generated<number>;
+  locked_until: Date | null;
+  updated_at: Generated<Date>;
+}
+
+export interface ParentalRulesTable {
+  profile_id: string;
+  hide_adult: Generated<boolean>;
+  locked_groups: JsonDefault<{ sourceId: string; group: string }[]>;
+  locked_channels: JsonDefault<{ sourceId: string; key: string; name: string }[]>;
   updated_at: Generated<Date>;
 }
 
@@ -529,6 +551,7 @@ export interface ProviderStreamsTable {
   kind: StreamKind;
   locator: string | null;
   xtream: NullableJson<{ id: number }>;
+  catchup: NullableJson<CatchupInfo>;
   status: Generated<StreamStatus>;
   channel_id: string | null;
   match_method: MatchMethod | null;
@@ -558,6 +581,7 @@ export interface RightsGrantsTable {
   start_at: Date;
   end_at: Date | null;
   contract_ref: string;
+  catchup_days: Generated<number>;
   status: Generated<'active' | 'revoked'>;
   created_by: string | null;
   created_at: Generated<Date>;
@@ -767,6 +791,8 @@ export interface PlaybackSessionsTable {
   ended_at: Date | null;
   end_reason: string | null;
   provider_id: string | null;
+  archive_start: Date | null;
+  archive_end: Date | null;
 }
 
 export interface CheckoutsTable {
@@ -900,6 +926,8 @@ export interface ChannelEpgTable {
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
+  parental_pins: ParentalPinsTable;
+  parental_rules: ParentalRulesTable;
   email_tokens: EmailTokensTable;
   sources: SourcesTable;
   live_channels: LiveChannelsTable;

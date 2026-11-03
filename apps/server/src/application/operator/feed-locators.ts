@@ -23,4 +23,15 @@ export class FeedLocators {
     const locator = await this.deps.adapters[provider.type].resolveFeed(provider, connection, stream);
     return { locator, kind: stream.kind };
   }
+
+  /** Archive address of [start, end) on the feed's stream; null when it has no usable archive. */
+  async locateArchive(feed: { providerId: string; providerStreamId: string }, times: { start: Date; end: Date; now: Date }): Promise<{ locator: StreamLocator; kind: StreamKind } | null> {
+    const [stream, provider] = await Promise.all([this.deps.catalog.findStream(feed.providerStreamId), this.deps.catalog.findProvider(feed.providerId)]);
+    if (!stream?.catchup || !provider) return null;
+    const connection = await this.deps.connections.open(provider);
+    const locator = await this.deps.adapters[provider.type].resolveArchive(provider, connection, stream, times);
+    if (!locator) return null;
+    const path = new URL(locator.url).pathname.toLowerCase();
+    return { locator, kind: path.endsWith('.m3u8') ? 'hls' : path.endsWith('.ts') ? 'mpegts' : stream.kind };
+  }
 }

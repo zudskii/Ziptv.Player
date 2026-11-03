@@ -10,6 +10,7 @@ import type {
   LiveNowItemDto,
   NowNextDto,
   NowNextListDto,
+  ProgrammeDto,
   SetEpgMappingRequest,
   UpdateGuideRequest,
 } from '@ziptv/contracts';
@@ -84,7 +85,7 @@ export class EpgService {
     const items: Record<string, NowNextDto> = {};
     for (const channel of summaries) {
       const entry = raw.get(channel.key);
-      if (!entry || isHiddenForViewer(viewer, channel)) continue;
+      if (!entry || isHiddenForViewer(viewer, channel, source.id)) continue;
       const context = { catchupDays: channel.catchup?.days ?? null, now, media: this.deps.media, shiftMs: shift, proxyAll: this.proxyAll };
       items[channel.key] = {
         now: entry.now ? toProgrammeDto(entry.now, context) : null,
@@ -119,7 +120,7 @@ export class EpgService {
       if (raw.size === 0) continue;
       for (const channel of summaries) {
         const entry = raw.get(channel.key);
-        if (!entry?.now || channel.unplayableReason || isHiddenForViewer(viewer, channel)) continue;
+        if (!entry?.now || channel.unplayableReason || isHiddenForViewer(viewer, channel, source.id)) continue;
         const locked = this.deps.live.isLocked(viewer, source.id, channel);
         if (locked && viewer.kids) continue;
         if (options.match && !options.match(channel, entry.now)) continue;
@@ -145,7 +146,7 @@ export class EpgService {
   async channelSchedule(viewer: Viewer, sourceId: string, key: string, range: { from?: Date; to?: Date }): Promise<ChannelScheduleDto> {
     const source = await this.deps.live.requireSource(viewer, sourceId);
     const channel = (await this.deps.live.summaries(source)).find((item) => item.key === key);
-    if (!channel || isHiddenForViewer(viewer, channel)) throw AppError.notFound('Channel');
+    if (!channel || isHiddenForViewer(viewer, channel, source.id)) throw AppError.notFound('Channel');
     const now = this.deps.clock.now();
     const catchupDays = channel.catchup?.days ?? 0;
     const from = range.from ?? new Date(now.getTime() - (catchupDays > 0 ? catchupDays * 24 * HOUR : 3 * HOUR));
@@ -162,6 +163,12 @@ export class EpgService {
       to: to.toISOString(),
       programmes: (programmes.get(channel.key) ?? []).map((programme) => toProgrammeDto(programme, context)),
     };
+  }
+
+  /** The guide's programme of a channel starting at `start` (as the viewer sees it, i.e. shifted), if any. */
+  async programmeAt(viewer: Viewer, sourceId: string, key: string, start: Date): Promise<ProgrammeDto | null> {
+    const schedule = await this.channelSchedule(viewer, sourceId, key, { from: new Date(start.getTime() - 60_000), to: new Date(start.getTime() + 60_000) });
+    return schedule.programmes.find((programme) => Date.parse(programme.start) === start.getTime()) ?? null;
   }
 
   async guide(viewer: Viewer, query: { sourceId: string; from: Date; to: Date; group?: string; offset: number; limit: number }): Promise<GuideDto> {
@@ -212,7 +219,7 @@ export class EpgService {
     const owners = new Map<string, { source: SourceRecord; channel: LiveChannelSummary }>();
     for (const source of sources) {
       for (const channel of await this.deps.live.summaries(source)) {
-        if (!channel.epg || isHiddenForViewer(viewer, channel) || channel.unplayableReason) continue;
+        if (!channel.epg || isHiddenForViewer(viewer, channel, source.id) || channel.unplayableReason) continue;
         const id = `${channel.epg.guideId}|${channel.epg.epgChannelId}`;
         if (!owners.has(id)) owners.set(id, { source, channel });
       }

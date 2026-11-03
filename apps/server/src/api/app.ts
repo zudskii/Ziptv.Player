@@ -76,6 +76,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
     createMediaRouter({
       cors: container.media.cors,
       streamProxy: config.stream.proxyEnabled ? container.media.streamProxy : null,
+      archive: config.stream.proxyEnabled ? container.media.archive : null,
       catalogImages: container.media.catalogImages,
       signedImages: container.media.signedImages,
       limit,
@@ -91,6 +92,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
 
   // --- JSON API ------------------------------------------------------------------------------
   const auth = requireSession(container.sessions, container.viewers);
+  const accountAuth = requireSession(container.sessions, null);
   const api = express.Router();
   api.use(
     cors({
@@ -104,7 +106,7 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
   api.use(compression());
   api.use(express.json({ limit: '256kb' }));
   api.use(limit({ name: 'api', windowMs: 60 * 1000, limit: 900 }));
-  api.use(createApiRouters({ container, auth, optionalAuth: optionalSession(container.sessions), withUnlock: acceptBodyUnlock(container.viewers), config, limit }));
+  api.use(createApiRouters({ container, auth, accountAuth, optionalAuth: optionalSession(container.sessions), withUnlock: acceptBodyUnlock(container.viewers), config, limit }));
   api.use(notFoundHandler);
   app.use(API_PREFIX, api);
 

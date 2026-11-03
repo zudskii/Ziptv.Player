@@ -66,6 +66,13 @@ export interface VodListQuery {
   hideAdult: boolean;
   /** Skip counting the matching items (rails need none); total is then -1. */
   skipTotal?: boolean;
+  /** Kids profiles: locked groups / items are filtered out (not shown as locked). */
+  hidden?: HiddenContent;
+}
+
+export interface HiddenContent {
+  groups: string[];
+  keys: string[];
 }
 
 export type MovieSummary = Omit<StoredMovie, 'locator' | 'searchTokens'>;
@@ -112,7 +119,7 @@ export interface CatalogRepository {
   listMovies(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: MovieSummary[]; total: number }>;
   listSeries(ref: SourceRevisionRef, query: VodListQuery): Promise<{ items: SeriesSummary[]; total: number }>;
   /** Categories in provider order with item counts. */
-  vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean): Promise<{ name: string; count: number }[]>;
+  vodCategories(ref: SourceRevisionRef, type: 'movies' | 'series', hideAdult: boolean, hidden?: HiddenContent): Promise<{ name: string; count: number }[]>;
   findMoviesMany(ref: SourceRevisionRef, keys: string[]): Promise<MovieSummary[]>;
   findSeriesMany(ref: SourceRevisionRef, keys: string[]): Promise<SeriesSummary[]>;
   /** Newest items (provider date or first-seen date) across sources. */

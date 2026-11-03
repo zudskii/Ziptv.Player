@@ -15,6 +15,8 @@ export interface RightsGrant {
   startAt: Date;
   endAt: Date | null;
   status: 'active' | 'revoked';
+  /** Catch-up is licensed separately: how many days back viewers may replay (0 = live only). */
+  catchupDays: number;
 }
 
 export interface RightsQuery {
@@ -44,6 +46,27 @@ export function findCoveringGrant(grants: readonly RightsGrant[], query: RightsQ
 /** In force at `at` somewhere (any territory/device): the channel is carried at all. */
 export function isLicensedAt(grants: readonly RightsGrant[], at: Date): boolean {
   return grants.some((grant) => grant.status === 'active' && grant.startAt <= at && (!grant.endAt || grant.endAt > at));
+}
+
+/**
+ * Grants under which this viewer may replay a programme aired at `airedAt`: catch-up rights that
+ * cover the viewer here and now, that already covered the broadcast (the licence was in force
+ * when it aired — an archive never reaches back before the licence began) and whose catch-up
+ * window reaches back that far.
+ */
+export function catchupGrants<T extends RightsGrant>(grants: readonly T[], query: RightsQuery, airedAt: Date): T[] {
+  return grants.filter(
+    (grant) =>
+      grant.catchupDays > 0 &&
+      grantCovers(grant, query) &&
+      grantCovers(grant, { ...query, at: airedAt }) &&
+      airedAt.getTime() >= query.at.getTime() - grant.catchupDays * 86_400_000,
+  );
+}
+
+/** The longest catch-up window (days) the viewer has on a channel right now (0 = none). */
+export function catchupDaysFor(grants: readonly RightsGrant[], query: RightsQuery): number {
+  return grants.reduce((days, grant) => (grant.catchupDays > days && grantCovers(grant, query) ? grant.catchupDays : days), 0);
 }
 
 /**

@@ -35,7 +35,10 @@ import { PlaylistEntryService, PlaylistRelinker } from './application/playlists/
 import { PlaylistExportService } from './application/playlists/playlist-export.service.js';
 import { PlaylistService } from './application/playlists/playlist.service.js';
 import { SessionService } from './application/identity/session.service.js';
+import { ParentalService } from './application/identity/parental.service.js';
 import { ProfileViewerResolver } from './application/identity/profile-viewer-resolver.js';
+import { HmacUnlockTokens } from './infrastructure/crypto/unlock-tokens.js';
+import { PgParentalRepository } from './infrastructure/persistence/postgres/repositories/parental.repository.js';
 import { ProfileService } from './application/identity/profile.service.js';
 import type { ViewerResolver } from './application/identity/viewer-resolver.js';
 import { SearchService } from './application/catalog/search.service.js';
@@ -76,6 +79,7 @@ import { JobRunner, periodicWorker } from './application/jobs/job-runner.js';
 import { NotificationService } from './application/notifications/notification.service.js';
 import { MediaGrantChecker } from './application/playback/media-grants.js';
 import { PlaybackService } from './application/playback/playback.service.js';
+import { SourceConnections } from './application/playback/source-connections.js';
 import { ProviderStreamUrls } from './application/playback/provider-stream-urls.js';
 import type { LeaseStore } from './application/ports/lease-store.js';
 import type { Cache } from './application/ports/cache.js';
@@ -107,6 +111,7 @@ import { UpstreamClient } from './infrastructure/http/upstream-client.js';
 import { createCatalogImageHandler, createSignedImageHandler } from './infrastructure/media/image-proxy.js';
 import { SignedMediaUrls } from './infrastructure/media/media-urls.js';
 import { HttpStreamProber } from './infrastructure/media/stream-prober.js';
+import { createArchiveRedirectHandler } from './infrastructure/media/archive-redirect.js';
 import { createStreamProxyHandler, mediaCorsHeaders } from './infrastructure/media/stream-proxy.js';
 import type { Db } from './infrastructure/persistence/postgres/database.js';
 import { PgAccountDataTransfer } from './infrastructure/persistence/postgres/repositories/account-data-transfer.js';
@@ -180,6 +185,7 @@ export interface Container {
   playlistEntries: PlaylistEntryService;
   playlistExport: PlaylistExportService;
   viewers: ViewerResolver;
+  parental: ParentalService;
   profiles: ProfileService;
   myList: MyListService;
   watch: WatchStateService;
@@ -199,6 +205,7 @@ export interface Container {
   media: {
     cors: RequestHandler;
     streamProxy: RequestHandler;
+    archive: RequestHandler;
     catalogImages: RequestHandler;
     signedImages: RequestHandler;
   };
@@ -260,8 +267,22 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const progressRepository = new PgProgressRepository(db);
   const historyRepository = new PgHistoryRepository(db);
   const profiles = new ProfileService({ profiles: profileRepository, cache, limits: { maxProfiles: MAX_PROFILES } });
-  const viewers: ViewerResolver = new ProfileViewerResolver(profiles);
   const notifications = new NotificationService(notificationRepository, clock, logger.child({ module: 'notifications' }));
+  const parental = new ParentalService({
+    parental: new PgParentalRepository(db),
+    profiles,
+    profileStore: profileRepository,
+    sessions: sessionRepository,
+    sources: sourceRepository,
+    hasher: options.passwordHasher ?? new ScryptPasswordHasher(),
+    tokens: new HmacUnlockTokens(config.stream.tokenSecret),
+    cache,
+    clock,
+    unlockTtlSeconds: config.parental.unlockTtlSeconds,
+    notifications,
+  });
+  profiles.useGuard(parental);
+  const viewers: ViewerResolver = new ProfileViewerResolver(parental);
   const m3u = new M3uProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
   const xtream = new XtreamProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
   const guideRepository = new PgGuideRepository(db);
@@ -463,6 +484,11 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     episodes: seriesEpisodes,
     operator,
     operatorAccess: config.commerce.access,
+    programmes: epg,
+    connections: new SourceConnections(leases),
+    // Operator guide is built further down; only called while serving requests.
+    operatorProgrammes: { programmeAt: (channelId, start) => operatorEpg.programmeAt(channelId, start) },
+    clock,
     telemetry,
     metrics,
     observer: new WatchObserver({
@@ -785,6 +811,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const media = {
     cors: mediaCorsHeaders as RequestHandler,
     streamProxy: createStreamProxyHandler({ tokens: mediaTokens, grants: mediaGrants, upstream, logger: mediaLogger, strictManifests: config.stream.delivery === 'proxy' }),
+    archive: createArchiveRedirectHandler({ tokens: mediaTokens, media: mediaUrls, grants: mediaGrants }),
     catalogImages: createCatalogImageHandler({ lookup: (sourceId, type, key) => images.find(sourceId, type, key), tokens: mediaTokens, upstream, logger: mediaLogger }),
     signedImages: createSignedImageHandler({ lookup: async () => null, tokens: mediaTokens, upstream, logger: mediaLogger }),
   };
@@ -825,6 +852,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       logger: logger.child({ module: 'playlist-export' }),
     }),
     viewers,
+    parental,
     profiles,
     myList,
     watch,

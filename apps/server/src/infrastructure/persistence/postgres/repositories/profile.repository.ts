@@ -15,6 +15,7 @@ function toRecord(row: Selectable<ProfilesTable>): ProfileRecord {
     color: row.color,
     kind: row.kind,
     isDefault: row.is_default,
+    pinProtected: row.pin_protected,
     settings: row.settings,
     createdAt: row.created_at,
   };
@@ -60,7 +61,7 @@ export class PgProfileRepository implements ProfileRepository {
     });
   }
 
-  async update(id: string, userId: string, patch: { name?: string; color?: string; kind?: ProfileKind }): Promise<ProfileRecord | null> {
+  async update(id: string, userId: string, patch: { name?: string; color?: string; kind?: ProfileKind; pinProtected?: boolean }): Promise<ProfileRecord | null> {
     if (!isEntityId(id)) return null;
     const row = await this.db
       .updateTable('profiles')
@@ -69,12 +70,17 @@ export class PgProfileRepository implements ProfileRepository {
         ...(patch.name !== undefined ? { name: patch.name } : {}),
         ...(patch.color !== undefined ? { color: patch.color } : {}),
         ...(patch.kind !== undefined ? { kind: patch.kind } : {}),
+        ...(patch.pinProtected !== undefined ? { pin_protected: patch.pinProtected } : {}),
       })
       .where('id', '=', id)
       .where('user_id', '=', userId)
       .returningAll()
       .executeTakeFirst();
     return row ? toRecord(row) : null;
+  }
+
+  async clearPinProtection(userId: string): Promise<void> {
+    await this.db.updateTable('profiles').set({ pin_protected: false }).where('user_id', '=', userId).where('pin_protected', '=', true).execute();
   }
 
   async saveSettings(id: string, userId: string, settings: StoredProfileSettings): Promise<ProfileRecord | null> {

@@ -1,4 +1,4 @@
-import type { NotificationDto, NotificationListDto } from '@ziptv/contracts';
+import type { NotificationDto, NotificationListDto, NotificationType } from '@ziptv/contracts';
 
 import { AppError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
@@ -6,6 +6,15 @@ import type { Logger } from '../ports/logger.js';
 import type { NewNotification, NotificationRecord, NotificationRepository } from '../ports/notification-repository.js';
 
 const LIST_LIMIT = 50;
+/** Account matters a kids profile does not see (and cannot dismiss for the grown-ups). */
+const ADULT_ONLY: readonly NotificationType[] = ['billing', 'account_security', 'account_expiring'];
+
+export interface NotificationViewer {
+  userId: string;
+  kids: boolean;
+}
+
+const excluded = (viewer: NotificationViewer) => (viewer.kids ? ADULT_ONLY : []);
 export const NOTIFICATION_RETENTION_DAYS = 30;
 
 /** In-app notification center ("Source refreshed · 12 new channels added", "EPG updated", …). */
@@ -25,17 +34,24 @@ export class NotificationService {
     }
   }
 
-  async list(ownerId: string): Promise<NotificationListDto> {
-    const [items, unread] = await Promise.all([this.notifications.list(ownerId, LIST_LIMIT), this.notifications.unreadCount(ownerId)]);
+  /** The account's notifications as this viewer may see them (kids profiles: no billing or security). */
+  async list(viewer: NotificationViewer): Promise<NotificationListDto> {
+    const exclude = excluded(viewer);
+    const [items, unread] = await Promise.all([this.notifications.list(viewer.userId, LIST_LIMIT, exclude), this.notifications.unreadCount(viewer.userId, exclude)]);
     return { items: items.map(toDto), unread };
   }
 
-  async markRead(ownerId: string, ids: string[] | 'all'): Promise<void> {
-    await this.notifications.markRead(ownerId, ids);
+  async markRead(viewer: NotificationViewer, ids: string[] | 'all'): Promise<void> {
+    await this.notifications.markRead(viewer.userId, ids, excluded(viewer));
   }
 
-  async remove(ownerId: string, id: string): Promise<void> {
-    if (!(await this.notifications.deleteOwned(ownerId, id))) throw AppError.notFound('Notification');
+  async remove(viewer: NotificationViewer, id: string): Promise<void> {
+    if (!(await this.notifications.deleteOwned(viewer.userId, id, excluded(viewer)))) throw AppError.notFound('Notification');
+  }
+
+  /** "Clear read": removes what was already seen. */
+  async clearRead(viewer: NotificationViewer): Promise<number> {
+    return this.notifications.deleteRead(viewer.userId, excluded(viewer));
   }
 
   async purgeExpired(): Promise<number> {

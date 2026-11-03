@@ -1,6 +1,7 @@
 import type { ProviderAdapter, ProviderAdapters, ProviderChannel, ProviderConnection, ProviderHealth, ProviderRecord, ProviderStreamRecord } from '../../application/ports/operator.js';
-import type { CatalogBuild, StreamKind, StreamLocator } from '../../domain/catalog/model.js';
-import { xtreamStreamUrl } from '../../domain/sources/xtream.js';
+import { buildCatchupUrl, zoneOffsetMinutes } from '../../domain/catalog/catchup-url.js';
+import type { CatalogBuild, CatchupInfo, StreamKind, StreamLocator } from '../../domain/catalog/model.js';
+import { xtreamStreamUrl, xtreamTimeshiftUrl } from '../../domain/sources/xtream.js';
 import type { M3uProvider } from '../providers/m3u-provider.js';
 import type { XtreamProvider } from '../providers/xtream-provider.js';
 
@@ -10,6 +11,7 @@ type OpenLocator = (sealed: string | null) => StreamLocator | null;
 const noopContext = (signal: AbortSignal) => ({ signal, onStage: async () => undefined });
 
 function liveChannels(build: CatalogBuild, externalId: (entry: CatalogBuild['live'][number]) => string): ProviderChannel[] {
+  const timezone = build.account?.timezone ?? null;
   return build.live
     .filter((entry) => !entry.unplayableReason)
     .map((entry) => ({
@@ -21,7 +23,16 @@ function liveChannels(build: CatalogBuild, externalId: (entry: CatalogBuild['liv
       kind: entry.kind,
       locator: entry.locator,
       xtream: entry.xtream ? { id: entry.xtream.id } : null,
+      catchup: entry.catchup ? (entry.catchup.mode === 'xtream' ? { ...entry.catchup, timezone } : entry.catchup) : null,
     }));
+}
+
+/** Archive of a stream whose address is stored (M3U / mock): the catch-up template applied to it. */
+function storedArchive(open: OpenLocator, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): StreamLocator | null {
+  if (!stream.catchup || stream.catchup.mode === 'xtream') return null;
+  const live = storedLocator(open, stream);
+  const url = buildCatchupUrl(stream.catchup, live.url, times);
+  return url ? { url, headers: live.headers } : null;
 }
 
 async function timed(probe: () => Promise<unknown>): Promise<ProviderHealth> {
@@ -57,6 +68,10 @@ export class M3uProviderAdapter implements ProviderAdapter {
     return storedLocator(this.openLocator, stream);
   }
 
+  async resolveArchive(_provider: ProviderRecord, _connection: ProviderConnection, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): Promise<StreamLocator | null> {
+    return storedArchive(this.openLocator, stream, times);
+  }
+
   health(provider: ProviderRecord, connection: ProviderConnection, signal: AbortSignal): Promise<ProviderHealth> {
     return timed(() => this.listChannels(provider, connection, AbortSignal.any([signal, AbortSignal.timeout(HEALTH_TIMEOUT_MS)])));
   }
@@ -77,6 +92,12 @@ export class XtreamProviderAdapter implements ProviderAdapter {
     return { url: xtreamStreamUrl(connection, 'live', stream.xtream.id, stream.kind === 'hls' ? 'm3u8' : 'ts'), headers: {} };
   }
 
+  async resolveArchive(_provider: ProviderRecord, connection: ProviderConnection, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): Promise<StreamLocator | null> {
+    if (connection.type !== 'xtream' || !stream.xtream || stream.catchup?.mode !== 'xtream') return null;
+    const offset = zoneOffsetMinutes(stream.catchup.timezone, times.start);
+    return { url: xtreamTimeshiftUrl(connection, stream.xtream.id, times.start, (times.end.getTime() - times.start.getTime()) / 60_000, offset), headers: {} };
+  }
+
   health(_provider: ProviderRecord, connection: ProviderConnection, signal: AbortSignal): Promise<ProviderHealth> {
     if (connection.type !== 'xtream') return Promise.resolve({ ok: false, latencyMs: 0, message: 'Not an Xtream connection' });
     return timed(() => this.xtream.verifyAccount({ type: 'xtream', server: connection.server, username: connection.username, password: connection.password }, signal));
@@ -91,6 +112,7 @@ interface MockChannel {
   logo?: string;
   url: string;
   kind?: StreamKind;
+  catchup?: { mode: CatchupInfo['mode']; days: number; template?: string };
 }
 
 /**
@@ -113,12 +135,17 @@ export class MockProviderAdapter implements ProviderAdapter {
         kind: item.kind ?? 'hls',
         locator: { url: item.url, headers: {} },
         xtream: null,
+        catchup: item.catchup && item.catchup.mode !== 'xtream' && item.catchup.days > 0 ? { mode: item.catchup.mode, days: Math.min(30, Math.ceil(item.catchup.days)), template: item.catchup.template ?? null } : null,
       }));
     return { channels, epgUrls: [] };
   }
 
   async resolveFeed(_provider: ProviderRecord, _connection: ProviderConnection, stream: ProviderStreamRecord): Promise<StreamLocator> {
     return storedLocator(this.openLocator, stream);
+  }
+
+  async resolveArchive(_provider: ProviderRecord, _connection: ProviderConnection, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): Promise<StreamLocator | null> {
+    return storedArchive(this.openLocator, stream, times);
   }
 
   async health(): Promise<ProviderHealth> {

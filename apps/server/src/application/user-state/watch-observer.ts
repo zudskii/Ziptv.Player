@@ -48,8 +48,8 @@ export class WatchObserver implements PlaybackObserver {
           subtitle: session.content.subtitle,
           seriesTitle: session.seriesTitle,
           image: session.rawImage,
-          programmeStart: ref.type === 'catchup' ? new Date(ref.start) : null,
-          programmeEnd: ref.type === 'catchup' ? new Date(ref.end) : null,
+          programmeStart: archiveOf(ref)?.start ?? null,
+          programmeEnd: archiveOf(ref)?.end ?? null,
         },
         this.deps.clock.now(),
       );
@@ -93,9 +93,14 @@ export class WatchObserver implements PlaybackObserver {
     const expected = owner(ref);
     if (!row || row.sourceId !== expected.sourceId || row.channelId !== expected.channelId || row.contentType !== ref.type || row.key !== expected.key) return false;
     if (ref.type === 'episode' && row.seriesKey !== ref.seriesKey) return false;
-    if (ref.type === 'catchup' && row.programmeStart?.getTime() !== new Date(ref.start).getTime()) return false;
+    // Live vs. archive, and which programme, must match too.
+    if ((row.programmeStart?.getTime() ?? null) !== (archiveOf(ref)?.start.getTime() ?? null)) return false;
     // Only a recent viewing is continued (a reconnect, not a replay hours later).
     return this.deps.clock.now().getTime() - row.watchedAt.getTime() < CONTINUE_WINDOW_MS;
+  }
+
+  async sourceOf(viewer: Viewer, sessionId: string): Promise<string | null> {
+    return (await this.deps.history.find(sessionId, viewer.profileId))?.sourceId ?? null;
   }
 
   async resumePosition(viewer: Viewer, ref: ContentRefDto): Promise<number | null> {
@@ -115,4 +120,11 @@ export class WatchObserver implements PlaybackObserver {
 /** History owner of a content reference: a user source item, or an operator channel. */
 function owner(ref: ContentRefDto): { sourceId: string | null; channelId: string | null; key: string } {
   return ref.type === 'operator' ? { sourceId: null, channelId: ref.channelId, key: ref.channelId } : { sourceId: ref.sourceId, channelId: null, key: ref.key };
+}
+
+/** The programme a catch-up viewing replays (BYO archive or operator archive); null = live / VOD. */
+function archiveOf(ref: ContentRefDto): { start: Date; end: Date } | null {
+  if (ref.type === 'catchup') return { start: new Date(ref.start), end: new Date(ref.end) };
+  if (ref.type === 'operator' && ref.start && ref.end) return { start: new Date(ref.start), end: new Date(ref.end) };
+  return null;
 }

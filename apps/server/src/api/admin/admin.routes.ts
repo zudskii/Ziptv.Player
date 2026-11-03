@@ -70,7 +70,9 @@ const Credential = z.union([
   z.object({ secretRef: z.string().trim().max(120) }).strict(),
   z.object({ connection: z.record(z.string().max(40), z.string().max(2048)).refine((value) => Object.keys(value).length <= 8, 'too many fields') }).strict(),
 ]);
-const MockChannel = z.object({ id: z.string().min(1).max(120), name: Name, url: HttpUrl, tvgId: z.string().max(200).optional(), group: z.string().max(120).optional(), logo: HttpUrl.optional(), kind: z.enum(['hls', 'dash', 'mpegts', 'flv', 'progressive']).optional() }).strict();
+// Mock (development) channels; `catchup` = the stream's archive, M3U conventions.
+const MockCatchup = z.object({ mode: z.enum(['default', 'append', 'shift', 'flussonic']), days: z.number().int().min(1).max(30), template: z.string().max(2_000).optional() }).strict();
+const MockChannel = z.object({ id: z.string().min(1).max(120), name: Name, url: HttpUrl, tvgId: z.string().max(200).optional(), group: z.string().max(120).optional(), logo: HttpUrl.optional(), kind: z.enum(['hls', 'dash', 'mpegts', 'flv', 'progressive']).optional(), catchup: MockCatchup.optional() }).strict();
 const ProviderConfig = z.object({ channels: z.array(MockChannel).max(5_000).optional(), notes: z.string().max(2_000).optional() }).strict();
 const SyncHours = z.number().int().min(1).max(168);
 const CreateProviderBody = z.object({ name: Name, slug: Slug.optional(), type: z.enum(PROVIDER_TYPES), credential: Credential.optional(), config: ProviderConfig.optional(), syncIntervalHours: SyncHours.optional() }).strict();
@@ -130,6 +132,8 @@ const GrantBody = z
     startAt: z.string().datetime({ offset: true }),
     endAt: z.string().datetime({ offset: true }).nullable().optional(),
     contractRef: z.string().trim().min(1).max(200),
+    /** Catch-up rights (days back; 0/absent = live only). */
+    catchupDays: z.number().int().min(0).max(30).optional(),
   })
   .strict();
 const CreateLineupBody = z.object({ name: Name, slug: Slug.optional(), country: Country, status: z.enum(['draft', 'active']).optional() }).strict();

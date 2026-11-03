@@ -10,11 +10,12 @@ const empty = { liveCategories: [], liveStreams: [], vodCategories: [], vodStrea
 
 describe('readUserInfo', () => {
   it('reads the account with string-typed numbers', () => {
-    expect(readUserInfo({ user_info: { auth: '1', status: 'Active', exp_date: '1900000000', is_trial: '1', active_cons: '2', max_connections: '3', allowed_output_formats: ['m3u8', 5, null] } })).toEqual({
-      account: { status: 'Active', expiresAt: new Date(1_900_000_000_000), maxConnections: 3, activeConnections: 2, trial: true },
+    expect(readUserInfo({ user_info: { auth: '1', status: 'Active', exp_date: '1900000000', is_trial: '1', active_cons: '2', max_connections: '3', allowed_output_formats: ['m3u8', 5, null] }, server_info: { timezone: 'Europe/Kyiv' } })).toEqual({
+      account: { status: 'Active', expiresAt: new Date(1_900_000_000_000), maxConnections: 3, activeConnections: 2, trial: true, timezone: 'Europe/Kyiv' },
       allowedFormats: ['m3u8', '5'],
     });
-    expect(readUserInfo({ user_info: { auth: 1, exp_date: null } })?.account).toMatchObject({ status: 'Active', expiresAt: null, maxConnections: null });
+    expect(readUserInfo({ user_info: { auth: 1, exp_date: null } })?.account).toMatchObject({ status: 'Active', expiresAt: null, maxConnections: null, timezone: null });
+    expect(readUserInfo({ user_info: { auth: 1 }, server_info: { timezone: 'Nowhere/Land' } })?.account.timezone).toBeNull();
   });
 
   it('treats auth 0, empty or foreign payloads as rejected credentials', () => {

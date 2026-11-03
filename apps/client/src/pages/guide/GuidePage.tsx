@@ -13,6 +13,7 @@ import { useNow } from '../../lib/use-now';
 import { useGuides } from '../../features/epg/api';
 import { GuideGrid } from '../../features/epg/components/GuideGrid';
 import { ProgrammeDialog } from '../../features/epg/components/ProgrammeDialog';
+import { paths } from '../../lib/routes';
 import { dayWindow } from '../../features/epg/guide-layout';
 import { buildGroupOptions } from '../../features/live/browse';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
@@ -153,6 +154,7 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         channel={selected?.channel ?? null}
         onClose={() => setSelected(null)}
         onWatchLive={() => selected && navigate(`/live/${source.id}/${selected.channel.key}`)}
+        onWatchArchive={(programme) => selected && navigate(paths.archive(source.id, selected.channel.key, programme))}
       />
     </div>
   );

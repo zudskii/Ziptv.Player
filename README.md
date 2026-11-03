@@ -282,7 +282,8 @@ profile starts one so API and jobs scale separately.
 
 ## Accounts
 
-Every device starts as a **guest** (`POST /sessions`): an anonymous identity that owns its sources.
+A device becomes a **guest** (`POST /sessions`) when the person picks *Continue as guest* on the
+welcome page: an anonymous identity that owns its sources. Nothing is created just by opening the app.
 Registering turns that same identity into an account (same user id), so nothing the guest added
 is lost; the guest token is replaced by a new one. A guest that logs in to an *existing*
 account passes `"mergeGuest": true` to move its sources into it (refused when the combined
@@ -297,7 +298,7 @@ total would exceed `MAX_SOURCES_PER_USER`).
   (10 / 15 min). Limits are in memory, i.e. per instance — plug a shared store in
   `api/middleware/rate-limit.ts` before running several instances.
 - Re-authentication failures on signed-in requests (wrong current password) answer **403**, not
-  401, because the web client treats a 401 as "session died" and silently starts a new guest.
+  401, because the web client treats a 401 as "session died" (a guest silently gets a new guest token).
 - Make someone an admin: `UPDATE users SET role = 'admin' WHERE email = '…';`
   (the role is stored and returned; no endpoint requires it yet).
 - Email (forgotten password, address confirmation): see *Email* below.
@@ -377,6 +378,11 @@ lives in the playlist and survives re-syncs.
   the top bar). A guest that registers keeps everything it added; a guest that signs in to an existing
   account can bring its sources and playlists along (ticked by default). Signed-in devices, password
   change and account deletion are in Settings.
+- **Where a device lands** (decided only by `SessionGate` / `gateDecision`, never by pages): no
+  session → `/welcome` (create account, sign in, or continue as a guest), then back to the page it
+  opened; signed out → `/login`, starting fresh, in every open tab; a 1.x guest id → restored without
+  asking. Screens of an account without sources stay where they are and offer *Add a source*
+  (`/setup`). A request sent without any session never creates one.
 - **Session ends:** an *account* whose session ended is sent to the sign-in page and returns to the
   page it was on afterwards; the app never silently starts an empty guest for it (that would look
   like lost data). A *guest* whose token is rejected just gets a new one. Sign-in requests never

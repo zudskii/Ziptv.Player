@@ -1,3 +1,4 @@
+import type { NotificationType } from '@ziptv/contracts';
 import type { Selectable } from 'kysely';
 
 import type { NewNotification, NotificationRecord, NotificationRepository } from '../../../../application/ports/notification-repository.js';
@@ -52,23 +53,34 @@ export class PgNotificationRepository implements NotificationRepository {
     return toRecord(row);
   }
 
-  async list(ownerId: string, limit: number): Promise<NotificationRecord[]> {
-    const rows = await this.db.selectFrom('notifications').selectAll().where('owner_id', '=', ownerId).orderBy('created_at', 'desc').limit(limit).execute();
+  async list(ownerId: string, limit: number, exclude: readonly NotificationType[] = []): Promise<NotificationRecord[]> {
+    let query = this.db.selectFrom('notifications').selectAll().where('owner_id', '=', ownerId);
+    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    const rows = await query.orderBy('created_at', 'desc').limit(limit).execute();
     return rows.map(toRecord);
   }
 
-  async unreadCount(ownerId: string): Promise<number> {
-    const row = await this.db
+  async unreadCount(ownerId: string, exclude: readonly NotificationType[] = []): Promise<number> {
+    let query = this.db
       .selectFrom('notifications')
       .select((eb) => eb.fn.countAll<string>().as('n'))
       .where('owner_id', '=', ownerId)
-      .where('read', '=', false)
-      .executeTakeFirstOrThrow();
+      .where('read', '=', false);
+    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    const row = await query.executeTakeFirstOrThrow();
     return Number(row.n);
   }
 
-  async markRead(ownerId: string, ids: string[] | 'all'): Promise<void> {
+  async deleteRead(ownerId: string, exclude: readonly NotificationType[] = []): Promise<number> {
+    let query = this.db.deleteFrom('notifications').where('owner_id', '=', ownerId).where('read', '=', true);
+    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    const result = await query.executeTakeFirst();
+    return Number(result.numDeletedRows);
+  }
+
+  async markRead(ownerId: string, ids: string[] | 'all', exclude: readonly NotificationType[] = []): Promise<void> {
     let query = this.db.updateTable('notifications').set({ read: true }).where('owner_id', '=', ownerId).where('read', '=', false);
+    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
     if (ids !== 'all') {
       const valid = ids.filter(isEntityId);
       if (valid.length === 0) return;
@@ -77,9 +89,11 @@ export class PgNotificationRepository implements NotificationRepository {
     await query.execute();
   }
 
-  async deleteOwned(ownerId: string, id: string): Promise<boolean> {
+  async deleteOwned(ownerId: string, id: string, exclude: readonly NotificationType[] = []): Promise<boolean> {
     if (!isEntityId(id)) return false;
-    const result = await this.db.deleteFrom('notifications').where('id', '=', id).where('owner_id', '=', ownerId).executeTakeFirst();
+    let query = this.db.deleteFrom('notifications').where('id', '=', id).where('owner_id', '=', ownerId);
+    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    const result = await query.executeTakeFirst();
     return result.numDeletedRows > 0n;
   }
 

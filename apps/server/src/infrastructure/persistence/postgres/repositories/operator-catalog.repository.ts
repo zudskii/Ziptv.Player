@@ -69,6 +69,7 @@ function toStream(row: Selectable<ProviderStreamsTable>): ProviderStreamRecord {
     kind: row.kind,
     locator: row.locator,
     xtream: row.xtream,
+    catchup: row.catchup,
     status: row.status,
     channelId: row.channel_id,
     matchMethod: row.match_method,
@@ -105,6 +106,7 @@ function toGrant(row: Selectable<RightsGrantsTable>): StoredGrant {
     endAt: row.end_at,
     status: row.status,
     contractRef: row.contract_ref,
+    catchupDays: row.catchup_days,
     createdBy: row.created_by,
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
@@ -268,6 +270,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
             kind: stream.kind,
             locator: stream.locator,
             xtream: jsonOrNull(stream.xtream),
+            catchup: jsonOrNull(stream.catchup),
             first_seen_at: now,
             last_seen_at: now,
           })),
@@ -281,6 +284,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
             kind: eb.ref('excluded.kind'),
             locator: eb.ref('excluded.locator'),
             xtream: eb.ref('excluded.xtream'),
+            catchup: eb.ref('excluded.catchup'),
             last_seen_at: now,
             // A stream that comes back resumes its previous state.
             status: sql<StreamStatus>`CASE WHEN provider_streams.status = 'gone' THEN (CASE WHEN provider_streams.channel_id IS NULL THEN 'pending' ELSE 'matched' END) ELSE provider_streams.status END`,
@@ -473,10 +477,11 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
       .selectFrom('channel_feeds as f')
       .innerJoin('providers as p', 'p.id', 'f.provider_id')
       .innerJoin('provider_streams as s', 's.id', 'f.provider_stream_id')
-      .select(['f.id', 'f.channel_id', 'f.provider_id', 'f.provider_stream_id', 'f.priority', 'f.status', 'f.created_at', 'p.status as provider_status', 's.status as stream_status']);
+      .select(['f.id', 'f.channel_id', 'f.provider_id', 'f.provider_stream_id', 'f.priority', 'f.status', 'f.created_at', 'p.status as provider_status', 's.status as stream_status'])
+      .select(sql<number>`coalesce((s.catchup ->> 'days')::int, 0)`.as('archive_days'));
   }
 
-  private static toFeed(row: { id: string; channel_id: string; provider_id: string; provider_stream_id: string; priority: number; status: 'active' | 'disabled'; created_at: Date; provider_status: ProviderStatus; stream_status: StreamStatus }): FeedRecord {
+  private static toFeed(row: { id: string; channel_id: string; provider_id: string; provider_stream_id: string; priority: number; status: 'active' | 'disabled'; created_at: Date; provider_status: ProviderStatus; stream_status: StreamStatus; archive_days: number }): FeedRecord {
     return {
       id: row.id,
       channelId: row.channel_id,
@@ -487,6 +492,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
       createdAt: row.created_at,
       providerStatus: row.provider_status,
       streamStatus: row.stream_status,
+      archiveDays: Number(row.archive_days),
     };
   }
 
@@ -558,6 +564,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
         start_at: input.startAt,
         end_at: input.endAt,
         contract_ref: input.contractRef,
+        catchup_days: input.catchupDays,
         created_by: input.createdBy,
       })
       .returningAll()

@@ -10,6 +10,7 @@ import type {
   GuideSourceDto,
   NotificationListDto,
   NowNextListDto,
+  PlaybackPlanDto,
   SessionDto,
   SourceDto,
 } from '@ziptv/contracts';
@@ -142,6 +143,15 @@ describe.skipIf(!TEST_DATABASE_URL)('EPG end-to-end', () => {
     const past = schedule.programmes.filter((p) => new Date(p.end).getTime() <= Date.now());
     expect(past.length).toBeGreaterThan(20);
     expect(past.every((p) => p.catchup)).toBe(true);
+    // ▶ Watch from the archive: the template is filled server-side; the guide names the programme.
+    const replay = past.at(-2)!;
+    const plan = (await request(t.app)
+      .post('/api/v1/playback')
+      .set(auth())
+      .send({ content: { type: 'catchup', sourceId: source.id, key: sport!.key, start: replay.start, end: replay.end }, secureContext: false })
+      .expect(200)).body as PlaybackPlanDto;
+    expect(plan.content).toMatchObject({ mode: 'catchup', title: replay.title, subtitle: 'UK: Sport 1 FHD', programme: { id: replay.id } });
+    expect(plan.candidates[0]).toMatchObject({ via: 'direct', url: `http://streams.example/sport1.m3u8?utc=${Date.parse(replay.start) / 1000}` });
     const newsSchedule = (await request(t.app).get(`/api/v1/epg/channels/${source.id}/${news!.key}`).set(auth())).body as ChannelScheduleDto;
     expect(newsSchedule.programmes.some((p) => p.catchup)).toBe(false);
 

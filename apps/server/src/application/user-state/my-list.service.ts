@@ -54,7 +54,7 @@ export class MyListService {
     const items: ListItemDto[] = [];
     for (const record of records) {
       const item = current.get(itemId(record));
-      if (item && isHiddenForViewer(viewer, item)) continue;
+      if (item && isHiddenForViewer(viewer, item, record.sourceId)) continue;
       items.push({
         type: record.type,
         sourceId: record.sourceId,
@@ -78,7 +78,7 @@ export class MyListService {
     const source = byId.get(input.sourceId);
     if (!source) throw AppError.notFound('Source');
     const found = (await this.lookup({ sourceId: source.id, revision: source.revision }, [input])).get(itemId(input));
-    if (!found || isHiddenForViewer(viewer, found)) throw AppError.notFound(input.type === 'channel' ? 'Channel' : input.type === 'movie' ? 'Movie' : 'Series');
+    if (!found || isHiddenForViewer(viewer, found, source.id)) throw AppError.notFound(input.type === 'channel' ? 'Channel' : input.type === 'movie' ? 'Movie' : 'Series');
     if ((await this.deps.list.count(viewer.profileId)) >= MAX_LIST_ITEMS) {
       throw new AppError('CONFLICT', 409, `My List can hold up to ${MAX_LIST_ITEMS} items.`);
     }

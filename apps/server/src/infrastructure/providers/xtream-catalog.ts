@@ -1,3 +1,4 @@
+import { validTimeZone } from '../../domain/catalog/catchup-url.js';
 import type { SeriesDetails } from '../../application/ports/series-details-source.js';
 import { isAdultEntry } from '../../domain/catalog/adult.js';
 import { extractYear } from '../../domain/catalog/classify.js';
@@ -56,6 +57,7 @@ export function readUserInfo(payload: unknown): XtreamUserInfo | null {
       maxConnections: smallCount(info['max_connections']),
       activeConnections: smallCount(info['active_cons']),
       trial: toInt(info['is_trial']) === 1,
+      timezone: validTimeZone(asObject(asObject(payload)?.['server_info'])?.['timezone']),
     },
     allowedFormats: toArray(info['allowed_output_formats'])
       .map((format) => toText(format))

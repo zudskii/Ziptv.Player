@@ -14,7 +14,7 @@ export const ContentRef = z.discriminatedUnion('type', [
   z.object({ type: z.literal('movie'), sourceId: EntityId, key: ContentKey }).strict(),
   z.object({ type: z.literal('episode'), sourceId: EntityId, seriesKey: ContentKey, key: ContentKey }).strict(),
   z.object({ type: z.literal('catchup'), sourceId: EntityId, key: ContentKey, start: IsoInstant, end: IsoInstant }).strict(),
-  z.object({ type: z.literal('operator'), channelId: EntityId }).strict(),
+  z.object({ type: z.literal('operator'), channelId: EntityId, start: IsoInstant.optional(), end: IsoInstant.optional() }).strict(),
 ]);
 
 const ResolveBody = z
@@ -23,6 +23,7 @@ const ResolveBody = z
     secureContext: z.boolean(),
     unlockToken: z.string().max(512).optional(),
     continueSession: z.string().uuid().optional(),
+    replaces: z.string().uuid().optional(),
     /** Device class for licensed content (rights can be device-specific). */
     device: z.enum(DEVICE_CLASSES).optional(),
   })

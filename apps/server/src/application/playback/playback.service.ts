@@ -6,10 +6,12 @@ import type {
   PlaybackContentDto,
   PlaybackEventRequest,
   PlaybackPlanDto,
+  ProgrammeDto,
   ResolvePlaybackRequest,
 } from '@ziptv/contracts';
 
 import type { StreamKind, StreamLocator, UnplayableReason } from '../../domain/catalog/model.js';
+import { buildCatchupUrl, catchupProblem, CatchupTemplateError, type CatchupProblem } from '../../domain/catalog/catchup-url.js';
 import { planCandidates, type DeliveryPolicy } from '../../domain/playback/plan.js';
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { toChannelDto } from '../catalog/catalog-mapper.js';
@@ -18,13 +20,16 @@ import type { OperatorService, ViewingContext } from '../operator/operator.servi
 import type { LiveCatalogService } from '../catalog/live.service.js';
 import { AppError } from '../errors.js';
 import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
+import type { EpgService } from '../epg/epg.service.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
+import type { Clock } from '../ports/clock.js';
 import type { PlaybackTelemetry } from '../health/playback-telemetry.js';
 import { NOOP_METRICS, type Metrics, type TelemetrySubject } from '../ports/health.js';
 import type { MediaGrant, MediaUrls } from '../ports/media-urls.js';
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
 import type { StreamProber } from '../ports/stream-prober.js';
 import type { SourceSecrets } from '../sources/secrets.js';
+import type { SourceConnections } from './source-connections.js';
 import { noopPlaybackObserver, type PlaybackObserver, type ResolvedContent, type StreamTarget, type StreamUrlResolver } from './playback-ports.js';
 
 export interface PlaybackServiceDeps {
@@ -53,6 +58,33 @@ export interface PlaybackServiceDeps {
    * (`POST /operator/playback/sessions`: entitlement, device, concurrency). `rights`: rights alone.
    */
   operatorAccess?: 'subscription' | 'rights';
+  /** Connection limits of the subscriber's own provider accounts (Xtream `max_connections`). */
+  connections?: SourceConnections;
+  /** Programme titles of catch-up viewings. */
+  programmes?: Pick<EpgService, 'programmeAt'>;
+  /** Programme titles of operator catch-up viewings (operator EPG). */
+  operatorProgrammes?: { programmeAt(channelId: string, start: Date): Promise<ProgrammeDto | null> };
+  clock?: Clock;
+}
+
+const CATCHUP_MESSAGES: Record<CatchupProblem, string> = {
+  not_available: 'This channel has no archive.',
+  invalid_range: 'The programme times are not valid.',
+  not_ended: 'This programme has not finished yet; watch it live.',
+  outside_window: 'This programme is no longer in the channel archive.',
+  too_long: 'Choose a single programme from the archive.',
+};
+
+function catchupError(problem: CatchupProblem): AppError {
+  return new AppError('UNPLAYABLE', 422, CATCHUP_MESSAGES[problem], { reason: 'catchup_unavailable', problem });
+}
+
+/** Stream kind of an archive address: its extension when it has one, else the live kind. */
+function archiveKind(url: string, live: StreamKind): StreamKind {
+  const path = new URL(url).pathname.toLowerCase();
+  if (path.endsWith('.m3u8')) return 'hls';
+  if (path.endsWith('.ts')) return 'mpegts';
+  return live;
 }
 
 const UNPLAYABLE_MESSAGES: Record<UnplayableReason, string> = {
@@ -164,6 +196,8 @@ export class PlaybackService {
       request.content.type === 'channel' ? this.alternates(viewer, source, resolved.nameKey) : Promise.resolve([]),
     ]);
 
+    // One of the provider account's connections for this viewing (the player's previous one is freed).
+    await this.deps.connections?.acquire(source, sessionId, request.replaces);
     if (!continued) await this.observer.onPlanIssued(viewer, { sessionId, sourceName: source.name, content, seriesTitle: resolved.seriesTitle, rawImage: resolved.content.image, episode: resolved.episode ?? null });
     return {
       sessionId,
@@ -186,15 +220,24 @@ export class PlaybackService {
    * session (`grant`), so ending the session — stop, revoked entitlement, missed heartbeats — stops
    * the stream at the proxy.
    */
-  async operatorPlan(viewer: Viewer, request: { channelId: string; secureContext: boolean; continueSession?: string }, context: ViewingContext, grant: MediaGrant): Promise<PlaybackPlanDto> {
-    return this.resolveOperator(viewer, { content: { type: 'operator', channelId: request.channelId }, secureContext: request.secureContext, ...(request.continueSession ? { continueSession: request.continueSession } : {}) }, { type: 'operator', channelId: request.channelId }, context, grant);
+  async operatorPlan(
+    viewer: Viewer,
+    request: { channelId: string; secureContext: boolean; continueSession?: string; archive?: { start: Date; end: Date } },
+    context: ViewingContext,
+    grant: MediaGrant,
+  ): Promise<PlaybackPlanDto> {
+    const ref: Extract<ContentRefDto, { type: 'operator' }> = request.archive
+      ? { type: 'operator', channelId: request.channelId, start: request.archive.start.toISOString(), end: request.archive.end.toISOString() }
+      : { type: 'operator', channelId: request.channelId };
+    return this.resolveOperator(viewer, { content: ref, secureContext: request.secureContext, ...(request.continueSession ? { continueSession: request.continueSession } : {}) }, ref, context, grant);
   }
 
   private async resolveOperator(viewer: Viewer, request: ResolvePlaybackRequest, ref: Extract<ContentRefDto, { type: 'operator' }>, context: ViewingContext, boundTo?: MediaGrant): Promise<PlaybackPlanDto> {
     if (!this.deps.operator) throw AppError.notFound('Channel');
     if (!this.deps.proxyEnabled) throw new AppError('UNPLAYABLE', 422, 'The stream proxy is disabled.', { reason: 'unsupported_format' });
     if (!viewer.sessionId) throw new AppError('UNAUTHORIZED', 401, 'Sign in again to play this.');
-    const resolved = await this.deps.operator.resolve(viewer, ref.channelId, context);
+    const archive = ref.start && ref.end ? { start: new Date(ref.start), end: new Date(ref.end) } : undefined;
+    const resolved = await this.deps.operator.resolve(viewer, ref.channelId, context, archive);
     const grant: MediaGrant = boundTo ?? { kind: 'session', id: viewer.sessionId };
     const expiresAt = this.deps.media.newStreamExpiry('playback');
     const parts: { candidates: ReturnType<typeof planCandidates>; subject: TelemetrySubject | undefined }[] = [];
@@ -219,13 +262,33 @@ export class PlaybackService {
 
     const continued = request.continueSession && this.observer.continues ? await this.observer.continues(viewer, request.continueSession, ref) : false;
     const sessionId = continued && request.continueSession ? request.continueSession : randomUUID();
-    const content: PlaybackContentDto = { ...resolved.content, ref, image: this.artwork.url(resolved.content.image) };
+    let content: PlaybackContentDto = { ...resolved.content, ref, image: this.artwork.url(resolved.content.image) };
+    if (archive) {
+      // The guide names the programme (operator EPG); without one the channel name stays.
+      const programme = await this.deps.operatorProgrammes?.programmeAt(ref.channelId, archive.start).catch(() => null);
+      if (programme) content = { ...content, title: programme.title, subtitle: resolved.content.title, programme };
+    }
     if (!continued) await this.observer.onPlanIssued(viewer, { sessionId, sourceName: 'ZIPTV', content, seriesTitle: null, rawImage: resolved.rawImage, episode: null });
     return { sessionId, content, candidates: this.tagged(parts, expiresAt, sessionId), expiresAt: new Date(expiresAt * 1000).toISOString(), resumeFrom: null, next: null, alternates: [] };
   }
 
   async recordEvent(viewer: Viewer, event: PlaybackEventRequest): Promise<void> {
-    await Promise.all([this.observer.onEvent(viewer, event), this.deps.telemetry?.record(event)]);
+    await Promise.all([this.observer.onEvent(viewer, event), this.deps.telemetry?.record(event), this.trackConnection(viewer, event)]);
+  }
+
+  /** Heartbeats keep a viewing's provider connection; `stop` frees it. Best-effort: never fails the event. */
+  private async trackConnection(viewer: Viewer, event: PlaybackEventRequest): Promise<void> {
+    const connections = this.deps.connections;
+    if (!connections || !this.observer.sourceOf || event.type === 'error') return;
+    try {
+      const sourceId = await this.observer.sourceOf(viewer, event.sessionId);
+      if (!sourceId) return;
+      if (event.type === 'stop') return await connections.release(sourceId, event.sessionId);
+      const source = await this.deps.sources.findOwned(sourceId, viewer.userId);
+      if (source) await connections.renew(source, event.sessionId);
+    } catch {
+      // The lease simply expires; playback is unaffected.
+    }
   }
 
   // ---------------------------------------------------------------------------------------
@@ -235,7 +298,7 @@ export class PlaybackService {
     switch (ref.type) {
       case 'channel': {
         const channel = await this.deps.catalog.findLive(pin, ref.key);
-        if (!channel || isHiddenForViewer(viewer, channel)) throw AppError.notFound('Channel');
+        if (!channel || isHiddenForViewer(viewer, channel, source.id)) throw AppError.notFound('Channel');
         const locked = this.deps.live.isLocked(viewer, source.id, channel);
         return {
           locked,
@@ -257,7 +320,7 @@ export class PlaybackService {
       }
       case 'movie': {
         const movie = await this.deps.catalog.findMovie(pin, ref.key);
-        if (!movie || isHiddenForViewer(viewer, movie)) throw AppError.notFound('Movie');
+        if (!movie || isHiddenForViewer(viewer, movie, source.id)) throw AppError.notFound('Movie');
         return {
           locked: this.deps.live.isLocked(viewer, source.id, movie),
           nameKey: null,
@@ -278,7 +341,7 @@ export class PlaybackService {
       }
       case 'episode': {
         const series = await this.deps.catalog.findSeries(pin, ref.seriesKey);
-        if (!series || isHiddenForViewer(viewer, series)) throw AppError.notFound('Series');
+        if (!series || isHiddenForViewer(viewer, series, source.id)) throw AppError.notFound('Series');
         const episodes = this.deps.episodes ? await this.deps.episodes.list(source, series) : await this.deps.catalog.listEpisodes(pin, ref.seriesKey);
         const index = episodes.findIndex((episode) => episode.key === ref.key);
         const episode = episodes[index];
@@ -311,11 +374,66 @@ export class PlaybackService {
       }
       case 'operator':
         throw new Error('Operator channels are resolved by resolveOperator');
-      case 'catchup': {
-        if (!this.deps.streamUrls?.catchup) throw new AppError('UNPLAYABLE', 422, 'Catch-up is not available for this channel.', { reason: 'unsupported_format' });
-        return this.deps.streamUrls.catchup(viewer, source, ref);
-      }
+      case 'catchup':
+        return this.resolveCatchup(viewer, source, ref);
     }
+  }
+
+  /**
+   * A past programme of a BYO live channel: the same visibility and parental rules as the
+   * channel, inside its archive window, at most one programme long; the archive URL is built
+   * server-side from the (encrypted) stream address or Xtream account.
+   */
+  private async resolveCatchup(viewer: Viewer, source: SourceRecord, ref: Extract<ContentRefDto, { type: 'catchup' }>): Promise<ResolvedContent> {
+    const pin = { sourceId: source.id, revision: source.revision };
+    const channel = await this.deps.catalog.findLive(pin, ref.key);
+    if (!channel || isHiddenForViewer(viewer, channel, source.id)) throw AppError.notFound('Channel');
+    const range = { start: new Date(ref.start), end: new Date(ref.end) };
+    const problem = catchupProblem(channel.catchup?.days, range, this.now());
+    if (problem) throw catchupError(problem);
+    const info = channel.catchup!;
+
+    let target: StreamTarget;
+    if (channel.xtream && (info.mode === 'xtream' || !channel.locator)) {
+      if (!this.deps.streamUrls?.archive) throw catchupError('not_available');
+      target = await this.deps.streamUrls.archive(source, channel.xtream, range);
+    } else {
+      const live = await this.target(source, { kind: channel.kind, unplayableReason: channel.unplayableReason, locator: channel.locator, xtream: channel.xtream, type: 'live' });
+      if (!live.locator) throw catchupError('not_available');
+      let url: string | null;
+      try {
+        url = buildCatchupUrl(info, live.locator.url, { ...range, now: this.now() });
+      } catch (error) {
+        if (error instanceof CatchupTemplateError) throw new AppError('UNPLAYABLE', 422, `${error.message} This archive cannot be played.`, { reason: 'unsupported_format' });
+        throw error;
+      }
+      if (!url) throw catchupError('not_available');
+      target = { kind: archiveKind(url, channel.kind), unplayableReason: live.unplayableReason, locator: { url, headers: live.locator.headers } };
+    }
+
+    const locked = this.deps.live.isLocked(viewer, source.id, channel);
+    const programme = (await this.deps.programmes?.programmeAt(viewer, source.id, channel.key, range.start).catch(() => null)) ?? null;
+    return {
+      locked,
+      nameKey: null,
+      seriesTitle: null,
+      target,
+      content: {
+        ref,
+        mode: 'catchup',
+        title: programme?.title ?? channel.name,
+        subtitle: programme ? channel.name : `${channel.name} · archive`,
+        image: channel.logo,
+        durationSecs: Math.round((range.end.getTime() - range.start.getTime()) / 1000),
+        channel: toChannelDto(channel, locked, this.artwork),
+        programme,
+      },
+      next: null,
+    };
+  }
+
+  private now(): Date {
+    return this.deps.clock ? this.deps.clock.now() : new Date();
   }
 
   private async target(
@@ -340,7 +458,7 @@ export class PlaybackService {
       MAX_ALTERNATES * 2,
     );
     return matches
-      .filter((match) => !match.unplayableReason && !isHiddenForViewer(viewer, match))
+      .filter((match) => !match.unplayableReason && !isHiddenForViewer(viewer, match, match.sourceId))
       .slice(0, MAX_ALTERNATES)
       .map((match) => ({
         ref: { type: 'channel', sourceId: match.sourceId, key: match.key },

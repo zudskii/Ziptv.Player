@@ -1,9 +1,10 @@
 import { createCipheriv, createDecipheriv, createHmac, hkdfSync } from 'node:crypto';
 
 import type { MediaGrant } from '../../application/ports/media-urls.js';
-import type { StreamHeaders } from '../../domain/catalog/model.js';
+import type { CatchupInfo, CatchupMode, StreamHeaders } from '../../domain/catalog/model.js';
 
-export type MediaTokenPurpose = 'stream' | 'image';
+/** stream = one proxied URL; image = artwork; archive = a live channel's catch-up (exported playlists). */
+export type MediaTokenPurpose = 'stream' | 'image' | 'archive';
 
 /** A verified token, as the proxies use it. Never serialised back to a client. */
 export interface MediaToken {
@@ -14,6 +15,8 @@ export interface MediaToken {
   purpose: MediaTokenPurpose;
   /** Stream tokens only: what keeps this link alive (a signed-in device, an export link). */
   grant: MediaGrant | null;
+  /** Archive tokens: the channel's catch-up rules (the URL is its live stream). */
+  catchup?: CatchupInfo;
 }
 
 /** Wire payload (inside the ciphertext): short keys keep segment URLs small. */
@@ -21,8 +24,9 @@ interface Payload {
   u: string;
   h?: StreamHeaders;
   e: number;
-  p: 's' | 'i';
+  p: 's' | 'i' | 'a';
   g?: { k: 's' | 'x' | 'p'; i: string };
+  c?: { m: CatchupMode; d: number; t?: string };
 }
 
 const VERSION = '2';
@@ -79,6 +83,13 @@ export class MediaTokenCodec {
     return this.encode(payload);
   }
 
+  /** Archive token: the live stream + its catch-up rules; the archive URL is built per request. */
+  issueArchive(url: string, headers: StreamHeaders | undefined, catchup: CatchupInfo, expiresAt: number, grant: MediaGrant): string {
+    const payload: Payload = { u: url, e: expiresAt, p: 'a', g: { k: GRANT_CODES[grant.kind], i: grant.id }, c: { m: catchup.mode, d: catchup.days, ...(catchup.template ? { t: catchup.template } : {}) } };
+    if (headers && Object.keys(headers).length > 0) payload.h = headers;
+    return this.encode(payload);
+  }
+
   /**
    * Image tokens expire at the end of a fixed 30-day bucket (+ one bucket of grace), so the same
    * URL yields the same token for weeks and a CDN can cache the proxied image.
@@ -103,16 +114,18 @@ export class MediaTokenCodec {
       return null; // wrong key, tampered, truncated or not ours
     }
     if (!isPayload(payload) || payload.e < this.nowSeconds()) return null;
-    const tokenPurpose: MediaTokenPurpose = payload.p === 'i' ? 'image' : 'stream';
+    const tokenPurpose: MediaTokenPurpose = payload.p === 'i' ? 'image' : payload.p === 'a' ? 'archive' : 'stream';
     if (tokenPurpose !== purpose) return null;
-    // A stream link that is not tied to anything revocable is never accepted.
-    if (tokenPurpose === 'stream' && !payload.g) return null;
+    // A stream (or archive) link that is not tied to anything revocable is never accepted.
+    if (tokenPurpose !== 'image' && !payload.g) return null;
+    if (tokenPurpose === 'archive' && !payload.c) return null;
     return {
       url: payload.u,
       headers: payload.h,
       expiresAt: payload.e,
       purpose: tokenPurpose,
       grant: payload.g ? { kind: GRANT_KINDS[payload.g.k], id: payload.g.i } : null,
+      ...(payload.c ? { catchup: { mode: payload.c.m, days: payload.c.d, template: payload.c.t ?? null } } : {}),
     };
   }
 
@@ -143,8 +156,17 @@ function isPayload(value: unknown): value is Payload {
   return (
     typeof candidate.u === 'string' &&
     typeof candidate.e === 'number' &&
-    (candidate.p === 's' || candidate.p === 'i') &&
+    (candidate.p === 's' || candidate.p === 'i' || candidate.p === 'a') &&
+    (candidate.c === undefined || isCatchup(candidate.c)) &&
     (candidate.h === undefined || (typeof candidate.h === 'object' && candidate.h !== null)) &&
     (grant === undefined || (typeof grant === 'object' && grant !== null && (grant.k === 's' || grant.k === 'x' || grant.k === 'p') && typeof grant.i === 'string'))
   );
+}
+
+const CATCHUP_MODES: readonly string[] = ['default', 'append', 'shift', 'flussonic', 'xtream'];
+
+function isCatchup(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const c = value as Record<string, unknown>;
+  return typeof c.m === 'string' && CATCHUP_MODES.includes(c.m) && typeof c.d === 'number' && (c.t === undefined || typeof c.t === 'string');
 }

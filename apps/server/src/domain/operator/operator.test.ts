@@ -14,6 +14,7 @@ const grant = (patch: Partial<RightsGrant> = {}): RightsGrant => ({
   startAt: new Date('2026-01-01T00:00:00Z'),
   endAt: new Date('2027-01-01T00:00:00Z'),
   status: 'active',
+  catchupDays: 0,
   ...patch,
 });
 

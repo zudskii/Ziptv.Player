@@ -8,6 +8,8 @@ export interface ProfileRecord {
   color: string;
   kind: ProfileKind;
   isDefault: boolean;
+  /** Opening the profile needs the account's parental PIN. */
+  pinProtected: boolean;
   /** Raw stored document; read through `resolveSettings`. */
   settings: StoredProfileSettings;
   createdAt: Date;
@@ -22,7 +24,9 @@ export interface ProfileRepository {
   ensureDefault(userId: string, input: { id: string; name: string; color: string }): Promise<void>;
   /** Null when the account already has `max` profiles (checked under a lock). */
   create(input: { id: string; userId: string; name: string; color: string; kind: ProfileKind }, max: number): Promise<ProfileRecord | null>;
-  update(id: string, userId: string, patch: { name?: string; color?: string; kind?: ProfileKind }): Promise<ProfileRecord | null>;
+  update(id: string, userId: string, patch: { name?: string; color?: string; kind?: ProfileKind; pinProtected?: boolean }): Promise<ProfileRecord | null>;
+  /** PIN removed: no profile of the account stays protected. */
+  clearPinProtection(userId: string): Promise<void>;
   saveSettings(id: string, userId: string, settings: StoredProfileSettings): Promise<ProfileRecord | null>;
   /** Never deletes the default profile. */
   delete(id: string, userId: string): Promise<boolean>;

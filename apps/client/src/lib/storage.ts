@@ -30,6 +30,33 @@ const safeLocalStorage: StateStorage = {
 
 export const persistentStorage = createJSONStorage(() => safeLocalStorage);
 
+/** sessionStorage that never throws: kept for this tab only (gone when the tab closes). */
+const safeSessionStorage: StateStorage = {
+  getItem: (name) => {
+    try {
+      return window.sessionStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    try {
+      window.sessionStorage.setItem(name, value);
+    } catch {
+      /* ignore */
+    }
+  },
+  removeItem: (name) => {
+    try {
+      window.sessionStorage.removeItem(name);
+    } catch {
+      /* ignore */
+    }
+  },
+};
+
+export const tabStorage = createJSONStorage(() => safeSessionStorage);
+
 export function readRawStorage(key: string): string | null {
   return safeLocalStorage.getItem(key) as string | null;
 }

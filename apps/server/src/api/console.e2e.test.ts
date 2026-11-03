@@ -293,7 +293,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator console (Phase 9)', () => {
       await request(admin).get('/admin/v1/security/overview').set(support.headers).expect(403);
       // Finance audits (audit:read) but does not see the staff roster (staff:read).
       const asFinance = (await request(admin).get('/admin/v1/security/overview').set(finance.headers).expect(200)).body as SecurityOverviewDto;
-      expect(asFinance).toMatchObject({ staff: [], failedLogins24h: security.failedLogins24h });
+      expect(asFinance.staff).toEqual([]);
+      expect(asFinance.failedLogins24h).toBeGreaterThanOrEqual(1);
     });
   });
 

@@ -71,6 +71,8 @@ export interface PlaybackSessionRecord {
   expiresAt: Date;
   endedAt: Date | null;
   endReason: string | null;
+  /** Catch-up viewing: the programme being replayed (null = live). */
+  archive: { start: Date; end: Date } | null;
 }
 
 export interface CheckoutRecord {
