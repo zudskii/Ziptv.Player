@@ -68,7 +68,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator master catalog', () => {
       if (path?.endsWith('.ts')) return void res.writeHead(200, { 'content-type': 'video/mp2t' }).end(TS);
       res.writeHead(404).end();
     });
-    t = await startTestApp({ JOBS_ENABLED: 'true', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE' }, { clock });
+    t = await startTestApp({ JOBS_ENABLED: 'true', OPERATOR_ACCESS: 'rights', OPERATOR_COUNTRY_HEADER: 'cf-ipcountry', OPERATOR_DEFAULT_COUNTRY: 'GE' }, { clock });
     t.container.jobs.start();
     admin = createAdminApp({ config: t.config, logger: createLogger({ log: { level: 'silent' }, env: 'test' }), container: t.container });
 

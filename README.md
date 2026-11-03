@@ -205,6 +205,31 @@ Unstable / Offline from light endpoint checks. `GET /metrics` (Prometheus) with 
 
 Configuration, rules and the console API: `docs/architecture/STREAM_HEALTH.md`.
 
+## Subscriptions and playback authorization
+
+Operator channels sit behind packages: a viewer watches one when the account is not blocked, a
+rights grant covers their country and device, and they hold an active entitlement to a package
+with that channel (FAST channels are free). Every viewing is a **playback session** — a registered
+device, a slot of the plan's simultaneous streams (an atomic lease in Redis, or PostgreSQL), a
+heartbeat every 30 s that re-checks entitlement and country, and proxied links that die the moment
+the session ends. Payments go through a processor port: webhooks are signature-checked and
+processed once; returning from the checkout page grants nothing until the processor confirms.
+A built-in fake processor (hosted test page, asynchronous signed webhooks) makes the whole flow
+work locally; production defaults to no purchases (`PAYMENT_PROCESSOR=none`, comp access only)
+until a real processor adapter is configured.
+
+| Variable | Meaning |
+| --- | --- |
+| `OPERATOR_ACCESS` | `subscription` (default) or `rights` (no paywall, Phase 6 behaviour). |
+| `PAYMENT_PROCESSOR` | `fake` (default outside production) or `none`. |
+| `DEFAULT_MAX_STREAMS` / `DEFAULT_MAX_DEVICES` | Limits for viewers without a package (default 1 / 5). |
+| `DUNNING_PAST_DUE_DAYS` / `DUNNING_GRACE_DAYS` | Failed renewal: days of retries, then of grace, still watching (3 / 4). |
+| `GEO_STATIC_RANGES` | IP ranges per country, used when the edge sends no country header. |
+
+Web client: `/plans`, `/billing/return`, `/account` (subscription, devices, what is playing), and
+the player's "subscription required" / "too many streams — stop & watch here" screens. Lifecycle,
+rules, API and the known limits: `docs/architecture/COMMERCE.md`.
+
 ## Operator console (`apps/admin`)
 
 Staff accounts are separate from subscriber accounts and always sign in with a password **and** a

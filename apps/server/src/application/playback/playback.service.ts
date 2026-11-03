@@ -21,7 +21,7 @@ import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { PlaybackTelemetry } from '../health/playback-telemetry.js';
 import { NOOP_METRICS, type Metrics, type TelemetrySubject } from '../ports/health.js';
-import type { MediaUrls } from '../ports/media-urls.js';
+import type { MediaGrant, MediaUrls } from '../ports/media-urls.js';
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
 import type { StreamProber } from '../ports/stream-prober.js';
 import type { SourceSecrets } from '../sources/secrets.js';
@@ -48,6 +48,11 @@ export interface PlaybackServiceDeps {
   /** Stream health telemetry (candidate tokens, start/error reports). */
   telemetry?: Pick<PlaybackTelemetry, 'token' | 'record'>;
   metrics?: Metrics;
+  /**
+   * `subscription` (Phase 8): operator channels play only through an authorized playback session
+   * (`POST /operator/playback/sessions`: entitlement, device, concurrency). `rights`: rights alone.
+   */
+  operatorAccess?: 'subscription' | 'rights';
 }
 
 const UNPLAYABLE_MESSAGES: Record<UnplayableReason, string> = {
@@ -77,6 +82,9 @@ export class PlaybackService {
   async resolve(viewer: Viewer, request: ResolvePlaybackRequest, context: ViewingContext = { country: null, device: 'web' }): Promise<PlaybackPlanDto> {
     const kind = request.content.type === 'operator' ? 'operator' : 'byo';
     try {
+      if (request.content.type === 'operator' && this.deps.operatorAccess === 'subscription') {
+        throw new AppError('PLAYBACK_SESSION_REQUIRED', 403, 'Operator channels are played through a playback session.', { reason: 'playback_session_required' });
+      }
       const plan = request.content.type === 'operator' ? await this.resolveOperator(viewer, request, request.content, context) : await this.resolveByo(viewer, request);
       (this.deps.metrics ?? NOOP_METRICS).playbackPlan(kind, 'ok');
       return plan;
@@ -173,12 +181,21 @@ export class PlaybackService {
    * candidates in priority order (primary, then backups), and delivery is always proxied —
    * provider addresses never reach the client, whatever STREAM_DELIVERY says.
    */
-  private async resolveOperator(viewer: Viewer, request: ResolvePlaybackRequest, ref: Extract<ContentRefDto, { type: 'operator' }>, context: ViewingContext): Promise<PlaybackPlanDto> {
+  /**
+   * The plan of an authorized operator viewing: its stream links are bound to the playback
+   * session (`grant`), so ending the session — stop, revoked entitlement, missed heartbeats — stops
+   * the stream at the proxy.
+   */
+  async operatorPlan(viewer: Viewer, request: { channelId: string; secureContext: boolean; continueSession?: string }, context: ViewingContext, grant: MediaGrant): Promise<PlaybackPlanDto> {
+    return this.resolveOperator(viewer, { content: { type: 'operator', channelId: request.channelId }, secureContext: request.secureContext, ...(request.continueSession ? { continueSession: request.continueSession } : {}) }, { type: 'operator', channelId: request.channelId }, context, grant);
+  }
+
+  private async resolveOperator(viewer: Viewer, request: ResolvePlaybackRequest, ref: Extract<ContentRefDto, { type: 'operator' }>, context: ViewingContext, boundTo?: MediaGrant): Promise<PlaybackPlanDto> {
     if (!this.deps.operator) throw AppError.notFound('Channel');
     if (!this.deps.proxyEnabled) throw new AppError('UNPLAYABLE', 422, 'The stream proxy is disabled.', { reason: 'unsupported_format' });
     if (!viewer.sessionId) throw new AppError('UNAUTHORIZED', 401, 'Sign in again to play this.');
     const resolved = await this.deps.operator.resolve(viewer, ref.channelId, context);
-    const grant = { kind: 'session' as const, id: viewer.sessionId };
+    const grant: MediaGrant = boundTo ?? { kind: 'session', id: viewer.sessionId };
     const expiresAt = this.deps.media.newStreamExpiry('playback');
     const parts: { candidates: ReturnType<typeof planCandidates>; subject: TelemetrySubject | undefined }[] = [];
     for (const target of resolved.targets) {

@@ -18,6 +18,9 @@ export interface OperatorChannelDto {
   category: string | null;
   languages: string[];
   favorite: boolean;
+  /** Licensed here, but not in the viewer's packages (subscribe to one of `packages` to watch). */
+  locked: boolean;
+  packages: { slug: string; name: string }[];
 }
 
 export interface OperatorLineupDto {

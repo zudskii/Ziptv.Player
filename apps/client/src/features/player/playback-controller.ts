@@ -26,6 +26,9 @@ export interface PlaybackFailure {
   retryable: boolean;
   /** "Try alternate stream": the same channel in other sources. */
   alternates: AlternateStreamDto[];
+  /** The API error behind it (commerce screens: subscribe, stop another device). */
+  code?: string;
+  apiDetails?: unknown;
 }
 
 export interface PlaybackSnapshot {
@@ -168,6 +171,20 @@ export class PlaybackController {
     if (!this.resolver) return;
     this.reconnects = 0;
     void this.start('resolving');
+  }
+
+  /**
+   * The server withdrew the authorization of the playing stream (heartbeat refused): stop now and
+   * show why. The resolver is kept, so Retry asks for a fresh authorization.
+   */
+  interrupt(error: unknown): void {
+    if (!this.resolver) return;
+    this.generation++;
+    this.cancelPending();
+    this.teardownEngine();
+    const failure = planFailure(error);
+    // "This viewing has ended" (stopped elsewhere, timed out): watching again is one click away.
+    this.fail(error instanceof ApiError && error.code === 'NOT_FOUND' ? { ...failure, retryable: true } : failure);
   }
 
   stop(): void {
@@ -475,6 +492,8 @@ function planFailure(error: unknown): PlaybackFailure {
       externalUrl: typeof details.url === 'string' ? details.url : undefined,
       retryable: error.code !== 'UNPLAYABLE' && error.code !== 'NOT_FOUND' && error.code !== 'PARENTAL_LOCKED' && error.code !== 'NOT_ENTITLED',
       alternates: [],
+      code: error.code,
+      apiDetails: error.details,
     };
   }
   return { problem: 'stream_unavailable', message: errorMessage(error), details: [], retryable: true, alternates: [] };

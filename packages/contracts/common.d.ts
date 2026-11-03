@@ -34,6 +34,13 @@ export type ApiErrorCode =
   | 'EPG_INVALID'
   // Playback
   | 'NOT_ENTITLED'
+  // Commerce / playback authorization
+  | 'CONCURRENCY_LIMIT'
+  | 'DEVICE_LIMIT'
+  | 'DEVICE_REQUIRED'
+  | 'PLAYBACK_SESSION_REQUIRED'
+  | 'ALREADY_SUBSCRIBED'
+  | 'ACCOUNT_REQUIRED'
   | 'UNPLAYABLE'
   | 'UNSUPPORTED_FORMAT'
   | 'UPSTREAM_ERROR'

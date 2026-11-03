@@ -22,7 +22,7 @@ interface Payload {
   h?: StreamHeaders;
   e: number;
   p: 's' | 'i';
-  g?: { k: 's' | 'x'; i: string };
+  g?: { k: 's' | 'x' | 'p'; i: string };
 }
 
 const VERSION = '2';
@@ -74,7 +74,7 @@ export class MediaTokenCodec {
   }
 
   issue(url: string, headers: StreamHeaders | undefined, expiresAt: number, grant: MediaGrant): string {
-    const payload: Payload = { u: url, e: expiresAt, p: 's', g: { k: grant.kind === 'session' ? 's' : 'x', i: grant.id } };
+    const payload: Payload = { u: url, e: expiresAt, p: 's', g: { k: GRANT_CODES[grant.kind], i: grant.id } };
     if (headers && Object.keys(headers).length > 0) payload.h = headers;
     return this.encode(payload);
   }
@@ -112,7 +112,7 @@ export class MediaTokenCodec {
       headers: payload.h,
       expiresAt: payload.e,
       purpose: tokenPurpose,
-      grant: payload.g ? { kind: payload.g.k === 's' ? 'session' : 'export', id: payload.g.i } : null,
+      grant: payload.g ? { kind: GRANT_KINDS[payload.g.k], id: payload.g.i } : null,
     };
   }
 
@@ -132,6 +132,10 @@ export class MediaTokenCodec {
   }
 }
 
+/** Grant kinds in tokens: device session, export link, authorized operator viewing (Phase 8). */
+const GRANT_CODES = { session: 's', export: 'x', playback: 'p' } as const;
+const GRANT_KINDS = { s: 'session', x: 'export', p: 'playback' } as const;
+
 function isPayload(value: unknown): value is Payload {
   if (!value || typeof value !== 'object') return false;
   const candidate = value as Record<string, unknown>;
@@ -141,6 +145,6 @@ function isPayload(value: unknown): value is Payload {
     typeof candidate.e === 'number' &&
     (candidate.p === 's' || candidate.p === 'i') &&
     (candidate.h === undefined || (typeof candidate.h === 'object' && candidate.h !== null)) &&
-    (grant === undefined || (typeof grant === 'object' && grant !== null && (grant.k === 's' || grant.k === 'x') && typeof grant.i === 'string'))
+    (grant === undefined || (typeof grant === 'object' && grant !== null && (grant.k === 's' || grant.k === 'x' || grant.k === 'p') && typeof grant.i === 'string'))
   );
 }

@@ -16,3 +16,4 @@ export * from './playlists';
 export * from './admin';
 export * from './operator';
 export * from './monitoring';
+export * from './billing';

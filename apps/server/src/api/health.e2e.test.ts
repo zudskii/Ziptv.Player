@@ -90,6 +90,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Stream health and failover', { timeout: 60_
     t = await startTestApp(
       {
         JOBS_ENABLED: 'true',
+        OPERATOR_ACCESS: 'rights',
         PROBES_ENABLED: 'true',
         PROBE_REGION: 'eu-central',
         PROBE_REGIONS: 'eu-central,us-east',

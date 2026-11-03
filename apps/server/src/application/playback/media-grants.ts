@@ -30,6 +30,8 @@ export class MediaGrantChecker {
       playlists: PlaylistRepository;
       cache: Cache;
       clock: Clock;
+      /** Operator viewings (Phase 8): a link lives only while its playback session does. */
+      playbackSessions?: { findPlaybackSession(id: string): Promise<{ endedAt: Date | null; expiresAt: Date } | null> };
       /** Export grants are only honoured while exports are proxied (switching to `off` kills issued links). */
       exportMode: 'direct' | 'proxied' | 'off';
     },
@@ -52,6 +54,11 @@ export class MediaGrantChecker {
         if (this.deps.exportMode !== 'proxied' || !HASH.test(grant.id)) return false;
         const playlist = await this.deps.playlists.findByExportTokenHash(grant.id);
         return playlist !== null && playlist.exportEnabled;
+      }
+      case 'playback': {
+        if (!isEntityId(grant.id) || !this.deps.playbackSessions) return false;
+        const session = await this.deps.playbackSessions.findPlaybackSession(grant.id);
+        return session !== null && session.endedAt === null && session.expiresAt > this.deps.clock.now();
       }
     }
   }

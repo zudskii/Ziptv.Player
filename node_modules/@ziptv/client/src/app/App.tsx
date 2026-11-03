@@ -30,6 +30,9 @@ const PlayPage = lazy(() => import('../pages/PlayPage').then((module) => ({ defa
 const SearchPage = lazy(() => import('../pages/SearchPage').then((module) => ({ default: module.SearchPage })));
 const MyListPage = lazy(() => import('../pages/MyListPage').then((module) => ({ default: module.MyListPage })));
 const ChannelsPage = lazy(() => import('../pages/ChannelsPage').then((module) => ({ default: module.ChannelsPage })));
+const PlansPage = lazy(() => import('../pages/billing/PlansPage').then((module) => ({ default: module.PlansPage })));
+const AccountPage = lazy(() => import('../pages/billing/AccountPage').then((module) => ({ default: module.AccountPage })));
+const BillingReturnPage = lazy(() => import('../pages/billing/BillingReturnPage').then((module) => ({ default: module.BillingReturnPage })));
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
@@ -66,6 +69,9 @@ export function App() {
             <Route path="playlists/:playlistId" element={<Lazy><PlaylistEditorPage /></Lazy>} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="plans" element={<Lazy><PlansPage /></Lazy>} />
+            <Route path="account" element={<Lazy><AccountPage /></Lazy>} />
+            <Route path="billing/return" element={<Lazy><BillingReturnPage /></Lazy>} />
           </Route>
           {/* 2.x / 1.x URLs (playlist ids are source ids since 3.0) */}
           <Route path="/watch/:playlistId?/:channelKey?" element={<LegacyWatchRedirect />} />

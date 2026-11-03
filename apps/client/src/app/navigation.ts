@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
+import { Bookmark, Clapperboard, CreditCard, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -27,8 +27,13 @@ export const NAV_ITEMS: NavItem[] = [
 /** Operator (licensed) channels: shown only when the operator offers channels to this viewer. */
 export const CHANNELS_ITEM: NavItem = { to: '/channels', label: 'Channels', icon: RadioTower, group: 1, primary: true };
 
+/** Plans, subscription and devices: only where the operator offers channels. */
+export const SUBSCRIPTION_ITEM: NavItem = { to: '/account', label: 'Subscription', icon: CreditCard, group: 4 };
+
 export function navItems(options: { operatorChannels?: boolean } = {}): NavItem[] {
-  return options.operatorChannels ? [NAV_ITEMS[0]!, CHANNELS_ITEM, ...NAV_ITEMS.slice(1)] : NAV_ITEMS;
+  if (!options.operatorChannels) return NAV_ITEMS;
+  const settings = NAV_ITEMS.findIndex((item) => item.to === '/settings');
+  return [NAV_ITEMS[0]!, CHANNELS_ITEM, ...NAV_ITEMS.slice(1, settings), SUBSCRIPTION_ITEM, ...NAV_ITEMS.slice(settings)];
 }
 
 export function isActivePath(item: NavItem, pathname: string): boolean {

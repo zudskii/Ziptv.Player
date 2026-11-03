@@ -3,6 +3,8 @@ import { ArrowLeft, ExternalLink, LoaderCircle, Lock, Play, RefreshCw, Shuffle, 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { PROBLEMS } from '../../../lib/problems';
+import { accessNotice } from '../../billing/access-notice';
+import { PlaybackAccessActions } from '../../billing/components/PlaybackAccessNotice';
 import type { PlaybackSnapshot } from '../playback-controller';
 
 interface PlayerOverlayProps {
@@ -62,14 +64,16 @@ export function PlayerOverlay({ snapshot, hasContent, emptyLabel, onRetry, onNex
     case 'error': {
       const failure = snapshot.failure;
       const problem = failure?.problem ?? 'stream_unavailable';
-      const copy = PROBLEMS[problem];
+      const notice = failure ? accessNotice(failure) : null;
+      const copy = notice ?? PROBLEMS[problem];
       return (
         <Centered>
           <div className="max-w-md rounded-xl border border-white/10 bg-ink-900/90 p-5 text-center text-white shadow-2xl backdrop-blur" role="alert">
             {problem === 'parental_locked' && <Lock className="mx-auto mb-2 h-6 w-6 text-amber-300" aria-hidden />}
             <p className="text-base font-semibold">{copy.title}</p>
-            <p className="mt-1 text-sm text-white/70">{problem === 'stream_unavailable' || problem === 'parental_locked' ? copy.description : (failure?.message ?? copy.description)}</p>
+            <p className="mt-1 text-sm text-white/70">{notice || problem === 'stream_unavailable' || problem === 'parental_locked' ? copy.description : (failure?.message ?? copy.description)}</p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">
+              {notice && failure && <PlaybackAccessActions failure={failure} onRetry={onRetry} />}
               {problem === 'parental_locked' && onUnlock && (
                 <OverlayButton primary icon={<Lock className="h-3.5 w-3.5" />} onClick={onUnlock}>
                   Enter PIN

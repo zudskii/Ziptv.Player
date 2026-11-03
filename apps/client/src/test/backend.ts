@@ -4,10 +4,13 @@ import type { AddressInfo } from 'node:net';
 import { vi } from 'vitest';
 
 import type { Mailer } from '../../../server/src/application/ports/mailer';
+import type { TestApp } from '../../../server/src/test/harness';
 
 export interface Backend {
   /** e.g. http://127.0.0.1:41234 */
   url: string;
+  /** The server's composition root and database, for seeding what only the console could create. */
+  server: TestApp;
   close(): Promise<void>;
 }
 
@@ -27,6 +30,7 @@ export async function startBackend(env: Record<string, string> = {}, options: { 
   vi.stubEnv('VITE_API_URL', url);
   return {
     url,
+    server: testApp,
     close: async () => {
       server.closeAllConnections(); // keep-alive sockets would hold close() open
       await new Promise<void>((resolve) => server.close(() => resolve()));

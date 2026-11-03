@@ -8,6 +8,7 @@ import { toMeDto } from '../../application/admin/principal.js';
 import type { StaffAuthService } from '../../application/admin/staff-auth.service.js';
 import type { StaffService } from '../../application/admin/staff.service.js';
 import type { SystemOverviewService } from '../../application/admin/system.service.js';
+import type { CommerceAdminService } from '../../application/commerce/commerce-admin.service.js';
 import type { MonitoringAdminService } from '../../application/health/monitoring-admin.service.js';
 import type { CatalogAdminService } from '../../application/operator/catalog-admin.service.js';
 import { STAFF_ROLES } from '../../domain/admin/rbac.js';
@@ -27,6 +28,7 @@ export interface AdminServices {
   system: SystemOverviewService;
   catalog: CatalogAdminService;
   monitoring: MonitoringAdminService;
+  commerce: CommerceAdminService;
 }
 
 const Email = z.string().trim().email().max(254);
@@ -111,6 +113,29 @@ const UpdateLineupBody = z
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'nothing to change');
 const LineupRef = z.string().trim().min(1).max(80);
+
+// --- commerce ----------------------------------------------------------------------------------
+const PackageFields = {
+  name: z.string().trim().min(1).max(100),
+  slug: z.string().trim().min(1).max(60).regex(/^[a-z0-9-]+$/, 'lowercase letters, digits, dashes').optional(),
+  description: z.string().trim().max(1000).optional(),
+  priceMinor: z.number().int().min(0).max(100_000_00),
+  currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'),
+  billingPeriod: z.enum(['month', 'year']),
+  trialDays: z.number().int().min(0).max(90).optional(),
+  maxDevices: z.number().int().min(1).max(50),
+  maxStreams: z.number().int().min(1).max(20),
+  businessModel: z.enum(['subscription', 'b2b']).optional(),
+};
+const CreatePackageBody = z.object(PackageFields).strict();
+const UpdatePackageBody = z
+  .object({ ...PackageFields, status: z.enum(['draft', 'active', 'retired']), channelIds: z.array(EntityId).max(5000) })
+  .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'nothing to change');
+const CompBody = z.object({ packageId: EntityId, endsAt: z.string().datetime({ offset: true }).nullable().optional(), note: z.string().trim().min(3).max(500) }).strict();
+const BlockBody = z.object({ blocked: z.boolean(), reason: z.string().trim().max(500).optional() }).strict();
+const PaymentEventsQuery = z.object({ limit: z.coerce.number().int().min(1).max(500).default(100) });
 
 // --- monitoring -----------------------------------------------------------------------------------
 const FeedHealthQuery = z.object({ status: z.enum(FEED_HEALTH_STATES).optional(), channelId: EntityId.optional(), providerId: EntityId.optional(), ...Page });
@@ -310,6 +335,45 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   });
   r.post('/monitoring/incidents/:id/resolve', 'monitoring:operate', async (req, res) => {
     res.json(await monitoring.resolve(currentStaff(req), id(req, 'Incident id'), adminContext(req)));
+  });
+
+  // --- commerce: packages, subscribers, payments -------------------------------------------------
+  const commerce = services.commerce;
+  r.get('/packages', 'billing:read', async (_req, res) => {
+    res.json(await commerce.packages());
+  });
+  r.post('/packages', 'billing:write', async (req, res) => {
+    res.status(201).json(await commerce.createPackage(currentStaff(req), parseInput(CreatePackageBody, req.body, 'Package'), adminContext(req)));
+  });
+  r.get('/packages/:id', 'billing:read', async (req, res) => {
+    res.json(await commerce.package(id(req, 'Package id')));
+  });
+  r.patch('/packages/:id', 'billing:write', async (req, res) => {
+    res.json(await commerce.updatePackage(currentStaff(req), id(req, 'Package id'), parseInput(UpdatePackageBody, req.body, 'Package change'), adminContext(req)));
+  });
+  r.get('/users/:id/billing', 'billing:read', async (req, res) => {
+    res.json(await commerce.userBilling(id(req, 'User id')));
+  });
+  r.post('/users/:id/entitlements', 'billing:write', async (req, res) => {
+    res.status(201).json(await commerce.grantComp(currentStaff(req), id(req, 'User id'), parseInput(CompBody, req.body, 'Comp entitlement'), adminContext(req)));
+  });
+  r.delete('/users/:id/entitlements/:entitlementId', 'billing:write', async (req, res) => {
+    await commerce.revokeEntitlement(currentStaff(req), id(req, 'User id'), parseInput(EntityId, routeParam(req, 'entitlementId'), 'Entitlement id'), adminContext(req));
+    res.status(204).end();
+  });
+  r.post('/users/:id/subscription/refund', 'billing:write', async (req, res) => {
+    await commerce.refund(currentStaff(req), id(req, 'User id'), adminContext(req));
+    res.status(202).json({ status: 'requested' });
+  });
+  r.post('/users/:id/subscription/cancel', 'billing:write', async (req, res) => {
+    await commerce.cancelNow(currentStaff(req), id(req, 'User id'), adminContext(req));
+    res.status(202).json({ status: 'requested' });
+  });
+  r.post('/users/:id/block', 'users:write', async (req, res) => {
+    res.json(await commerce.setBlocked(currentStaff(req), id(req, 'User id'), parseInput(BlockBody, req.body, 'Block'), adminContext(req)));
+  });
+  r.get('/billing/payment-events', 'billing:read', async (req, res) => {
+    res.json(await commerce.paymentEvents(parseInput(PaymentEventsQuery, req.query, 'Payment events').limit));
   });
 
   return r;

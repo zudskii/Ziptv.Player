@@ -7,7 +7,8 @@ import type { StreamHeaders } from '../../domain/catalog/model.js';
  *   export  — a playlist export link (id = hash of the link token).
  */
 export interface MediaGrant {
-  kind: 'session' | 'export';
+  /** session = signed-in device; export = playlist link; playback = an authorized operator viewing. */
+  kind: 'session' | 'export' | 'playback';
   id: string;
 }
 

@@ -11,6 +11,7 @@ import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
 import type { Logger } from '../ports/logger.js';
+import type { EntitlementService } from '../commerce/entitlement.service.js';
 import type { HealthRepository } from '../ports/health.js';
 import type { CategoryRecord, FeedRecord, LineupRecord, MasterChannelRecord, OperatorCatalogRepository, ProviderAdapters, StoredGrant } from '../ports/operator.js';
 import type { SourceRepository } from '../ports/source-repository.js';
@@ -55,6 +56,8 @@ export class OperatorService {
       clock: Clock;
       logger: Logger;
       artwork?: ArtworkUrls;
+      /** Commerce (Phase 8): locked channels in the list. */
+      entitlements?: Pick<EntitlementService, 'annotate'>;
       /** Health and failover state (Phase 7); without it feeds are tried in priority order. */
       health?: Pick<HealthRepository, 'feedHealthOf' | 'failoverOf'>;
     },
@@ -83,6 +86,9 @@ export class OperatorService {
       if (this.hidesAdult(viewer) && this.isAdult(snapshot, channel)) continue;
       channels.push(this.toChannelDto(snapshot, channel, numbers?.get(channel.id) ?? null, favoriteIds.has(channel.id)));
     }
+    // Commerce: mark channels the viewer's packages do not cover (and which packages would).
+    const annotations = this.deps.entitlements ? await this.deps.entitlements.annotate(viewer, channels.map((channel) => ({ id: channel.id, grants: snapshot.grants.get(channel.id) ?? [] })), context) : new Map();
+    for (const channel of channels) Object.assign(channel, annotations.get(channel.id) ?? {});
     channels.sort((a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name));
     return { country: context.country, device: context.device, lineup: lineup ? toLineupDto(lineup) : null, lineups: lineups.map(toLineupDto), channels };
   }
@@ -126,6 +132,14 @@ export class OperatorService {
       rawImage: channel.logo,
       targets,
     };
+  }
+
+  /** What authorization needs to know about a channel this viewer can see (its grants). */
+  async accessContext(viewer: Viewer, channelId: string): Promise<{ channel: { id: string; name: string }; grants: StoredGrant[] }> {
+    const snapshot = await this.snapshot();
+    const channel = snapshot.channels.find((item) => item.id === channelId);
+    if (!channel || (this.hidesAdult(viewer) && this.isAdult(snapshot, channel))) throw AppError.notFound('Channel');
+    return { channel: { id: channel.id, name: channel.name }, grants: snapshot.grants.get(channel.id) ?? [] };
   }
 
   // --- favourites (keyed by channel_master.id) ---------------------------------------------------
@@ -259,6 +273,8 @@ export class OperatorService {
       category: channel.categoryId ? (snapshot.categories.get(channel.categoryId)?.name ?? null) : null,
       languages: channel.languages,
       favorite,
+      locked: false,
+      packages: [],
     };
   }
 }

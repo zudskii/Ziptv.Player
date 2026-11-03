@@ -1,7 +1,7 @@
 import type { ContentRefDto, OperatorChannelDto } from '@ziptv/contracts';
-import { ListFilter, Search, Star, Tv, X } from 'lucide-react';
+import { ListFilter, Lock, Search, Star, Tv, X } from 'lucide-react';
 import { useCallback, useDeferredValue, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 import { toast } from 'sonner';
 
 import { EmptyState } from '../components/ui/EmptyState';
@@ -18,8 +18,9 @@ import { matchesQuery, normalizeForSearch } from '../lib/search';
 const FAVORITES = '__favorites__';
 
 /**
- * /channels/:channelId? — the operator's licensed channels. Only channels the viewer may watch
- * (market, device, time) are listed; playback always goes through the ZIPTV proxy.
+ * /channels/:channelId? — the operator's licensed channels. Only channels licensed for the viewer
+ * (market, device, time) are listed; those outside the viewer's packages are marked locked.
+ * Playback is authorized per viewing (playback session) and always goes through the ZIPTV proxy.
  */
 export function ChannelsPage() {
   const { channelId } = useParams();
@@ -78,6 +79,11 @@ export function ChannelsPage() {
               </h1>
               <p className="truncate text-sm text-fg-muted">{[current.category, current.languages.map((language) => language.toUpperCase()).join(', ')].filter(Boolean).join(' · ')}</p>
             </div>
+            {current.locked && (
+              <Link to="/plans" className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-brand px-2.5 text-xs font-medium text-white hover:bg-brand-strong">
+                <Lock className="h-3.5 w-3.5" aria-hidden /> {current.packages.length > 0 ? `In ${current.packages.map((item) => item.name).join(', ')}` : 'Subscribe'}
+              </Link>
+            )}
             <FavoriteButton channel={current} onToggle={() => toggleFavorite(current)} />
           </div>
         ) : channelId ? (
@@ -145,7 +151,10 @@ export function ChannelsPage() {
                   {channel.number !== null && <span className="w-8 shrink-0 text-right text-xs tabular-nums text-fg-subtle">{channel.number}</span>}
                   <ChannelLogo channel={channel} className="h-9 w-12" />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-fg">{channel.name}</span>
+                    <span className="flex items-center gap-1.5 truncate text-sm font-medium text-fg">
+                      {channel.name}
+                      {channel.locked && <Lock className="h-3 w-3 shrink-0 text-fg-subtle" aria-label="Needs a subscription" />}
+                    </span>
                     {channel.category && <span className="block truncate text-xs text-fg-subtle">{channel.category}</span>}
                   </span>
                 </button>
