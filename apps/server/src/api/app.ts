@@ -17,6 +17,7 @@ import { createPlaylistExportRouter } from './routes/playlist-export.routes.js';
 import { createErrorHandler, notFoundHandler } from './middleware/error-handler.js';
 import { rateLimiterFactory } from './middleware/rate-limit.js';
 import { createApiRouters } from './routes/index.js';
+import { createFakeCheckoutRouter, createPaymentWebhookRouter } from './routes/payment-webhook.routes.js';
 import { createMediaRouter } from './routes/media.routes.js';
 
 export interface AppDependencies {
@@ -83,6 +84,10 @@ export function createApp({ config, logger, container, isReady }: AppDependencie
 
   // --- Public playlist links: the token in the URL is the credential ----------------------------
   app.use(PLAYLIST_EXPORT_PREFIX, createPlaylistExportRouter(container.playlistExport, { publicUrl: config.publicUrl, limit }));
+
+  // --- Payments: processor webhooks (raw body, signature-checked) and the fake hosted checkout -------
+  app.use(`${API_PREFIX}/billing/webhooks`, createPaymentWebhookRouter({ billing: container.commerce.billing, limit }));
+  if (container.commerce.fakeProcessor) app.use('/billing/fake-checkout', createFakeCheckoutRouter(container.commerce.fakeProcessor));
 
   // --- JSON API ------------------------------------------------------------------------------
   const auth = requireSession(container.sessions, container.viewers);

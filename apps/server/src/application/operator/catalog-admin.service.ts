@@ -61,6 +61,8 @@ export class CatalogAdminService {
       allowMockProviders: boolean;
       /** Clears viewer-side caches after a change. */
       onChange: () => void;
+      /** A rights grant was revoked: viewings it allowed must stop now (not at the next heartbeat). */
+      onRightsRevoked?: (channelId: string) => Promise<unknown>;
     },
   ) {}
 
@@ -364,6 +366,7 @@ export class CatalogAdminService {
       await audit(actor, context, 'rights.revoked', 'rights_grant', grantId, grantState(before), grantState(after), { channelId: before.channelId });
       return after;
     });
+    await this.deps.onRightsRevoked?.(before.channelId);
     return toGrantDto(revoked);
   }
 

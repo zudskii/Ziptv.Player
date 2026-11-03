@@ -109,6 +109,26 @@ is not race-proof against two simultaneous demotions (both actors would need to 
   never upstream URLs or credentials; webhooks are HMAC-signed (`X-ZIPTV-Signature`) and carry an
   idempotency key; `/metrics` answers only with `METRICS_TOKEN` (404 when unset).
 
+## Commerce and playback authorization (Phase 8)
+
+- **Nothing is granted on the browser's word**: returning from the checkout page only makes the
+  server ask the processor; subscriptions change only from signature-verified webhooks (raw body,
+  timing-safe HMAC), processor status queries and the clock. Webhooks are recorded once
+  (`payment_events` unique) in the same transaction as their effect.
+- **Every operator viewing is authorized server-side** (device, rights for the current country,
+  entitlement, concurrency lease) and re-authorized on every heartbeat; proxy links carry a
+  `playback` grant that dies with the session (checked on every request, cache forgotten on end).
+  The plain playback endpoint refuses operator content in subscription mode.
+- **Concurrency cannot be raced**: the lease is one atomic operation (Redis Lua, or a PostgreSQL
+  advisory lock per account key) with the store's own clock; device registration is serialized
+  per account.
+- **No IDOR**: checkouts, devices and playback sessions are looked up by id *and* owner; another
+  account's id answers 404.
+- **Device keys** are random secrets kept by the client; only their SHA-256 is stored.
+- **Money mistakes are reversed automatically**: a second paid checkout, a reused trial, or a
+  payment after the subscription ended are refunded and canceled at the processor (outbox).
+- **The fake processor is refused in production** unless explicitly allowed for a demo.
+
 ## Tests that enforce this
 
 - `api/security.e2e.test.ts` — with proxy delivery, scans every response body/header a client
@@ -123,13 +143,18 @@ is not race-proof against two simultaneous demotions (both actors would need to 
   rate limit and invalidation.
 - `api/health.e2e.test.ts` — failover, pins, incidents, signed alerts, telemetry token binding and
   caps, metrics token, no upstream address in alerts/metrics.
+- `api/commerce.e2e.test.ts` — the Phase 8 gate: no subscription / expired subscription / wrong
+  country / revoked rights / removed device / blocked account / refund → no stream (heartbeat and
+  proxy), concurrent starts against the stream limit, device limit, forged and replayed webhooks,
+  success redirect without payment, duplicate payment and payment-after-end refunds, trial once.
+- `infrastructure/persistence/postgres/lease-store.test.ts` — 12 concurrent acquires, limit 2.
 
 ## Known gaps (accepted for now)
 
 | Gap | Plan |
 | --- | --- |
-| Proxy links are bearer URLs: anyone a viewer shares a link with can watch until revocation/expiry | Phase 8: playback sessions with heartbeat + concurrency leases bind links to one playing device |
-| Signed URLs cannot enforce subscription state mid-session | Phase 8 entitlement check on heartbeat |
+| Operator proxy links are bearer URLs while their playback session lives (Phase 8 ends them with the session, but a copied link plays elsewhere meanwhile) | Phase 11: CDN tokens bound to client IP / session, DRM licenses per session |
+| The device class behind device-class rights is declared by the client | Attested TV / STB apps (Phase 11) |
 | All proxied video flows through Node.js | Phase 11: CDN signed URLs; the proxy stays for BYO sources |
 | MPEG-DASH cannot be proxied | DASH manifest rewriting or CDN delivery (Phase 11) |
 | Catch-up templates are left out of `proxied` exports | Phase 10 catch-up through the proxy |

@@ -2,6 +2,17 @@ import type { RequestHandler } from 'express';
 import type { Store } from 'express-rate-limit';
 import type { Redis } from 'ioredis';
 
+import { AccountBillingService } from './application/commerce/account-billing.service.js';
+import { BillingService, CANCEL_AT_PROCESSOR, SUBSCRIPTION_CHANGED, VOID_AT_PROCESSOR } from './application/commerce/billing.service.js';
+import { CommerceAdminService } from './application/commerce/commerce-admin.service.js';
+import { EntitlementService } from './application/commerce/entitlement.service.js';
+import { PlaybackAuthorizationService } from './application/commerce/playback-authorization.service.js';
+import type { GeoResolver } from './application/ports/geo.js';
+import { FakePaymentProcessor } from './infrastructure/billing/fake-processor.js';
+import { NoPaymentProcessor } from './infrastructure/billing/no-processor.js';
+import { StaticGeoResolver } from './infrastructure/geo/static-geo.js';
+import { PgCommerceRepository } from './infrastructure/persistence/postgres/repositories/commerce.repository.js';
+import { PgLeaseStore } from './infrastructure/persistence/postgres/repositories/lease-store.js';
 import { AdminUsersService, USER_SESSIONS_REVOKED } from './application/admin/admin-users.service.js';
 import { AuditService } from './application/admin/audit.service.js';
 import { StaffAuthService } from './application/admin/staff-auth.service.js';
@@ -140,7 +151,19 @@ export interface Container {
     system: SystemOverviewService;
     catalog: CatalogAdminService;
     monitoring: MonitoringAdminService;
+    commerce: CommerceAdminService;
   };
+  commerce: {
+    billing: BillingService;
+    accounts: AccountBillingService;
+    entitlements: EntitlementService;
+    authorization: PlaybackAuthorizationService;
+    /** The built-in test processor (null with a real or no processor): hosted page, renewals in tests. */
+    fakeProcessor: FakePaymentProcessor | null;
+    /** Playback concurrency leases (Redis when configured, else PostgreSQL — never per-instance memory). */
+    streamLeases: LeaseStore;
+  };
+  geo: GeoResolver | null;
   sessions: SessionService;
   accounts: AccountService;
   emailFlow: EmailFlowService;
@@ -254,7 +277,14 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
 
   const playlistRepository = new PgPlaylistRepository(db);
   const playlistEntryRepository = new PgPlaylistEntryRepository(db);
-  const mediaGrants = new MediaGrantChecker({ sessions: sessionRepository, playlists: playlistRepository, cache: grantCache, clock, exportMode: config.playlistExport.mode });
+  // --- commerce (ZP-ENT-07/08/09): entitlements gate operator playback ---------------------------
+  const commerceRepository = new PgCommerceRepository(db);
+  const pgLeases = redis ? null : new PgLeaseStore(db);
+  // A concurrency limit enforced per instance is no limit: Redis (Lua) or PostgreSQL, never memory.
+  const streamLeases: LeaseStore = redis ? new RedisLeaseStore(redis) : pgLeases!;
+  const entitlements = new EntitlementService({ commerce: commerceRepository, clock, mode: config.commerce.access, defaults: config.commerce.defaults });
+  const geo: GeoResolver | null = config.commerce.geoStaticRanges ? new StaticGeoResolver(config.commerce.geoStaticRanges) : null;
+  const mediaGrants = new MediaGrantChecker({ sessions: sessionRepository, playlists: playlistRepository, playbackSessions: commerceRepository, cache: grantCache, clock, exportMode: config.playlistExport.mode });
   sessions.onRevoked((ids) => ids.forEach((id) => mediaGrants.forget({ kind: 'session', id })));
   const pipeline = new SourceSyncPipeline({
     sources: sourceRepository,
@@ -370,6 +400,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     logger: logger.child({ module: 'operator' }),
     artwork,
     health: healthRepository,
+    entitlements,
   });
   const providerSync = new ProviderSyncService({ catalog: operatorCatalog, adapters: providerAdapters, connections: providerConnections, secrets, clock, logger: logger.child({ module: 'provider-sync' }) });
   const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork, operatorFavorites: (viewer) => operator.favoriteListItems(viewer) });
@@ -421,6 +452,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     streamUrls: new ProviderStreamUrls(secrets),
     episodes: seriesEpisodes,
     operator,
+    operatorAccess: config.commerce.access,
     telemetry,
     metrics,
     observer: new WatchObserver({
@@ -446,6 +478,33 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   });
   const search = new SearchService({ sources: sourceRepository, catalog: catalogRepository, live, epg, logger: logger.child({ module: 'search' }), artwork });
   const viewerData = new ViewerDataService({ sources: sourceRepository, catalog: catalogRepository, list: listRepository, progress: progressRepository, history: historyRepository, epg, cache, clock });
+
+  const commerceLogger = logger.child({ module: 'commerce' });
+  const authorization = new PlaybackAuthorizationService({
+    commerce: commerceRepository,
+    entitlements,
+    operator,
+    playback,
+    leases: streamLeases,
+    clock,
+    logger: commerceLogger,
+    onEnded: (id) => mediaGrants.forget({ kind: 'playback', id }),
+  });
+  // eslint-disable-next-line prefer-const -- assigned after the processor that delivers to it
+  let billing: BillingService;
+  const fakeProcessor =
+    config.commerce.processor === 'fake'
+      ? new FakePaymentProcessor({
+          secret: config.commerce.fakeSecret,
+          baseUrl: () => config.publicUrl ?? `http://localhost:${config.http.port}`,
+          clock,
+          // In-process "HTTPS" delivery through the same entry point as a real webhook.
+          deliver: async (body, headers) => void (await billing.handleWebhook('fake', body, headers)),
+          onDeliveryError: (error) => commerceLogger.warn({ err: error }, 'Fake processor webhook delivery failed'),
+        })
+      : null;
+  billing = new BillingService({ commerce: commerceRepository, processor: fakeProcessor ?? new NoPaymentProcessor(), clock, logger: commerceLogger, dunning: config.commerce.dunning });
+  const accountBilling = new AccountBillingService({ commerce: commerceRepository, billing, entitlements, authorization, clock });
 
   // --- operator console -------------------------------------------------------------------------
   const staffRepository = new PgStaffRepository(db);
@@ -533,8 +592,19 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       clock,
       allowMockProviders: config.operator.allowMockProviders,
       onChange: () => operator.forget(),
+      onRightsRevoked: (channelId) => authorization.revalidateChannel(channelId),
     }),
     monitoring,
+    commerce: new CommerceAdminService({
+      commerce: commerceRepository,
+      catalog: operatorCatalog,
+      billing,
+      accounts: accountBilling,
+      authorization,
+      uow: adminUow,
+      clock,
+      onCatalogChange: () => operator.forget(),
+    }),
   };
 
   // Side effects committed with their cause (outbox) — handlers must be idempotent.
@@ -550,6 +620,28 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         link: null,
         dedupeKey: `sessions-revoked`,
       });
+    },
+    [SUBSCRIPTION_CHANGED]: async (payload: Record<string, unknown>) => {
+      // Lost access (refund, cancel now, expiry): live viewings end now, not at the next heartbeat.
+      const ended = await authorization.revalidate(String(payload.userId));
+      if (ended > 0) commerceLogger.info({ userId: payload.userId, ended }, 'Ended viewings after a subscription change');
+      const message = subscriptionMessage(String(payload.to), payload.cancelAtPeriodEnd === true);
+      if (!message) return;
+      await notifications.notify({
+        ownerId: String(payload.userId),
+        type: 'billing',
+        severity: message.severity,
+        title: message.title,
+        body: message.body,
+        link: '/account',
+        dedupeKey: `subscription:${String(payload.subscriptionId)}:${String(payload.to)}:${String(payload.cancelAtPeriodEnd)}`,
+      });
+    },
+    [CANCEL_AT_PROCESSOR]: async (payload: Record<string, unknown>) => {
+      await billing.cancelAtProcessor(String(payload.subscriptionRef));
+    },
+    [VOID_AT_PROCESSOR]: async (payload: Record<string, unknown>) => {
+      await billing.voidAtProcessor(String(payload.subscriptionRef), String(payload.reason));
     },
     'staff.signed_in': async (payload: Record<string, unknown>) => {
       if (!mailer) return; // nothing to deliver without mail
@@ -586,6 +678,37 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         if (orphans > 0) healthLogger.info({ orphans }, 'Resolved incidents of targets that left the catalog');
       },
     }),
+    // Subscription state follows time (trial end, period end, dunning) even without webhooks.
+    periodicWorker({
+      name: 'subscription-clock',
+      intervalMs: 5 * 60_000,
+      schedules: scheduleRepository,
+      run: async () => {
+        const changed = await billing.runClock();
+        if (changed > 0) commerceLogger.info({ changed }, 'Subscription clock advanced subscriptions');
+      },
+    }),
+    // Missed or lost webhooks: compare with the processor's own records.
+    periodicWorker({
+      name: 'billing-reconcile',
+      intervalMs: 60 * 60_000,
+      schedules: scheduleRepository,
+      leaseMs: 30 * 60_000,
+      run: async () => {
+        const result = await billing.reconcile({ olderThanMs: 6 * 3600_000, limit: 500 });
+        commerceLogger.info(result, 'Billing reconciliation finished');
+      },
+    }),
+    periodicWorker({
+      name: 'playback-sessions',
+      intervalMs: 60_000,
+      schedules: scheduleRepository,
+      run: async () => {
+        const expired = await authorization.expireStale();
+        const purgedLeases = pgLeases ? await pgLeases.purgeExpired() : 0;
+        if (expired > 0 || purgedLeases > 0) commerceLogger.debug({ expired, purgedLeases }, 'Closed stale playback sessions');
+      },
+    }),
     periodicWorker({
       name: 'cleanup',
       intervalMs: 60 * 60_000,
@@ -603,6 +726,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
         if (endedProgrammes > 0) logger.debug({ endedProgrammes }, 'Pruned ended programmes');
         const day = 86_400_000;
         const now = clock.now().getTime();
+        const prunedCommerce = await commerceRepository.pruneCommerce({ endedSessions: new Date(now - 90 * day), expiredCheckouts: new Date(now - 90 * day) });
+        logger.debug({ prunedCommerce }, 'Pruned commerce data');
         const prunedHealth = await healthRepository.prune({
           probes: new Date(now - config.health.retentionDays * day),
           telemetry: new Date(now - 7 * day),
@@ -640,6 +765,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     leases,
     secretStore,
     admin,
+    commerce: { billing, accounts: accountBilling, entitlements, authorization, fakeProcessor, streamLeases },
+    geo,
     sessions,
     accounts,
     emailFlow,
@@ -686,6 +813,27 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       if (redis) await redis.quit().catch(() => redis.disconnect());
     },
   };
+}
+
+function subscriptionMessage(status: string, cancelAtPeriodEnd: boolean): { severity: 'info' | 'warning'; title: string; body: string } | null {
+  switch (status) {
+    case 'trialing':
+      return { severity: 'info', title: 'Your free trial has started', body: 'Enjoy every channel in your package. You can cancel any time before the trial ends.' };
+    case 'active':
+      return cancelAtPeriodEnd
+        ? { severity: 'info', title: 'Your subscription will end', body: 'It stays active until the end of the paid period. You can resume it from your account.' }
+        : { severity: 'info', title: 'Your subscription is active', body: 'Thanks — your package is ready to watch.' };
+    case 'past_due':
+      return { severity: 'warning', title: 'Payment failed', body: 'We could not renew your subscription. Update your payment method to keep watching.' };
+    case 'grace':
+      return { severity: 'warning', title: 'Your subscription is about to lapse', body: 'The renewal is still unpaid. Access ends in a few days unless the payment goes through.' };
+    case 'canceled':
+      return { severity: 'info', title: 'Your subscription was canceled', body: 'You can subscribe again at any time from the plans page.' };
+    case 'expired':
+      return { severity: 'warning', title: 'Your subscription has ended', body: 'Subscribe again to keep watching your package.' };
+    default:
+      return null;
+  }
 }
 
 function escapeHtml(value: string): string {

@@ -23,6 +23,7 @@ import { isEntityId } from '../../../../domain/shared/ids.js';
 import type { Db } from '../database.js';
 import { json, type AdminAuditLogsTable, type StaffSessionsTable, type StaffUsersTable } from '../schema.js';
 import { PgSessionRepository } from './session.repository.js';
+import { PgCommerceRepository } from './commerce.repository.js';
 import { PgHealthRepository } from './health.repository.js';
 import { PgOperatorCatalogRepository } from './operator-catalog.repository.js';
 
@@ -396,6 +397,7 @@ export class PgAdminUnitOfWork implements AdminUnitOfWork {
         sessions: new PgSessionRepository(trx),
         catalog: new PgOperatorCatalogRepository(trx),
         health: new PgHealthRepository(trx, true),
+        commerce: new PgCommerceRepository(trx, true),
       }),
     );
   }

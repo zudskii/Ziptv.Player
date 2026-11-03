@@ -33,7 +33,7 @@ interface VideoPlayerProps {
 }
 
 export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, onAlternate, onBack, infoOverlay, className, nextLabel, upNext }: VideoPlayerProps) {
-  const { videoRef, video, controller, snapshot } = usePlaybackController();
+  const { videoRef, video, controller, operatorSessions, snapshot } = usePlaybackController();
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const state = useVideoState(video, container);
   const settingsQuery = useSettings();
@@ -46,7 +46,11 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
     }
   }, [controller, settings]);
   // Settings decide autoplay/resume/tracks: start once they are known (cached after the first load).
-  useContentPlayback(controller, settingsQuery.isPending ? undefined : content);
+  useContentPlayback(controller, settingsQuery.isPending ? undefined : content, undefined, operatorSessions);
+  // A viewing that failed (every feed down) must not keep holding one of the account's stream slots.
+  useEffect(() => {
+    if (snapshot.status === 'error') operatorSessions?.release();
+  }, [snapshot.status, operatorSessions]);
   usePlaybackReporting(video, snapshot, controller);
   const vod = snapshot.plan ? snapshot.plan.content.mode !== 'live' : false;
 

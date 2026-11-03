@@ -268,7 +268,9 @@ export type NotificationType =
   | 'streams_unavailable'
   | 'account_expiring'
   /** Sign-outs or other security actions taken on the account (e.g. by support). */
-  | 'account_security';
+  | 'account_security'
+  /** Subscription changes: trial started, payment failed, ended (Phase 8). */
+  | 'billing';
 
 export interface NotificationDto {
   id: string;

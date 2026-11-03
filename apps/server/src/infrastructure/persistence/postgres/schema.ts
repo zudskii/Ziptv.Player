@@ -8,6 +8,7 @@ import type { UserRole } from '../../../domain/identity/credentials.js';
 import type { HealthState, SourceProblem, SourceType, SyncStage, SyncStatus } from '../../../domain/sources/source.js';
 import type { SourceOrigin } from '../../../application/ports/source-repository.js';
 import type { StoredProfileSettings } from '../../../domain/viewer/settings.js';
+import type { SubscriptionStatus } from '../../../domain/commerce/subscription.js';
 import type { FeedHealthState, ProbeOutcome, RegionState } from '../../../domain/health/feed-health.js';
 import type { FailoverEventReason, IncidentKind, IncidentStatus, ProbeStepKind } from '../../../application/ports/health.js';
 import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../../domain/operator/catalog.js';
@@ -52,6 +53,9 @@ export interface UsersTable {
   legacy_secret_id: string | null;
   created_at: Generated<Date>;
   last_seen_at: Generated<Date>;
+  /** Staff blocked the account (no operator playback, no purchases). */
+  blocked_at: Date | null;
+  blocked_reason: string | null;
 }
 
 export interface SessionsTable {
@@ -675,6 +679,132 @@ export interface SourceProbeStateTable {
   lease_until: Date | null;
 }
 
+export interface PackagesTable {
+  id: string;
+  slug: string;
+  name: string;
+  description: Generated<string>;
+  price_minor: number;
+  currency: string;
+  billing_period: 'month' | 'year';
+  trial_days: Generated<number>;
+  max_devices: number;
+  max_streams: number;
+  business_model: Generated<'subscription' | 'b2b'>;
+  status: Generated<'draft' | 'active' | 'retired'>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface PackageChannelsTable {
+  package_id: string;
+  channel_id: string;
+}
+
+export interface SubscriptionsTable {
+  id: string;
+  user_id: string;
+  package_id: string;
+  status: SubscriptionStatus;
+  trial_ends_at: Date | null;
+  current_period_start: Date | null;
+  current_period_end: Date | null;
+  cancel_at_period_end: Generated<boolean>;
+  ended_at: Date | null;
+  processor: string;
+  processor_ref: string;
+  reconciled_at: Date | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface EntitlementsTable {
+  id: string;
+  user_id: string;
+  package_id: string;
+  kind: 'subscription' | 'comp';
+  subscription_id: string | null;
+  starts_at: Date;
+  ends_at: Date | null;
+  revoked_at: Date | null;
+  note: string | null;
+  created_by: string | null;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+export interface DevicesTable {
+  id: string;
+  user_id: string;
+  key_hash: string;
+  name: string;
+  platform: DeviceClass;
+  created_at: Generated<Date>;
+  last_seen_at: Generated<Date>;
+  revoked_at: Date | null;
+}
+
+export interface PlaybackSessionsTable {
+  id: string;
+  user_id: string;
+  profile_id: string | null;
+  device_id: string;
+  channel_id: string;
+  access: 'package' | 'fast' | 'rights';
+  package_id: string | null;
+  country: string | null;
+  started_at: Date;
+  last_heartbeat_at: Date;
+  expires_at: Date;
+  ended_at: Date | null;
+  end_reason: string | null;
+}
+
+export interface CheckoutsTable {
+  id: string;
+  user_id: string;
+  package_id: string;
+  processor: string;
+  processor_ref: string | null;
+  with_trial: Generated<boolean>;
+  status: Generated<'open' | 'completed' | 'expired'>;
+  subscription_id: string | null;
+  created_at: Generated<Date>;
+  completed_at: Date | null;
+}
+
+export interface InvoicesTable {
+  id: string;
+  user_id: string;
+  subscription_id: string;
+  processor: string;
+  processor_ref: string;
+  amount_minor: number;
+  currency: string;
+  status: 'paid' | 'refunded';
+  period_start: Date;
+  period_end: Date;
+  paid_at: Date;
+  refunded_at: Date | null;
+}
+
+export interface PaymentEventsTable {
+  id: string;
+  processor: string;
+  event_id: string;
+  type: string;
+  payload: Json<unknown>;
+  received_at: Date;
+  processed_at: Date | null;
+  outcome: string | null;
+}
+
+export interface LeasesTable {
+  key: string;
+  holder: string;
+  expires_at: Date;
+}
+
 export interface Database {
   users: UsersTable;
   sessions: SessionsTable;
@@ -721,6 +851,16 @@ export interface Database {
   incidents: IncidentsTable;
   playback_telemetry: PlaybackTelemetryTable;
   source_probe_state: SourceProbeStateTable;
+  packages: PackagesTable;
+  package_channels: PackageChannelsTable;
+  subscriptions: SubscriptionsTable;
+  entitlements: EntitlementsTable;
+  devices: DevicesTable;
+  playback_sessions: PlaybackSessionsTable;
+  checkouts: CheckoutsTable;
+  invoices: InvoicesTable;
+  payment_events: PaymentEventsTable;
+  leases: LeasesTable;
 }
 
 /** Serialises a value for a JSON column. */

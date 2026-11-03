@@ -102,6 +102,25 @@ const EnvSchema = z
     /** Development providers whose channel list is typed into the console. Default: off in production. */
     OPERATOR_ALLOW_MOCK_PROVIDERS: booleanString.optional(),
     /**
+     * Commerce (Phase 8). subscription = operator channels need an active package entitlement
+     * (FAST channels stay free); rights = Phase 6 behaviour, rights windows only (no paywall).
+     */
+    OPERATOR_ACCESS: z.enum(['subscription', 'rights']).default('subscription'),
+    /** Payment processor: fake = built-in test processor (dev/demo), none = no purchases. Default: fake outside production. */
+    PAYMENT_PROCESSOR: optional(z.enum(['fake', 'none'])),
+    /** The fake processor in production (public demos only — nobody pays anything). */
+    PAYMENT_ALLOW_FAKE_IN_PRODUCTION: booleanString.default(false),
+    /** HMAC key of the fake processor's webhooks; unset = random per boot. */
+    PAYMENT_FAKE_SECRET: optional(z.string().min(16, 'PAYMENT_FAKE_SECRET must be at least 16 characters')),
+    /** Limits for viewers whose packages do not set them (and for FAST / rights-mode viewing). */
+    DEFAULT_MAX_STREAMS: z.coerce.number().int().min(1).max(20).default(1),
+    DEFAULT_MAX_DEVICES: z.coerce.number().int().min(1).max(50).default(5),
+    /** Failed renewal: past_due for N days (still watching), then grace for M days (still watching), then expired. */
+    DUNNING_PAST_DUE_DAYS: z.coerce.number().int().min(0).max(30).default(3),
+    DUNNING_GRACE_DAYS: z.coerce.number().int().min(0).max(30).default(4),
+    /** Static IP → country table, e.g. "GE=203.0.113.0/24,2001:db8::/32;DE=198.51.100.0/24" (a GeoIP adapter replaces it later). */
+    GEO_STATIC_RANGES: optional(z.string().trim().min(1)),
+    /**
      * Stream health (Phase 7). Every instance that runs jobs probes operator feeds from its
      * PROBE_REGION; PROBE_REGIONS lists the regions the deployment expects (console shows gaps).
      * A feed is failing only when every region that probed it recently sees it failing.
@@ -202,6 +221,9 @@ const EnvSchema = z
       ctx.addIssue({ code: 'custom', path: ['PLAYLIST_EXPORT_MODE'], message: 'PLAYLIST_EXPORT_MODE=direct would publish upstream URLs that STREAM_DELIVERY=proxy hides; use proxied or off' });
     }
     if (env.NODE_ENV !== 'production') return;
+    if (env.PAYMENT_PROCESSOR === 'fake' && !env.PAYMENT_ALLOW_FAKE_IN_PRODUCTION) {
+      ctx.addIssue({ code: 'custom', path: ['PAYMENT_PROCESSOR'], message: 'PAYMENT_PROCESSOR=fake hands out subscriptions without payment; set PAYMENT_ALLOW_FAKE_IN_PRODUCTION=true only for a public demo' });
+    }
     if ((env.PLAYLIST_EXPORT_MODE ?? (env.STREAM_DELIVERY === 'proxy' ? 'proxied' : 'direct')) === 'proxied' && !env.PUBLIC_URL) {
       // Proxied exports write absolute stream URLs; without PUBLIC_URL they would come from the request (Host, X-Forwarded-Proto).
       ctx.addIssue({ code: 'custom', path: ['PUBLIC_URL'], message: 'PUBLIC_URL (https://…) is required in production when playlist exports are proxied' });
@@ -240,6 +262,14 @@ export interface AppConfig {
   };
   playlistExport: { mode: 'direct' | 'proxied' | 'off'; linkTtlSeconds: number };
   operator: { countryHeader: string | null; defaultCountry: string | null; allowMockProviders: boolean };
+  commerce: {
+    access: 'subscription' | 'rights';
+    processor: 'fake' | 'none';
+    fakeSecret: string;
+    defaults: { maxStreams: number; maxDevices: number };
+    dunning: { pastDueMs: number; graceMs: number };
+    geoStaticRanges: string | null;
+  };
   health: {
     probesEnabled: boolean;
     region: string;
@@ -345,6 +375,14 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
       countryHeader: env.OPERATOR_COUNTRY_HEADER ?? null,
       defaultCountry: env.OPERATOR_DEFAULT_COUNTRY ?? null,
       allowMockProviders: env.OPERATOR_ALLOW_MOCK_PROVIDERS ?? env.NODE_ENV !== 'production',
+    },
+    commerce: {
+      access: env.OPERATOR_ACCESS,
+      processor: env.PAYMENT_PROCESSOR ?? (env.NODE_ENV === 'production' ? 'none' : 'fake'),
+      fakeSecret: env.PAYMENT_FAKE_SECRET ?? randomBytes(24).toString('hex'),
+      defaults: { maxStreams: env.DEFAULT_MAX_STREAMS, maxDevices: env.DEFAULT_MAX_DEVICES },
+      dunning: { pastDueMs: env.DUNNING_PAST_DUE_DAYS * 86_400_000, graceMs: env.DUNNING_GRACE_DAYS * 86_400_000 },
+      geoStaticRanges: env.GEO_STATIC_RANGES ?? null,
     },
     health: {
       probesEnabled: env.PROBES_ENABLED ?? env.NODE_ENV !== 'test',

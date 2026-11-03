@@ -9,6 +9,7 @@ import * as epg from './0006-epg.js';
 import * as viewer from './0007-viewer.js';
 import * as operatorCatalog from './0008-operator-catalog.js';
 import * as streamHealth from './0009-stream-health.js';
+import * as commerce from './0010-commerce.js';
 
 /**
  * Forward-only migrations, applied in key order. Add a new file and register it here;
@@ -24,4 +25,5 @@ export const MIGRATIONS: Record<string, Migration> = {
   '0007-viewer': viewer,
   '0008-operator-catalog': operatorCatalog,
   '0009-stream-health': streamHealth,
+  '0010-commerce': commerce,
 };

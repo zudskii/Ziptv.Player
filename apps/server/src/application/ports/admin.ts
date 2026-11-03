@@ -1,4 +1,5 @@
 import type { StaffRole } from '../../domain/admin/rbac.js';
+import type { CommerceRepository } from './commerce.js';
 import type { HealthRepository } from './health.js';
 import type { OperatorCatalogRepository } from './operator.js';
 import type { SessionRepository } from './session-repository.js';
@@ -136,6 +137,7 @@ export interface AdminTransaction {
   sessions: SessionRepository;
   catalog: OperatorCatalogRepository;
   health: HealthRepository;
+  commerce: CommerceRepository;
 }
 
 export interface AdminUnitOfWork {
