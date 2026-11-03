@@ -31,6 +31,7 @@ export const PROBLEMS: Record<ProblemKind, ProblemCopy> = {
   },
   unsupported_format: { title: 'Unsupported format', description: "This stream uses a format or codec this browser can't play." },
   parental_locked: { title: 'Locked', description: 'This content is protected by parental controls. Enter the PIN to watch it.' },
+  not_entitled: { title: 'Not available here', description: 'This channel is not licensed for your country or device right now.' },
 };
 
 export const SOURCE_PROBLEMS: Record<SourceProblem, ProblemCopy & { kind: ProblemKind }> = {
@@ -65,6 +66,8 @@ export function problemOf(error: unknown): ProblemKind {
       return 'playlist_expired';
     case 'SOURCE_UNAVAILABLE':
       return 'source_unavailable';
+    case 'NOT_ENTITLED':
+      return 'not_entitled';
     case 'EPG_UNAVAILABLE':
       return 'epg_unavailable';
     case 'UNSUPPORTED_FORMAT':

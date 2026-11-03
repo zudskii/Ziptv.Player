@@ -9,6 +9,7 @@ import { Rail } from '../components/media/Rail';
 import { Badge } from '../components/ui/Badge';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Spinner } from '../components/ui/Spinner';
+import { useOperatorChannels } from '../features/operator/api';
 import { useSources } from '../features/sources/api';
 import { useHome, useRemoveProgress, useSettings } from '../features/user-state/api';
 import { errorMessage } from '../lib/api-client';
@@ -39,9 +40,14 @@ export function HomePage() {
   const home = useHome();
   const now = useNow(30_000);
   const removeProgress = useRemoveProgress();
+  const operator = useOperatorChannels();
   useStartPage();
 
-  if (sources.data && sources.data.length === 0) return <Navigate to="/welcome" replace />;
+  // No own sources yet: the operator's channels are the home (if any), otherwise onboarding.
+  if (sources.data && sources.data.length === 0) {
+    if (operator.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
+    return <Navigate to={(operator.data?.channels.length ?? 0) > 0 ? '/channels' : '/welcome'} replace />;
+  }
   if (home.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
   if (home.isError) {
     return (

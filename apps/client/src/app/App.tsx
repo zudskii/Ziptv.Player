@@ -29,6 +29,7 @@ const SeriesDetailsPage = lazy(() => import('../pages/vod/SeriesDetailsPage').th
 const PlayPage = lazy(() => import('../pages/PlayPage').then((module) => ({ default: module.PlayPage })));
 const SearchPage = lazy(() => import('../pages/SearchPage').then((module) => ({ default: module.SearchPage })));
 const MyListPage = lazy(() => import('../pages/MyListPage').then((module) => ({ default: module.MyListPage })));
+const ChannelsPage = lazy(() => import('../pages/ChannelsPage').then((module) => ({ default: module.ChannelsPage })));
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
@@ -50,6 +51,7 @@ export function App() {
           <Route element={<Gate><AppShell /></Gate>}>
             <Route index element={<HomePage />} />
             <Route path="live/:sourceId?/:channelKey?" element={<Lazy><LivePage /></Lazy>} />
+            <Route path="channels/:channelId?" element={<Lazy><ChannelsPage /></Lazy>} />
             <Route path="guide/:sourceId?" element={<Lazy><GuidePage /></Lazy>} />
             <Route path="movies/:sourceId?" element={<Lazy><VodBrowsePage key="movies" kind="movies" /></Lazy>} />
             <Route path="movies/:sourceId/:key" element={<Lazy><MovieDetailsPage /></Lazy>} />

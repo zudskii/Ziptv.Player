@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, History, Home, LayoutGrid, ListVideo, MonitorPlay, Server, Settings, Tv } from 'lucide-react';
+import { Bookmark, Clapperboard, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 export interface NavItem {
@@ -24,8 +24,11 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: Settings, group: 4 },
 ];
 
-export function navItems(): NavItem[] {
-  return NAV_ITEMS;
+/** Operator (licensed) channels: shown only when the operator offers channels to this viewer. */
+export const CHANNELS_ITEM: NavItem = { to: '/channels', label: 'Channels', icon: RadioTower, group: 1, primary: true };
+
+export function navItems(options: { operatorChannels?: boolean } = {}): NavItem[] {
+  return options.operatorChannels ? [NAV_ITEMS[0]!, CHANNELS_ITEM, ...NAV_ITEMS.slice(1)] : NAV_ITEMS;
 }
 
 export function isActivePath(item: NavItem, pathname: string): boolean {
