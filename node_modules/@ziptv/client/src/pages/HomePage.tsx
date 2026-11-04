@@ -16,6 +16,7 @@ import { errorMessage } from '../lib/api-client';
 import { itemPath, paths } from '../lib/routes';
 import { useNow } from '../lib/use-now';
 import { ContinueCard, LiveTile, RecentCard } from './home/HomeCards';
+import { NoSourcesState } from '../features/sources/components/NoSourcesState';
 
 const TYPE_LABELS = { channel: 'Channel', movie: 'Movie', series: 'Series' } as const;
 const START_PATHS = { home: '/', live: '/live', guide: '/guide', movies: '/movies', series: '/series' } as const;
@@ -43,10 +44,12 @@ export function HomePage() {
   const operator = useOperatorChannels();
   useStartPage();
 
-  // No own sources yet: the operator's channels are the home (if any), otherwise onboarding.
+  // No own sources yet: the operator's channels are the home (if any); otherwise Home explains
+  // itself and offers to add a source — it never sends the person to another page on its own.
   if (sources.data && sources.data.length === 0) {
     if (operator.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
-    return <Navigate to={(operator.data?.channels.length ?? 0) > 0 ? '/channels' : '/welcome'} replace />;
+    if ((operator.data?.channels.length ?? 0) > 0) return <Navigate to="/channels" replace />;
+    return <NoSourcesState area="home" />;
   }
   if (home.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
   if (home.isError) {

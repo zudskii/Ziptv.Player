@@ -1,6 +1,6 @@
 import { KeyRound, LogIn, LogOut, Monitor, Trash2, UserPlus } from 'lucide-react';
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link } from 'react-router';
 
 import { Badge } from '../../../components/ui/Badge';
 import { Button } from '../../../components/ui/Button';
@@ -17,7 +17,6 @@ type Dialog = 'devices' | 'password' | 'delete' | null;
 /** Settings → Account: guest invitation, or the signed-in account's email, devices and password. */
 export function AccountSection() {
   const account = useSessionStore((s) => s.account);
-  const navigate = useNavigate();
   const [dialog, setDialog] = useState<Dialog>(null);
   const [signingOut, setSigningOut] = useState(false);
   const features = useAuthFeatures();
@@ -94,7 +93,7 @@ export function AccountSection() {
           onClick={async () => {
             setSigningOut(true);
             await signOut();
-            navigate('/', { replace: true });
+            // The session gate takes every screen (and every tab) to the sign-in page.
           }}
         >
           Sign out

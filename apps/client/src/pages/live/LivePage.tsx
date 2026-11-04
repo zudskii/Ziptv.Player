@@ -1,7 +1,7 @@
 import type { SourceDto } from '@ziptv/contracts';
 import { Plus, Server } from 'lucide-react';
 import { useEffect } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import { Button } from '../../components/ui/Button';
 import { FullscreenMessage } from '../../components/ui/FullscreenMessage';
@@ -12,6 +12,7 @@ import { useSources } from '../../features/sources/api';
 import { SourceProblemNotice } from '../../features/sources/components/SourceProblemNotice';
 import { SyncProgress } from '../../features/sources/components/SyncProgress';
 import { LiveWorkspace } from './LiveWorkspace';
+import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
 
 /** /live[/:sourceId[/:channelKey]] — picks the source; the channel UI lives in LiveWorkspace. */
 export function LivePage() {
@@ -39,7 +40,7 @@ export function LivePage() {
   if (sourcesQuery.isError) {
     return <FullscreenMessage tone="error" title="Couldn't load your sources" description={errorMessage(sourcesQuery.error)} action={{ label: 'Try again', onClick: () => void sourcesQuery.refetch() }} />;
   }
-  if (sources.length === 0) return <Navigate to="/welcome" replace />;
+  if (sources.length === 0) return <NoSourcesState area="live" />;
   if (!source) {
     return (
       <FullscreenMessage title="No live channels yet" description="None of your sources has live channels. Add an M3U playlist or an Xtream account." icon={<Server className="h-7 w-7" />}>

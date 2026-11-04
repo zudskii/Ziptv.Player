@@ -14,7 +14,7 @@ import { sql, type Kysely } from 'kysely';
  *   source_probe_state    careful health checks of subscribers' own sources (schedule + lease)
  *
  * Retention is a batched DELETE by time (BRIN keeps it cheap). Range partitioning of the
- * probe table is deferred to Phase 13 (Scale), when volumes justify its operational cost.
+ * probe table is deferred to Phase 22 (Scale), when volumes justify its operational cost.
  */
 export async function up(db: Kysely<unknown>): Promise<void> {
   await sql

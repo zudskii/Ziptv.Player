@@ -1,7 +1,7 @@
 import type { SourceDto, VodSort } from '@ziptv/contracts';
 import { Clapperboard, MonitorPlay, Server } from 'lucide-react';
 import { useEffect, useRef } from 'react';
-import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router';
 
 import { PosterCard } from '../../components/media/PosterCard';
 import { Rail } from '../../components/media/Rail';
@@ -13,6 +13,7 @@ import { isMovie, useVodList, useVodOverview, type VodItem, type VodKind } from 
 import { errorMessage } from '../../lib/api-client';
 import { cn } from '../../lib/cn';
 import { paths } from '../../lib/routes';
+import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
 
 const SORTS: { value: VodSort; label: string }[] = [
   { value: 'recent', label: 'Recently added' },
@@ -47,7 +48,7 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
   const list = useVodList(source?.id, kind, { category, sort });
 
   if (sources.isPending) return <Spinner className="justify-center py-24" label="Loading…" />;
-  if (sources.data && sources.data.length === 0) return <Navigate to="/welcome" replace />;
+  if (sources.data && sources.data.length === 0) return <NoSourcesState area={kind} />;
   if (!source) {
     return (
       <div className="p-4 sm:p-6">

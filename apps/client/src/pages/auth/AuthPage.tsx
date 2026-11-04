@@ -20,6 +20,8 @@ interface LocationState {
   email?: string;
   /** An informational line, e.g. after a password reset. */
   notice?: string;
+  /** Sent here right after signing out (by the session gate). */
+  signedOut?: boolean;
 }
 
 /** Sign in or create an account. A guest that registers keeps everything it added. */
@@ -94,6 +96,12 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           {state.notice && isLogin && (
             <p role="status" className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2.5 text-sm text-emerald-600 dark:text-emerald-400">
               {state.notice}
+            </p>
+          )}
+
+          {state.signedOut && isLogin && (
+            <p role="status" className="rounded-lg bg-fg/5 px-3 py-2.5 text-sm text-fg-muted">
+              You signed out. Sign in again, or continue without an account.
             </p>
           )}
 
@@ -184,9 +192,10 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             {isLogin ? 'Create an account' : 'Sign in'}
           </Link>
         </p>
-        {guest && (
+        {/* A guest goes back to what it has; a device without a session chooses on the welcome page. */}
+        {!account && (
           <p className="text-center text-xs text-fg-subtle">
-            <Link to={safeRedirect(state.from)} className="hover:underline">
+            <Link to={guest ? safeRedirect(state.from) : '/welcome'} state={guest ? undefined : { from: state.from }} className="hover:underline">
               Continue without an account
             </Link>
           </p>

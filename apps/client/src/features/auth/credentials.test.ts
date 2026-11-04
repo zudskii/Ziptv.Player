@@ -37,10 +37,11 @@ describe('safeRedirect', () => {
   it('keeps paths inside the app', () => {
     expect(safeRedirect('/playlists/abc?x=1')).toBe('/playlists/abc?x=1');
     expect(safeRedirect('/')).toBe('/');
+    expect(safeRedirect('/welcomeback')).toBe('/welcomeback'); // only the welcome page itself is refused
   });
 
   it('refuses anything that could leave the app or loop back to the sign-in pages', () => {
-    for (const bad of ['//evil.example', 'https://evil.example', 'javascript:alert(1)', '/\\evil.example', 'evil', '', undefined, null, 42, '/login', '/register?x=1']) {
+    for (const bad of ['//evil.example', 'https://evil.example', 'javascript:alert(1)', '/\\evil.example', 'evil', '', undefined, null, 42, '/login', '/register?x=1', '/welcome', '/welcome#x', '/login/']) {
       expect(safeRedirect(bad), String(bad)).toBe('/');
     }
     expect(safeRedirect('//evil.example', '/live')).toBe('/live');

@@ -149,7 +149,7 @@ function DeleteAccountForm({ onClose }: { onClose: () => void }) {
     event.preventDefault();
     try {
       await remove.mutateAsync({ password });
-      useSessionStore.getState().clear();
+      useSessionStore.getState().clear(false); // nothing to sign in to any more: the welcome page
       toast.success('Your account was deleted');
       navigate('/', { replace: true });
     } catch {

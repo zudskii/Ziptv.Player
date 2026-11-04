@@ -62,7 +62,8 @@ export const hasIssues = (issues: FormIssues): boolean => Object.keys(issues).le
  */
 export function safeRedirect(from: unknown, fallback = '/'): string {
   if (typeof from !== 'string' || !from.startsWith('/') || from.startsWith('//') || from.startsWith('/\\')) return fallback;
-  if (/^\/(login|register)(\/|\?|$)/.test(from)) return fallback;
+  // Pages that are only shown without a session would bounce straight back: a loop, not a destination.
+  if (/^\/(login|register|welcome)(\/|\?|#|$)/.test(from)) return fallback;
   return from;
 }
 

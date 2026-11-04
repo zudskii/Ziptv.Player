@@ -3,7 +3,7 @@ import '../../test/ui-env';
 
 import type { AuthSessionDto, SessionDto, SourceDto } from '@ziptv/contracts';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +17,8 @@ const PLAYLIST = '#EXTM3U\n#EXTINF:-1 group-title="News",One\nhttp://example.com
 async function loadUi() {
   return {
     ...(await import('../../pages/auth/AuthPage')),
+    ...(await import('../../pages/onboarding/WelcomePage')),
+    ...(await import('../sources/components/NoSourcesState')),
     ...(await import('../session/SessionGate')),
     ...(await import('./components/AccountSection')),
     ...(await import('../session/session')),
@@ -56,7 +58,7 @@ describe.skipIf(!hasBackend)('Sign-in screens against the real server', () => {
     fetchLog = [];
     slow = [];
     localStorage.clear();
-    ui.useSessionStore.setState({ token: null, account: null });
+    ui.useSessionStore.setState({ token: null, account: null, signedOut: false });
     ui.queryClient.clear();
   });
   afterEach(() => cleanup());
@@ -90,7 +92,7 @@ describe.skipIf(!hasBackend)('Sign-in screens against the real server', () => {
     return <p data-testid="where">{`${location.pathname}${location.search}`}</p>;
   }
   function renderAt(path: string, state?: unknown, extra?: React.ReactNode) {
-    const { AuthPage, SessionGate, queryClient } = ui;
+    const { AuthPage, SessionGate, WelcomePage, queryClient } = ui;
     return render(
       <QueryClientProvider client={queryClient}>
         <MemoryRouter initialEntries={[{ pathname: path, state }]}>
@@ -98,6 +100,7 @@ describe.skipIf(!hasBackend)('Sign-in screens against the real server', () => {
           <Routes>
             <Route path="/login" element={<AuthPage mode="login" />} />
             <Route path="/register" element={<AuthPage mode="register" />} />
+            <Route path="/welcome" element={<WelcomePage />} />
             <Route path="/" element={<p>Home screen</p>} />
             <Route path="/private" element={<SessionGate>{extra ?? <p>Private area</p>}</SessionGate>} />
           </Routes>
@@ -302,33 +305,103 @@ describe.skipIf(!hasBackend)('Sign-in screens against the real server', () => {
     expect(ui.useSessionStore.getState().token).not.toBe('y'.repeat(43));
   });
 
-  it('starts a guest on a first visit', async () => {
+  it('a first visit goes to the welcome page and creates nothing until the person chooses', async () => {
     renderAt('/private');
+    expect(await screen.findByRole('heading', { name: 'Welcome to ZIPTV' })).toBeTruthy();
+    expect(where()).toBe('/welcome');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(posted('/api/v1/sessions')).toEqual([]);
+    expect(ui.useSessionStore.getState().token).toBeNull();
+  });
+
+  it('continue as guest starts a guest and returns to the page the person opened', async () => {
+    const user = userEvent.setup();
+    renderAt('/private');
+    await user.click(await screen.findByRole('button', { name: 'Continue as guest' }));
     expect(await screen.findByText('Private area')).toBeTruthy();
-    expect(ui.useSessionStore.getState()).toMatchObject({ account: null });
-    expect(ui.useSessionStore.getState().token).toBeTruthy();
+    expect(where()).toBe('/private');
+    expect(posted('/api/v1/sessions')).toHaveLength(1);
+    expect(ui.useSessionStore.getState()).toMatchObject({ account: null, signedOut: false });
+  });
+
+  it('the welcome page is never shown to a device that has a session', async () => {
+    ui.useSessionStore.getState().setGuest(await newGuest());
+    renderAt('/welcome', { from: '/private' });
+    expect(await screen.findByText('Private area')).toBeTruthy();
+    expect(where()).toBe('/private');
+  });
+
+  it('a request made without any session never creates one behind the person’s back', async () => {
+    render(
+      <QueryClientProvider client={ui.queryClient}>
+        <Sources />
+      </QueryClientProvider>,
+    );
+    expect(await screen.findByText('Sources failed')).toBeTruthy();
+    expect(posted('/api/v1/sessions')).toEqual([]);
+    expect(ui.useSessionStore.getState().token).toBeNull();
+  });
+
+  it('a screen without sources explains itself and stays where the person asked to go', async () => {
+    ui.useSessionStore.getState().setGuest(await newGuest());
+    renderAt('/private', undefined, <ui.NoSourcesState area="movies" />);
+    expect(await screen.findByText('No movies yet')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Add a source' }).getAttribute('href')).toBe('/setup');
+    expect(where()).toBe('/private');
   });
 
   // --- signing out ----------------------------------------------------------------------------
 
-  it('signs out: the server forgets the device, the app forgets the account and its cached data', async () => {
+  it('signs out: the server forgets the device, the app forgets the account and its cached data, the sign-in page opens', async () => {
     const { email, token } = await newAccount();
     ui.useSessionStore.getState().setAccount(token, email);
     ui.queryClient.setQueryData(['sources'], ['cached for this account']);
     const user = userEvent.setup();
-    render(
-      <QueryClientProvider client={ui.queryClient}>
-        <MemoryRouter>
-          <ui.AccountSection />
-        </MemoryRouter>
-      </QueryClientProvider>,
-    );
-    expect(screen.getByText(email)).toBeTruthy();
+    renderAt('/private', undefined, <ui.AccountSection />);
+    expect(await screen.findByText(email)).toBeTruthy();
     await user.click(screen.getByRole('button', { name: 'Sign out' }));
 
-    await waitFor(() => expect(ui.useSessionStore.getState()).toMatchObject({ token: null, account: null }));
+    expect(await screen.findByText(/You signed out/)).toBeTruthy();
+    expect(where()).toBe('/login');
+    expect(ui.useSessionStore.getState()).toMatchObject({ token: null, account: null, signedOut: true });
     expect(ui.queryClient.getQueryData(['sources'])).toBeUndefined();
     expect((await api('/sessions/me', token)).status).toBe(401);
+    // No guest is started behind the person's back, and the last person's page is not remembered.
+    expect(posted('/api/v1/sessions')).toEqual([]);
+    expect(screen.queryByText('Continue without an account')?.closest('a')?.getAttribute('href')).toBe('/welcome');
+  });
+
+  it('signing out in another tab signs this tab out too', async () => {
+    const { email, token } = await newAccount();
+    ui.useSessionStore.getState().setAccount(token, email);
+    ui.queryClient.setQueryData(['sources'], ['cached for this account']);
+    renderAt('/private');
+    expect(await screen.findByText('Private area')).toBeTruthy();
+
+    // What the other tab leaves in localStorage, and the event this tab receives for it.
+    const value = JSON.stringify({ state: { token: null, account: null, signedOut: true }, version: 2 });
+    localStorage.setItem('ziptv:session', value);
+    act(() => {
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ziptv:session', newValue: value }));
+    });
+
+    expect(await screen.findByText(/You signed out/)).toBeTruthy();
+    expect(where()).toBe('/login');
+    expect(ui.queryClient.getQueryData(['sources'])).toBeUndefined();
+  });
+
+  it('signing in as someone else in another tab drops this tab’s cached data', async () => {
+    const first = await newAccount();
+    const second = await newAccount();
+    ui.useSessionStore.getState().setAccount(first.token, first.email);
+    ui.queryClient.setQueryData(['sources'], ['cached for the first account']);
+
+    const value = JSON.stringify({ state: { token: second.token, account: { email: second.email }, signedOut: false }, version: 2 });
+    localStorage.setItem('ziptv:session', value);
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ziptv:session', newValue: value }));
+
+    await waitFor(() => expect(ui.useSessionStore.getState().account?.email).toBe(second.email));
+    expect(ui.queryClient.getQueryData(['sources'])).toBeUndefined();
   });
 });
 

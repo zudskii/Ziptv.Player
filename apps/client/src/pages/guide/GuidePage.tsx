@@ -1,7 +1,7 @@
 import type { ChannelDto, ProgrammeDto, SourceDto } from '@ziptv/contracts';
 import { CalendarClock, LayoutGrid, Server, TriangleAlert } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useNavigate, useParams } from 'react-router';
+import { Link, useNavigate, useParams } from 'react-router';
 
 import { Button } from '../../components/ui/Button';
 import { EmptyState } from '../../components/ui/EmptyState';
@@ -13,11 +13,11 @@ import { useNow } from '../../lib/use-now';
 import { useGuides } from '../../features/epg/api';
 import { GuideGrid } from '../../features/epg/components/GuideGrid';
 import { ProgrammeDialog } from '../../features/epg/components/ProgrammeDialog';
-import { paths } from '../../lib/routes';
 import { dayWindow } from '../../features/epg/guide-layout';
 import { buildGroupOptions } from '../../features/live/browse';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
 import { useChannelList, useSources } from '../../features/sources/api';
+import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
 
 const DAYS_AHEAD = 6;
 
@@ -35,7 +35,7 @@ export function GuidePage() {
   }, [source, sourceId, navigate]);
 
   if (sourcesQuery.isPending) return <Spinner className="py-24" />;
-  if ((sourcesQuery.data ?? []).length === 0) return <Navigate to="/welcome" replace />;
+  if ((sourcesQuery.data ?? []).length === 0) return <NoSourcesState area="guide" />;
   if (!source) {
     return <EmptyState className="m-6" icon={<LayoutGrid className="h-8 w-8" />} title="No live channels yet" description="The TV Guide appears once a source with live channels has synced." />;
   }
@@ -154,7 +154,6 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         channel={selected?.channel ?? null}
         onClose={() => setSelected(null)}
         onWatchLive={() => selected && navigate(`/live/${source.id}/${selected.channel.key}`)}
-        onWatchArchive={(programme) => selected && navigate(paths.archive(source.id, selected.channel.key, programme))}
       />
     </div>
   );

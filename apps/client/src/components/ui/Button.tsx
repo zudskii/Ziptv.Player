@@ -1,4 +1,5 @@
 import type { ComponentPropsWithRef, ReactNode } from 'react';
+import { Link, type LinkProps } from 'react-router';
 
 import { cn } from '../../lib/cn';
 
@@ -25,22 +26,27 @@ export interface ButtonProps extends ComponentPropsWithRef<'button'> {
   loading?: boolean;
 }
 
+const BASE = 'inline-flex shrink-0 items-center justify-center font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50';
+
 export function Button({ variant = 'secondary', size = 'md', icon, loading = false, className, children, disabled, type = 'button', ...props }: ButtonProps) {
   return (
-    <button
-      type={type}
-      disabled={disabled || loading}
-      className={cn(
-        'inline-flex shrink-0 items-center justify-center font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50',
-        VARIANTS[variant],
-        SIZES[size],
-        className,
-      )}
-      {...props}
-    >
+    <button type={type} disabled={disabled || loading} className={cn(BASE, VARIANTS[variant], SIZES[size], className)} {...props}>
       {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" aria-hidden /> : icon}
       {children}
     </button>
+  );
+}
+
+/**
+ * A navigation that looks like a button: one `<a>`, not a button inside a link (two nested
+ * interactive elements confuse keyboards and screen readers).
+ */
+export function ButtonLink({ variant = 'secondary', size = 'md', icon, className, children, ...props }: LinkProps & { variant?: Variant; size?: Size; icon?: ReactNode }) {
+  return (
+    <Link className={cn(BASE, 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand', VARIANTS[variant], SIZES[size], className)} {...props}>
+      {icon}
+      {children}
+    </Link>
   );
 }
 

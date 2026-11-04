@@ -1,5 +1,5 @@
 import { LogIn, LogOut, Settings, User, UserPlus } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { Link, useLocation } from 'react-router';
 
 import { IconButton } from '../../../components/ui/Button';
 import { Popover } from '../../../components/ui/Popover';
@@ -11,7 +11,6 @@ const ITEM = 'flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left te
 /** Top-bar account button: who is signed in, or an invitation to sign in / register as a guest. */
 export function UserMenu() {
   const account = useSessionStore((s) => s.account);
-  const navigate = useNavigate();
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
 
@@ -52,7 +51,7 @@ export function UserMenu() {
               onClick={async () => {
                 close();
                 await signOut();
-                navigate('/', { replace: true });
+                // The session gate takes every screen (and every tab) to the sign-in page.
               }}
             >
               <LogOut className="h-4 w-4" /> Sign out
