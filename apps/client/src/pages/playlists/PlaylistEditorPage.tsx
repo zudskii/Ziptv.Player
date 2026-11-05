@@ -38,6 +38,7 @@ import { TransferDialog } from '../../features/playlists/components/TransferDial
 import { ALL_ENTRIES, filterKey, type EntryFilter } from '../../features/playlists/entry-filter';
 import { moveItem } from '../../features/playlists/reorder';
 import { t } from '../../i18n';
+import { Tooltip } from '../../components/ui/Tooltip';
 
 type Dialog =
   | { type: 'add' | 'export' | 'renumber' | 'merge' | 'rename' | 'newGroup' | 'move' | 'transfer' | 'removeSelected' | 'deletePlaylist' | 'removeMissing' }
@@ -140,9 +141,11 @@ export function PlaylistEditorPage() {
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2">
             <span className="truncate text-xl font-bold text-fg">{playlist.name}</span>
-            <button type="button" aria-label={t('playlists.editor.rename')} onClick={() => setDialog({ type: 'rename' })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
-              <Pencil className="h-3.5 w-3.5" />
-            </button>
+            <Tooltip content={t('playlists.editor.rename')} redundant>
+              <button type="button" aria-label={t('playlists.editor.rename')} onClick={() => setDialog({ type: 'rename' })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+            </Tooltip>
           </h1>
           <p className="text-xs text-fg-muted">
             {t('playlists.count.channelsGroups', { channels: playlist.entryCount, groups: playlist.groups.length })}

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
 
-import { Button, IconButton } from '../components/ui/Button';
+import { Button, IconButton, ButtonLink } from '../components/ui/Button';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Img, Initials } from '../components/ui/Img';
@@ -45,9 +45,9 @@ export function HistoryPage() {
       {history.isPending ? (
         <Spinner label={t('history.loading')} />
       ) : history.isError ? (
-        <EmptyState title={t('history.loadFailed')} description={errorMessage(history.error)} />
+        <EmptyState tone="error" title={t('history.loadFailed')} description={errorMessage(history.error)} onRetry={() => void history.refetch()} />
       ) : items.length === 0 ? (
-        <EmptyState icon={<History className="h-8 w-8" />} title={t('history.empty')} description={t('history.emptyHint')} />
+        <EmptyState icon={<History className="h-8 w-8" />} title={t('history.empty')} description={t('history.emptyHint')} action={<ButtonLink to="/live" size="sm">{t('home.openLive')}</ButtonLink>} />
       ) : (
         [...days.entries()].map(([day, entries]) => (
           <section key={day} aria-label={day}>

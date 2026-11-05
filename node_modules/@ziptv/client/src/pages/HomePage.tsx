@@ -17,6 +17,7 @@ import { itemPath, paths } from '../lib/routes';
 import { useNow } from '../lib/use-now';
 import { ContinueCard, LiveTile, RecentCard } from './home/HomeCards';
 import { NoSourcesState } from '../features/sources/components/NoSourcesState';
+import { GetStartedChecklist } from '../features/help/GetStartedChecklist';
 import { i18n, t } from '../i18n';
 
 const TYPE_KEYS = { channel: 'kind.channel', movie: 'kind.movie', series: 'kind.series' } as const;
@@ -50,13 +51,20 @@ export function HomePage() {
   if (sources.data && sources.data.length === 0) {
     if (operator.isPending) return <Spinner className="py-24 justify-center" label={t('home.loading')} />;
     if ((operator.data?.channels.length ?? 0) > 0) return <Navigate to="/channels" replace />;
-    return <NoSourcesState area="home" />;
+    return (
+      <>
+        <div className="px-4 pt-4 sm:px-6 sm:pt-6">
+          <GetStartedChecklist hasSource={false} hasWatched={false} />
+        </div>
+        <NoSourcesState area="home" />
+      </>
+    );
   }
   if (home.isPending) return <Spinner className="py-24 justify-center" label={t('home.loading')} />;
   if (home.isError) {
     return (
       <div className="p-4 sm:p-6">
-        <EmptyState icon={<AlertTriangle className="h-8 w-8" />} title={t('home.loadFailed')} description={errorMessage(home.error)} />
+        <EmptyState tone="error" title={t('home.loadFailed')} description={errorMessage(home.error)} onRetry={() => void home.refetch()} />
       </div>
     );
   }
@@ -69,6 +77,9 @@ export function HomePage() {
         <h1 className="text-2xl font-bold text-fg">{t('home.title')}</h1>
       </header>
       <LibraryNotice data={data} />
+      <div className="px-4 empty:hidden sm:px-6">
+        <GetStartedChecklist hasSource hasWatched={data.continueWatching.length > 0 || data.recentlyWatched.length > 0} />
+      </div>
 
       {data.continueWatching.length > 0 && (
         <Rail title={t('home.continue')}>

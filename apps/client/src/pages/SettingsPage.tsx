@@ -1,17 +1,21 @@
 import type { AppLanguage, ClearableData, QualityPreference, SettingsDto, StartPage, ThemePreference, UpdateSettingsRequest } from '@ziptv/contracts';
 import { LOCALE_NAMES, LOCALES } from '@ziptv/i18n';
 import { Monitor, Moon, Server, Sun } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useId, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
 import { toast } from 'sonner';
 
 import { Button } from '../components/ui/Button';
+import { HelpHint } from '../components/ui/HelpHint';
 import { ConfirmDialog } from '../components/ui/ConfirmDialog';
 import { Segmented } from '../components/ui/Segmented';
 import { Spinner } from '../components/ui/Spinner';
 import { Switch } from '../components/ui/Switch';
 import { AccountSection } from '../features/auth/components/AccountSection';
+import { ParentalSection } from '../features/parental/ParentalSection';
 import { ProfilesSection } from '../features/profiles/ProfilesSection';
+import { VISITED_SETTINGS } from '../features/help/GetStartedChecklist';
+import { useHelp } from '../features/help/use-help';
 import { useThemeStore } from '../features/theme/theme-store';
 import { useClearData, useSettings, useStorageUsage, useUpdateSettings } from '../features/user-state/api';
 import { setLanguage, t, useT } from '../i18n';
@@ -26,11 +30,15 @@ function streamLanguages(locale: string): { value: string; label: string }[] {
   return [{ value: '', label: t('settings.streamDefault') }, ...STREAM_LANGUAGES.map((code) => ({ value: code, label: languageName(code, locale) }))];
 }
 
-/** Settings: General, Playback, Appearance, EPG, Profiles, Data & Storage, Sources, Account, About. */
+/** Settings: General, Playback, Appearance, EPG, Profiles, Parental controls, Data & Storage, Sources, Account, About. */
 export function SettingsPage() {
   const settings = useSettings();
   const update = useUpdateSettings();
   const { hash } = useLocation();
+  const { ready, markSeen } = useHelp();
+  useEffect(() => {
+    if (ready) markSeen(VISITED_SETTINGS);
+  }, [ready, markSeen]);
   useEffect(() => {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' });
   }, [hash, settings.isPending]);
@@ -54,6 +62,7 @@ export function SettingsPage() {
         <p className="text-sm text-red-500">{errorMessage(settings.error)}</p>
       )}
       <ProfilesSection />
+      <ParentalSection />
       {data && <DataSection settings={data} save={save} />}
       <AccountSection />
       <Section id="sources" title={t('settings.sources')}>
@@ -82,11 +91,31 @@ function Section({ id, title, children }: { id: string; title: string; children:
   );
 }
 
-function SelectRow<T extends string | number>({ label, value, options, onChange }: { label: string; value: T; options: { value: T; label: string }[]; onChange: (value: T) => void }) {
+function SelectRow<T extends string | number>({
+  label,
+  value,
+  options,
+  onChange,
+  help,
+}: {
+  label: string;
+  value: T;
+  options: { value: T; label: string }[];
+  onChange: (value: T) => void;
+  /** A longer explanation behind a "?" next to the label. */
+  help?: ReactNode;
+}) {
+  const id = useId();
   return (
-    <label className="flex items-center justify-between gap-4 py-2">
-      <span className="text-sm text-fg">{label}</span>
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="flex items-center gap-1">
+        <label htmlFor={id} className="text-sm text-fg">
+          {label}
+        </label>
+        {help && <HelpHint topic={label}>{help}</HelpHint>}
+      </span>
       <select
+        id={id}
         className="field h-9 w-auto max-w-[12rem]"
         value={String(value)}
         onChange={(event) => {
@@ -100,7 +129,7 @@ function SelectRow<T extends string | number>({ label, value, options, onChange 
           </option>
         ))}
       </select>
-    </label>
+    </div>
   );
 }
 
@@ -131,7 +160,31 @@ function GeneralSection({ settings, save }: { settings: SettingsDto; save: Save 
         ]}
       />
       <Switch label={t('settings.clock24')} checked={settings.general.use24hClock} onChange={(use24hClock) => save({ general: { use24hClock } })} />
+      <HelpReset settings={settings} />
     </Section>
+  );
+}
+
+function HelpReset({ settings }: { settings: SettingsDto }) {
+  const help = useHelp();
+  const nothingToReset = settings.help.seen.length === 0 && !settings.help.checklistDismissed;
+  return (
+    <div className="flex items-center justify-between gap-4 py-2">
+      <span className="min-w-0">
+        <span className="block text-sm text-fg">{t('help.reset.label')}</span>
+        <span className="mt-0.5 block text-xs text-fg-muted">{t('help.reset.hint')}</span>
+      </span>
+      <Button
+        size="sm"
+        disabled={nothingToReset}
+        onClick={() => {
+          help.reset();
+          toast.success(t('help.reset.done'));
+        }}
+      >
+        {t('help.reset.action')}
+      </Button>
+    </div>
   );
 }
 
@@ -141,11 +194,12 @@ function PlaybackSection({ settings, save }: { settings: SettingsDto; save: Save
   const languages = streamLanguages(locale);
   return (
     <Section id="playback" title={t('settings.playback')}>
-      <Switch label={t('settings.autoplay')} description={t('settings.autoplayHint')} checked={playback.autoplay} onChange={(autoplay) => save({ playback: { autoplay } })} />
+      <Switch label={t('settings.autoplay')} description={t('settings.autoplayHint')} help={t('help.settings.autoplay')} checked={playback.autoplay} onChange={(autoplay) => save({ playback: { autoplay } })} />
       <Switch label={t('settings.nextEpisode')} checked={playback.autoplayNextEpisode} onChange={(autoplayNextEpisode) => save({ playback: { autoplayNextEpisode } })} />
       <Switch label={t('settings.resume')} checked={playback.resumePlayback} onChange={(resumePlayback) => save({ playback: { resumePlayback } })} />
       <SelectRow<QualityPreference>
         label={t('settings.quality')}
+        help={t('help.settings.quality')}
         value={playback.preferredQuality}
         onChange={(preferredQuality) => save({ playback: { preferredQuality } })}
         options={[
@@ -167,6 +221,7 @@ function PlaybackSection({ settings, save }: { settings: SettingsDto; save: Save
       <Switch
         label={t('settings.hwAccel')}
         description={t('settings.hwAccelHint')}
+        help={t('help.settings.hwAccel')}
         checked={playback.hardwareAcceleration}
         onChange={(hardwareAcceleration) => save({ playback: { hardwareAcceleration } })}
       />
@@ -202,6 +257,7 @@ function EpgSection({ settings, save }: { settings: SettingsDto; save: Save }) {
     <Section id="epg" title={t('settings.epg')}>
       <SelectRow
         label={t('settings.timeShift')}
+        help={t('help.settings.timeShift')}
         value={settings.epg.timeShiftMinutes}
         onChange={(timeShiftMinutes) => save({ epg: { timeShiftMinutes } })}
         options={[...new Set([...shifts, settings.epg.timeShiftMinutes])].sort((a, b) => a - b).map((minutes) => ({ value: minutes, label: minutes === 0 ? t('common.none') : formatShift(minutes) }))}
@@ -251,6 +307,7 @@ function DataSection({ settings, save }: { settings: SettingsDto; save: Save }) 
       )}
       <SelectRow
         label={t('settings.keepHistory')}
+        help={t('help.settings.keepHistory')}
         value={settings.data.historyRetentionDays}
         onChange={(historyRetentionDays) => save({ data: { historyRetentionDays } })}
         options={[

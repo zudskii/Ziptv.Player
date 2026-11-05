@@ -145,7 +145,7 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
         {list.isPending ? (
           <Spinner label={t('vod.loading')} />
         ) : list.isError ? (
-          <EmptyState title={t('vod.listFailed')} description={errorMessage(list.error)} />
+          <EmptyState tone="error" title={t('vod.listFailed')} description={errorMessage(list.error)} onRetry={() => void list.refetch()} />
         ) : items.length === 0 ? (
           <EmptyState title={t('vod.emptyCategory')} />
         ) : (

@@ -37,6 +37,24 @@ describe('settings', () => {
   });
 });
 
+describe('help settings', () => {
+  it('remember which tips a profile has seen, as a short list of known-shaped ids', () => {
+    expect(DEFAULT_SETTINGS.help).toEqual({ seen: [], checklistDismissed: false });
+    const { settings, invalid } = applySettingsPatch(DEFAULT_SETTINGS, { help: { seen: ['tour-guide', 'visited-settings'], checklistDismissed: true } });
+    expect(invalid).toEqual([]);
+    expect(toStoredSettings(settings)).toEqual({ help: { seen: ['tour-guide', 'visited-settings'], checklistDismissed: true } });
+    for (const seen of [['Bad Id'], ['a', 'a'], Array.from({ length: 51 }, (_, i) => `t${i}`), 'tour-guide']) {
+      expect(applySettingsPatch(DEFAULT_SETTINGS, { help: { seen: seen as never } }).invalid, JSON.stringify(seen).slice(0, 40)).toEqual(['help.seen']);
+    }
+  });
+
+  it('an emptied list is the default again and is not stored ("show tips again")', () => {
+    const shown = applySettingsPatch(DEFAULT_SETTINGS, { help: { seen: ['tour-guide'] } }).settings;
+    expect(toStoredSettings(applySettingsPatch(shown, { help: { seen: [], checklistDismissed: false } }).settings)).toEqual({});
+    expect(resolveSettings({ help: { seen: ['ok', 7] } }).help.seen).toEqual([]);
+  });
+});
+
 describe('progress rules', () => {
   it('skips the first seconds unless progress already exists', () => {
     expect(decideProgress(10, 3600, false)).toEqual({ action: 'skip' });

@@ -13,11 +13,13 @@ import { useNow } from '../../lib/use-now';
 import { useGuides } from '../../features/epg/api';
 import { GuideGrid } from '../../features/epg/components/GuideGrid';
 import { ProgrammeDialog } from '../../features/epg/components/ProgrammeDialog';
+import { paths } from '../../lib/routes';
 import { dayWindow } from '../../features/epg/guide-layout';
 import { buildGroupOptions } from '../../features/live/browse';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
 import { useChannelList, useSources } from '../../features/sources/api';
 import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
+import { Tour } from '../../features/help/Tour';
 import { t } from '../../i18n';
 
 const DAYS_AHEAD = 6;
@@ -78,7 +80,7 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
             </select>
           </label>
         )}
-        <label>
+        <label data-tour="guide-group">
           <span className="sr-only">{t('guide.group')}</span>
           <select value={group} onChange={(event) => setGroup(event.target.value)} className="field h-9 w-auto max-w-[12rem] appearance-none pr-8">
             <option value="">{t('guide.allChannels')}</option>
@@ -91,6 +93,7 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         </label>
         <Button
           size="sm"
+          data-tour="guide-now"
           icon={<CalendarClock className="h-4 w-4" />}
           onClick={() => {
             setDayOffset(0);
@@ -101,7 +104,7 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         </Button>
       </header>
 
-      <nav className="scrollbar-none -mx-1 flex gap-1 overflow-x-auto px-1" aria-label={t('guide.day')}>
+      <nav data-tour="guide-days" className="scrollbar-none -mx-1 flex gap-1 overflow-x-auto px-1" aria-label={t('guide.day')}>
         {days.map((offset) => (
           <button
             key={offset}
@@ -139,7 +142,7 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
+      <div data-tour="guide-grid" className="min-h-0 flex-1">
         <GuideGrid
           source={source}
           window={window}
@@ -150,11 +153,21 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
         />
       </div>
 
+      <Tour
+        id="guide"
+        steps={() => [
+          { target: 'guide-grid', title: t('help.tour.guide.grid.title'), body: t('help.tour.guide.grid.body') },
+          { target: 'guide-days', title: t('help.tour.guide.days.title'), body: maxArchive > 0 ? t('help.tour.guide.days.bodyArchive') : t('help.tour.guide.days.body') },
+          { target: 'guide-group', title: t('help.tour.guide.group.title'), body: t('help.tour.guide.group.body') },
+          { target: 'guide-now', title: t('help.tour.guide.now.title'), body: t('help.tour.guide.now.body') },
+        ]}
+      />
       <ProgrammeDialog
         programme={selected?.programme ?? null}
         channel={selected?.channel ?? null}
         onClose={() => setSelected(null)}
         onWatchLive={() => selected && navigate(`/live/${source.id}/${selected.channel.key}`)}
+        onWatchArchive={(programme) => selected && navigate(paths.archive(source.id, selected.channel.key, programme))}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import { Spinner } from '../../../components/ui/Spinner';
 import type { BrowsableChannel, GroupFilterValue, GroupOption } from '../browse';
 import { ChannelList } from './ChannelList';
 import { t } from '../../../i18n';
+import { Tooltip } from '../../../components/ui/Tooltip';
 
 interface ChannelBrowserProps {
   sourceId: string;
@@ -40,14 +41,16 @@ export function ChannelBrowser(props: ChannelBrowserProps) {
           className="h-10 w-full rounded-lg bg-sunken/70 pl-9 pr-9 text-sm text-fg placeholder:text-fg-subtle ring-1 ring-inset ring-line/10 focus:outline-none focus:ring-2 focus:ring-brand"
         />
         {search && (
-          <button
-            type="button"
-            onClick={() => props.onSearchChange('')}
-            aria-label={t('live.browser.clear')}
-            className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-fg-muted hover:text-fg"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <Tooltip content={t('live.browser.clear')} redundant>
+            <button
+              type="button"
+              onClick={() => props.onSearchChange('')}
+              aria-label={t('live.browser.clear')}
+              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-fg-muted hover:text-fg"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </Tooltip>
         )}
       </div>
 

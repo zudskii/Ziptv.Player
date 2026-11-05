@@ -13,6 +13,7 @@ import { useChannelList, useSources } from '../sources/api';
 import { useVodOverview } from '../vod/api';
 import { useParental, useRemovePin, useSetPin, useUpdateRules } from './api';
 import { askPin, pinErrorMessage } from './pin-prompt';
+import { Tour } from '../help/Tour';
 import { t } from '../../i18n';
 
 const OPERATOR = 'operator';
@@ -145,13 +146,12 @@ function RulesEditor() {
   if (!target) return null;
   return (
     <div className="space-y-3">
-      <label className="flex items-center justify-between gap-3">
+      <label data-tour="parental-profile" className="flex items-center justify-between gap-3">
         <span className="text-sm text-fg">{t('parental.rulesFor')}</span>
         <select className="field h-9 w-auto" value={target.id} onChange={(event) => setTargetId(event.target.value)}>
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
-              {profile.name}
-              {profile.kind === 'kids' ? ' (kids)' : ''}
+              {profile.kind === 'kids' ? t('parental.kidsProfile', { name: profile.name }) : profile.name}
             </option>
           ))}
         </select>
@@ -198,12 +198,14 @@ function ProfileRules({ profile, initial }: { profile: ProfileDto; initial: Pare
       {profile.kind === 'kids' ? (
         <p className="text-sm text-fg-muted">{t('parental.kidsAlwaysHidden')}</p>
       ) : (
-        <Switch label={t('parental.hideAdult')} description={t('parental.hideAdultHint')} checked={rules.hideAdult} onChange={(hideAdult) => void save({ ...rules, hideAdult })} />
+        <div data-tour="parental-adult">
+          <Switch label={t('parental.hideAdult')} description={t('parental.hideAdultHint')} checked={rules.hideAdult} onChange={(hideAdult) => void save({ ...rules, hideAdult })} />
+        </div>
       )}
       {(rules.lockedGroups.length > 0 || rules.lockedChannels.length > 0) && (
         <ul className="flex flex-wrap gap-1.5" aria-label={t('parental.locked')}>
           {rules.lockedGroups.map((item) => (
-            <LockChip key={`g${item.sourceId}${item.group}`} label={`${item.group}${item.sourceId === OPERATOR ? ' (licensed)' : ''}`} onRemove={() => toggleGroup(item.sourceId, item.group)} />
+            <LockChip key={`g${item.sourceId}${item.group}`} label={item.sourceId === OPERATOR ? `${item.group} (${t('parental.licensed')})` : item.group} onRemove={() => toggleGroup(item.sourceId, item.group)} />
           ))}
           {rules.lockedChannels.map((item) => (
             <LockChip key={`c${item.sourceId}${item.key}`} label={item.name} onRemove={() => toggleChannel(item.sourceId, item.key, item.name)} />
@@ -211,6 +213,14 @@ function ProfileRules({ profile, initial }: { profile: ProfileDto; initial: Pare
         </ul>
       )}
       <LockPicker sources={sources} sourceId={sourceId} onSourceChange={setSourceId} rules={rules} onToggleGroup={toggleGroup} onToggleChannel={toggleChannel} />
+      <Tour
+        id="parental"
+        steps={() => [
+          { target: 'parental-profile', title: t('help.tour.parental.profile.title'), body: t('help.tour.parental.profile.body') },
+          { target: 'parental-adult', title: t('help.tour.parental.adult.title'), body: t('help.tour.parental.adult.body') },
+          { target: 'parental-locks', title: t('help.tour.parental.locks.title'), body: t('help.tour.parental.locks.body') },
+        ]}
+      />
     </div>
   );
 }
@@ -219,7 +229,7 @@ function LockChip({ label, onRemove }: { label: string; onRemove: () => void }) 
   return (
     <li className="inline-flex items-center gap-1 rounded-full bg-amber-500/10 py-0.5 pl-2.5 pr-1 text-xs text-amber-700 dark:text-amber-300">
       <Lock className="h-3 w-3" /> {label}
-      <IconButton label={`Unlock ${label}`} onClick={onRemove} className="h-6 w-6">
+      <IconButton label={t('parental.unlockNamed', { name: label })} onClick={onRemove} className="h-6 w-6">
         <Trash2 className="h-3 w-3" />
       </IconButton>
     </li>
@@ -257,7 +267,7 @@ function LockPicker({ sources, sourceId, onSourceChange, rules, onToggleGroup, o
   const lockedChannel = (key: string) => rules.lockedChannels.some((item) => item.sourceId === sourceId && item.key === key);
 
   return (
-    <div className="space-y-2 rounded-lg border border-line/10 p-3">
+    <div data-tour="parental-locks" className="space-y-2 rounded-lg border border-line/10 p-3">
       <div className="flex flex-wrap items-center gap-2">
         <select className="field h-9 w-auto" value={sourceId} onChange={(event) => onSourceChange(event.target.value)} aria-label={t('parental.lockFrom')}>
           {sources.map((item) => (

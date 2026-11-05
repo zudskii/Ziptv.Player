@@ -11,6 +11,7 @@ import { catalogImageProxy, historyImageSources, imageSources } from '../../lib/
 import { historyPath, paths } from '../../lib/routes';
 import { formatAgo, formatDuration } from '../../lib/time';
 import { t } from '../../i18n';
+import { Tooltip } from '../../components/ui/Tooltip';
 
 const CARD = 'group block w-60 shrink-0 snap-start rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand sm:w-72';
 
@@ -40,14 +41,16 @@ export function ContinueCard({ item, onRemove }: { item: ProgressItemDto; onRemo
         <p className="mt-1.5 truncate text-sm font-medium text-fg group-hover:text-brand-soft">{item.title}</p>
         <p className="truncate text-xs text-fg-subtle">{[label, `${formatDuration(item.remainingSecs)} left`].filter(Boolean).join(' · ')}</p>
       </Link>
-      <button
-        type="button"
-        onClick={onRemove}
-        aria-label={t('home.removeContinue', { title: item.title })}
-        className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-80 hover:bg-black/80 hover:opacity-100"
-      >
-        <X className="h-3.5 w-3.5" />
-      </button>
+      <Tooltip content={t('home.removeContinue', { title: item.title })} redundant>
+        <button
+          type="button"
+          onClick={onRemove}
+          aria-label={t('home.removeContinue', { title: item.title })}
+          className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-80 hover:bg-black/80 hover:opacity-100"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </Tooltip>
     </div>
   );
 }

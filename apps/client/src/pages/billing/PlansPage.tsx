@@ -58,7 +58,7 @@ export function PlansPage() {
       {packages.isPending ? (
         <Spinner label={t('billing.plans.loading')} />
       ) : packages.isError ? (
-        <EmptyState title={t('billing.plans.loadFailed')} description={errorMessage(packages.error)} />
+        <EmptyState tone="error" title={t('billing.plans.loadFailed')} description={errorMessage(packages.error)} onRetry={() => void packages.refetch()} />
       ) : packages.data.length === 0 ? (
         <EmptyState icon={<Tv className="h-8 w-8" />} title={t('billing.plans.none')} description={t('billing.plans.noneHint')} />
       ) : (

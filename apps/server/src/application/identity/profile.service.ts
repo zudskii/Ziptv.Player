@@ -135,13 +135,18 @@ export class ProfileService {
   }
 
   async updateSettings(viewer: Viewer, patch: UpdateSettingsRequest): Promise<SettingsDto> {
-    const { settings, invalid } = applySettingsPatch(await this.settingsOf(viewer), patch);
-    if (invalid.length > 0) throw AppError.validation('Some settings have invalid values.', { fields: invalid });
-    const saved = await this.deps.profiles.saveSettings(viewer.profileId, viewer.userId, toStoredSettings(settings));
+    // Patched against the stored row under a lock (not the cached list): concurrent changes merge.
+    let settings: ProfileSettings | null = null;
+    const saved = await this.deps.profiles.changeSettings(viewer.profileId, viewer.userId, (stored) => {
+      const result = applySettingsPatch(resolveSettings(stored), patch);
+      if (result.invalid.length > 0) throw AppError.validation('Some settings have invalid values.', { fields: result.invalid });
+      settings = result.settings;
+      return toStoredSettings(result.settings);
+    });
     this.forget(viewer.userId);
     // Home rails depend on settings (EPG time shift).
     invalidateHome(this.deps.cache, viewer.profileId);
-    if (!saved) throw AppError.notFound('Profile');
+    if (!saved || !settings) throw AppError.notFound('Profile');
     return toSettingsDto(settings, await this.parentalOf(viewer));
   }
 

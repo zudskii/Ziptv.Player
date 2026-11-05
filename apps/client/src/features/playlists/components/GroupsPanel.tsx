@@ -7,6 +7,7 @@ import { cn } from '../../../lib/cn';
 import { hasDrag, readDrag } from '../drag';
 import type { EntryFilter } from '../entry-filter';
 import { t } from '../../../i18n';
+import { Tooltip } from '../../../components/ui/Tooltip';
 
 type Scope = EntryFilter['scope'];
 
@@ -128,9 +129,11 @@ function GroupMenu({ group, isFirst, isLast, onRename, onDelete, onMove }: { gro
       align="right"
       className="w-44 p-1"
       trigger={({ toggle, open }) => (
-        <button type="button" onClick={toggle} aria-label={t('playlists.optionsFor', { name: group.name })} aria-haspopup="menu" aria-expanded={open} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
-          <Ellipsis className="h-4 w-4" />
-        </button>
+        <Tooltip content={t('playlists.optionsFor', { name: group.name })} redundant>
+          <button type="button" onClick={toggle} aria-label={t('playlists.optionsFor', { name: group.name })} aria-haspopup="menu" aria-expanded={open} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+            <Ellipsis className="h-4 w-4" />
+          </button>
+        </Tooltip>
       )}
     >
       {(close) => (

@@ -24,7 +24,7 @@ export function SeriesDetailsPage() {
   const series = useSeriesDetails(sourceId, key);
   const [season, setSeason] = useState<number | null>(null);
   if (series.isPending) return <Spinner className="justify-center py-24" label={t('vod.loadingEpisodes')} />;
-  if (series.isError) return <div className="p-6"><EmptyState title={t('vod.seriesUnavailable')} description={errorMessage(series.error)} /></div>;
+  if (series.isError) return <div className="p-6"><EmptyState tone="error" title={t('vod.seriesUnavailable')} description={errorMessage(series.error)} onRetry={() => void series.refetch()} /></div>;
   const data = series.data;
   const first = data.seasons[0]?.episodes[0];
   const resume = data.resume;

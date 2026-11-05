@@ -1,6 +1,7 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
+import type { ParentalService } from '../../application/identity/parental.service.js';
 import type { ProfileService } from '../../application/identity/profile.service.js';
 import type { MyListService } from '../../application/user-state/my-list.service.js';
 import type { ViewerDataService } from '../../application/user-state/viewer-data.service.js';
@@ -9,7 +10,6 @@ import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentViewer, queryParam, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import { ContentKey, EntityId } from './schemas.js';
-import type { ParentalService } from '../../application/identity/parental.service.js';
 
 const ListType = z.enum(['channel', 'movie', 'series']);
 const ProgressType = z.enum(['movie', 'episode']);
@@ -37,6 +37,21 @@ const SettingsBody = z
     appearance: z.object({ theme: z.enum(['dark', 'light', 'system']) }).partial().strict().optional(),
     epg: z.object({ timeShiftMinutes: z.number().int(), showProgress: z.boolean() }).partial().strict().optional(),
     data: z.object({ historyRetentionDays: z.number().int() }).partial().strict().optional(),
+    help: z.object({ seen: z.array(z.string().regex(/^[a-z0-9-]{1,40}$/)).max(50), checklistDismissed: z.boolean() }).partial().strict().optional(),
+  })
+  .strict();
+
+const PIN = z.string().max(12);
+const SetPinBody = z.object({ currentPin: PIN.optional(), pin: PIN }).strict();
+const PinOnly = z.object({ pin: PIN }).strict();
+const LockSource = z.union([EntityId, z.literal('operator')]);
+const RulesBody = z
+  .object({
+    pin: PIN,
+    profileId: EntityId.optional(),
+    hideAdult: z.boolean().optional(),
+    lockedGroups: z.array(z.object({ sourceId: LockSource, group: z.string().min(1).max(200) }).strict()).max(500).optional(),
+    lockedChannels: z.array(z.object({ sourceId: LockSource, key: z.string().min(1).max(200), name: z.string().max(200).optional() }).strict()).max(500).optional(),
   })
   .strict();
 
@@ -45,8 +60,8 @@ export function createMeRouter(deps: {
   myList: MyListService;
   watch: WatchStateService;
   data: ViewerDataService;
-  parental: ParentalService;
   profiles: ProfileService;
+  parental: ParentalService;
   auth: RequestHandler;
   limit: RateLimiterFactory;
 }): Router {
@@ -110,6 +125,26 @@ export function createMeRouter(deps: {
   router.patch('/settings', writeLimiter, async (req, res) => {
     res.json(await deps.profiles.updateSettings(currentViewer(req), parseInput(SettingsBody, req.body)));
   });
+  // --- parental controls (PIN per account, rules per profile) --------------------------------------
+  const pinLimiter = deps.limit({ name: 'me:pin', windowMs: 10 * 60 * 1000, limit: 30, perUser: true });
+  router.get('/parental', async (req, res) => {
+    const profileId = req.query.profileId === undefined ? undefined : parseInput(EntityId, req.query.profileId, 'Profile id');
+    res.json(await deps.parental.settings(currentViewer(req), profileId));
+  });
+  router.put('/parental/pin', pinLimiter, async (req, res) => {
+    res.json(await deps.parental.setPin(currentViewer(req), parseInput(SetPinBody, req.body)));
+  });
+  router.delete('/parental/pin', pinLimiter, async (req, res) => {
+    res.json(await deps.parental.removePin(currentViewer(req), parseInput(PinOnly, req.body ?? {}).pin));
+  });
+  router.post('/parental/unlock', pinLimiter, async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await deps.parental.unlock(currentViewer(req), parseInput(PinOnly, req.body ?? {}).pin));
+  });
+  router.put('/parental/rules', pinLimiter, async (req, res) => {
+    res.json(await deps.parental.updateRules(currentViewer(req), parseInput(RulesBody, req.body)));
+  });
+
   router.get('/storage', async (req, res) => {
     res.json(await deps.data.usage(currentViewer(req)));
   });

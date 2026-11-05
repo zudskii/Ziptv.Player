@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 
 import { PosterCard } from '../components/media/PosterCard';
 import { Badge } from '../components/ui/Badge';
+import { ButtonLink } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Segmented } from '../components/ui/Segmented';
 import { Spinner } from '../components/ui/Spinner';
@@ -12,6 +13,7 @@ import { useMyList, useToggleListItem } from '../features/user-state/api';
 import { errorMessage } from '../lib/api-client';
 import { itemPath } from '../lib/routes';
 import { t } from '../i18n';
+import { Tooltip } from '../components/ui/Tooltip';
 
 type Filter = 'all' | ListItemType;
 
@@ -43,9 +45,9 @@ export function MyListPage() {
       {list.isPending ? (
         <Spinner label={t('myList.loading')} />
       ) : list.isError ? (
-        <EmptyState title={t('myList.loadFailed')} description={errorMessage(list.error)} />
+        <EmptyState tone="error" title={t('myList.loadFailed')} description={errorMessage(list.error)} onRetry={() => void list.refetch()} />
       ) : items.length === 0 ? (
-        <EmptyState icon={<Bookmark className="h-8 w-8" />} title={t('myList.empty')} description={t('myList.emptyHint')} />
+        <EmptyState icon={<Bookmark className="h-8 w-8" />} title={t('myList.empty')} description={t('myList.emptyHint')} action={<ButtonLink to="/movies" size="sm">{t('myList.browse')}</ButtonLink>} />
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
           {items.map((item) => (
@@ -61,14 +63,16 @@ export function MyListPage() {
                 subtitle={item.subtitle}
                 badge={!item.available ? <Badge tone="warning">{t('myList.unavailable')}</Badge> : undefined}
               />
-              <button
-                type="button"
-                aria-label={t('myList.removeNamed', { title: item.title })}
-                onClick={() => toggle.mutate({ item, add: false }, { onError: (error) => toast.error(errorMessage(error)) })}
-                className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
+              <Tooltip content={t('myList.removeNamed', { title: item.title })} redundant>
+                <button
+                  type="button"
+                  aria-label={t('myList.removeNamed', { title: item.title })}
+                  onClick={() => toggle.mutate({ item, add: false }, { onError: (error) => toast.error(errorMessage(error)) })}
+                  className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </Tooltip>
             </li>
           ))}
         </ul>

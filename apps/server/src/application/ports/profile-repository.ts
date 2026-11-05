@@ -27,7 +27,12 @@ export interface ProfileRepository {
   update(id: string, userId: string, patch: { name?: string; color?: string; kind?: ProfileKind; pinProtected?: boolean }): Promise<ProfileRecord | null>;
   /** PIN removed: no profile of the account stays protected. */
   clearPinProtection(userId: string): Promise<void>;
-  saveSettings(id: string, userId: string, settings: StoredProfileSettings): Promise<ProfileRecord | null>;
+  /**
+   * Read-modify-write of a profile's settings under a row lock: two quick changes from the same
+   * person (or two devices) never overwrite each other. `change` gets the stored settings and returns
+   * the new ones, or throws to abort without writing. Null when there is no such profile.
+   */
+  changeSettings(id: string, userId: string, change: (current: StoredProfileSettings) => StoredProfileSettings): Promise<StoredProfileSettings | null>;
   /** Never deletes the default profile. */
   delete(id: string, userId: string): Promise<boolean>;
 }

@@ -300,6 +300,26 @@ describe.skipIf(!TEST_DATABASE_URL)('Viewer experience end-to-end', () => {
     await request(t.app).delete('/api/v1/me/data/everything').set(auth()).expect(400);
   });
 
+  it('settings: concurrent changes to different fields all stick; help state round-trips', async () => {
+    // Two quick toggles (or two devices) must merge, not overwrite each other.
+    await Promise.all([
+      request(t.app).patch('/api/v1/me/settings').set(auth()).send({ help: { seen: ['tour-guide'] } }).expect(200),
+      request(t.app).patch('/api/v1/me/settings').set(auth()).send({ help: { checklistDismissed: true } }).expect(200),
+      request(t.app).patch('/api/v1/me/settings').set(auth()).send({ general: { use24hClock: false } }).expect(200),
+      request(t.app).patch('/api/v1/me/settings').set(auth()).send({ epg: { showProgress: false } }).expect(200),
+    ]);
+    const merged = (await request(t.app).get('/api/v1/me/settings').set(auth()).expect(200)).body as SettingsDto;
+    expect(merged.help).toEqual({ seen: ['tour-guide'], checklistDismissed: true });
+    expect(merged.general.use24hClock).toBe(false);
+    expect(merged.epg.showProgress).toBe(false);
+    await request(t.app).patch('/api/v1/me/settings').set(auth()).send({ help: { seen: ['Not A Slug'] } }).expect(400);
+    await request(t.app)
+      .patch('/api/v1/me/settings')
+      .set(auth())
+      .send({ help: { seen: [], checklistDismissed: false }, general: { use24hClock: true }, epg: { showProgress: true } })
+      .expect(200);
+  });
+
   it('imports per-browser favourites once and carries guest state into a new account', async () => {
     const sport = channel('Arena Sport');
     const imported = await request(t.app)

@@ -11,6 +11,7 @@ import { programmeProgress } from '../../epg/programme';
 import type { BrowsableChannel } from '../browse';
 import { ChannelLogo } from './ChannelLogo';
 import { t } from '../../../i18n';
+import { Tooltip } from '../../../components/ui/Tooltip';
 
 const ROW_HEIGHT = 56;
 const ROW_HEIGHT_EPG = 84;
@@ -119,18 +120,20 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
                   )}
                 </span>
               </button>
-              <button
-                type="button"
-                onClick={() => onToggleFavorite(channel)}
-                aria-label={t(favorite ? 'live.favRemove' : 'live.favAdd', { name: channel.name })}
-                aria-pressed={favorite}
-                className={cn(
-                  'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-fg/10',
-                  favorite ? 'text-amber-400' : 'text-fg-subtle/60 hover:text-fg-muted',
-                )}
-              >
-                <Star className={cn('h-4 w-4', favorite && 'fill-current')} />
-              </button>
+              <Tooltip content={t(favorite ? 'live.favRemove' : 'live.favAdd', { name: channel.name })} redundant>
+                <button
+                  type="button"
+                  onClick={() => onToggleFavorite(channel)}
+                  aria-label={t(favorite ? 'live.favRemove' : 'live.favAdd', { name: channel.name })}
+                  aria-pressed={favorite}
+                  className={cn(
+                    'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-fg/10',
+                    favorite ? 'text-amber-400' : 'text-fg-subtle/60 hover:text-fg-muted',
+                  )}
+                >
+                  <Star className={cn('h-4 w-4', favorite && 'fill-current')} />
+                </button>
+              </Tooltip>
             </div>
           );
         })}

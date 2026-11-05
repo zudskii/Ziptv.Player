@@ -25,6 +25,8 @@ export interface ProfileSettings {
   appearance: { theme: ThemeSetting };
   epg: { timeShiftMinutes: number; showProgress: boolean };
   data: { historyRetentionDays: number };
+  /** Tips and tours this profile has seen, and whether it closed the get-started checklist. */
+  help: { seen: string[]; checklistDismissed: boolean };
 }
 
 export type SettingsPatch = { [S in keyof ProfileSettings]?: Partial<ProfileSettings[S]> };
@@ -44,6 +46,7 @@ export const DEFAULT_SETTINGS: ProfileSettings = {
   appearance: { theme: 'system' },
   epg: { timeShiftMinutes: 0, showProgress: true },
   data: { historyRetentionDays: 180 },
+  help: { seen: [], checklistDismissed: false },
 };
 
 export const MAX_TIME_SHIFT_MINUTES = 12 * 60;
@@ -58,6 +61,9 @@ const LANGUAGE = /^(?:|off|[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)$/;
 type Validators = { [S in keyof ProfileSettings]: { [K in keyof ProfileSettings[S]]: (value: unknown) => boolean } };
 
 const isBool = (value: unknown) => typeof value === 'boolean';
+export const MAX_SEEN_TIPS = 50;
+const TIP_ID = /^[a-z0-9-]{1,40}$/;
+const isTipList = (value: unknown) => Array.isArray(value) && value.length <= MAX_SEEN_TIPS && value.every((id) => typeof id === 'string' && TIP_ID.test(id)) && new Set(value).size === value.length;
 const oneOf = (choices: readonly unknown[]) => (value: unknown) => choices.includes(value);
 
 const VALIDATORS: Validators = {
@@ -77,6 +83,7 @@ const VALIDATORS: Validators = {
     showProgress: isBool,
   },
   data: { historyRetentionDays: oneOf(HISTORY_RETENTION_CHOICES) },
+  help: { seen: isTipList, checklistDismissed: isBool },
 };
 
 /** Stored (partial, possibly stale) document → complete, valid settings. */
@@ -107,11 +114,14 @@ export function toStoredSettings(settings: ProfileSettings): StoredProfileSettin
     const defaults = DEFAULT_SETTINGS[section] as unknown as Record<string, unknown>;
     const values = settings[section] as unknown as Record<string, unknown>;
     for (const [field, value] of Object.entries(values)) {
-      if (value !== defaults[field]) (stored[section] ??= {})[field] = value;
+      if (!sameValue(value, defaults[field])) (stored[section] ??= {})[field] = value;
     }
   }
   return stored as StoredProfileSettings;
 }
+
+/** Scalars by value, lists by content (a list equal to the default is not stored). */
+const sameValue = (a: unknown, b: unknown) => a === b || (Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((item, index) => item === b[index]));
 
 function mergeValid(base: ProfileSettings, overlay: unknown): ProfileSettings {
   const result = structuredClone(base);

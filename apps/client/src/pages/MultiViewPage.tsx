@@ -2,10 +2,12 @@ import { LayoutGrid, Plus, Repeat2, Volume2, VolumeX, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { IconButton } from '../components/ui/Button';
+import { Tour } from '../features/help/Tour';
 import { ChannelPicker } from '../features/multiview/ChannelPicker';
 import { TILE_COUNT, tilesOfSource, useMultiView, type Tile } from '../features/multiview/multiview-store';
 import { VideoPlayer } from '../features/player/components/VideoPlayer';
 import { cn } from '../lib/cn';
+import { t, tx } from '../i18n';
 
 /**
  * /multiview — up to four channels at once (2×2). Each tile is a full player of its own: licensed
@@ -39,13 +41,13 @@ export function MultiViewPage() {
     <div className="mx-auto flex w-full max-w-[1800px] flex-col gap-3 p-3 sm:p-5">
       <header className="flex flex-wrap items-center gap-2">
         <h1 className="flex items-center gap-2 text-xl font-bold text-fg">
-          <LayoutGrid className="h-5 w-5 text-brand-soft" /> Multi-view
+          <LayoutGrid className="h-5 w-5 text-brand-soft" /> {t('multiview.title')}
         </h1>
-        <p className="text-sm text-fg-muted">
-          {used}/{TILE_COUNT} playing · press <kbd className="rounded border border-line/10 bg-fg/5 px-1 font-mono text-[11px]">1</kbd>–<kbd className="rounded border border-line/10 bg-fg/5 px-1 font-mono text-[11px]">4</kbd> or click a tile to hear it
+        <p data-tour="multiview-keys" className="text-sm text-fg-muted">
+          {tx('multiview.status', { used, total: TILE_COUNT, k: (chunks) => <kbd className="rounded border border-line/10 bg-fg/5 px-1 font-mono text-[11px]">{chunks}</kbd> })}
         </p>
       </header>
-      <div className="grid gap-2 sm:grid-cols-2" role="list" aria-label="Tiles">
+      <div data-tour="multiview-tiles" className="grid gap-2 sm:grid-cols-2" role="list" aria-label={t('multiview.tiles')}>
         {tiles.map((tile, index) => (
           <TileView
             key={index}
@@ -58,6 +60,13 @@ export function MultiViewPage() {
           />
         ))}
       </div>
+      <Tour
+        id="multiview"
+        steps={() => [
+          { target: 'multiview-tiles', title: t('help.tour.multiview.tiles.title'), body: t('help.tour.multiview.tiles.body') },
+          { target: 'multiview-keys', title: t('help.tour.multiview.keys.title'), body: t('help.tour.multiview.keys.body') },
+        ]}
+      />
       <ChannelPicker
         open={picking !== null}
         onClose={() => setPicking(null)}
@@ -102,12 +111,12 @@ function TileView({ index, tile, focused, onFocus, onPick, onRemove }: TileViewP
           </div>
           <div className="absolute left-2 top-2 z-30 flex max-w-[calc(100%-1rem)] items-center gap-1 rounded-lg bg-black/60 py-0.5 pl-2 pr-0.5 text-xs text-white backdrop-blur">
             <span className="tabular-nums text-white/60">{index + 1}</span>
-            {focused ? <Volume2 className="h-3.5 w-3.5 text-brand-soft" aria-label="Sound" /> : <VolumeX className="h-3.5 w-3.5 text-white/50" aria-label="Muted" />}
+            {focused ? <Volume2 className="h-3.5 w-3.5 text-brand-soft" aria-label={t('multiview.sound')} /> : <VolumeX className="h-3.5 w-3.5 text-white/50" aria-label={t('multiview.muted')} />}
             <span className="min-w-0 truncate font-medium">{tile.title}</span>
-            <IconButton tone="onDark" label={`Change tile ${index + 1}`} onClick={onPick} className="h-7 w-7">
+            <IconButton tone="onDark" label={t('multiview.changeTile', { n: index + 1 })} onClick={onPick} className="h-7 w-7">
               <Repeat2 className="h-3.5 w-3.5" />
             </IconButton>
-            <IconButton tone="onDark" label={`Close tile ${index + 1}`} onClick={onRemove} className="h-7 w-7">
+            <IconButton tone="onDark" label={t('multiview.closeTile', { n: index + 1 })} onClick={onRemove} className="h-7 w-7">
               <X className="h-3.5 w-3.5" />
             </IconButton>
           </div>
@@ -118,7 +127,7 @@ function TileView({ index, tile, focused, onFocus, onPick, onRemove }: TileViewP
           onClick={onPick}
           className="flex aspect-video w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line/15 bg-sunken/40 text-sm text-fg-muted hover:bg-fg/5 hover:text-fg"
         >
-          <Plus className="h-6 w-6" /> Add a channel
+          <Plus className="h-6 w-6" /> {t('multiview.addChannel')}
         </button>
       )}
     </div>

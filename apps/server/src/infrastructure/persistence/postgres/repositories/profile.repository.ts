@@ -83,16 +83,15 @@ export class PgProfileRepository implements ProfileRepository {
     await this.db.updateTable('profiles').set({ pin_protected: false }).where('user_id', '=', userId).where('pin_protected', '=', true).execute();
   }
 
-  async saveSettings(id: string, userId: string, settings: StoredProfileSettings): Promise<ProfileRecord | null> {
+  async changeSettings(id: string, userId: string, change: (current: StoredProfileSettings) => StoredProfileSettings): Promise<StoredProfileSettings | null> {
     if (!isEntityId(id)) return null;
-    const row = await this.db
-      .updateTable('profiles')
-      .set({ settings: json(settings), updated_at: new Date() })
-      .where('id', '=', id)
-      .where('user_id', '=', userId)
-      .returningAll()
-      .executeTakeFirst();
-    return row ? toRecord(row) : null;
+    return this.db.transaction().execute(async (trx) => {
+      const row = await trx.selectFrom('profiles').selectAll().where('id', '=', id).where('user_id', '=', userId).forUpdate().executeTakeFirst();
+      if (!row) return null;
+      const settings = change(toRecord(row).settings);
+      await trx.updateTable('profiles').set({ settings: json(settings), updated_at: new Date() }).where('id', '=', id).execute();
+      return settings;
+    });
   }
 
   async delete(id: string, userId: string): Promise<boolean> {

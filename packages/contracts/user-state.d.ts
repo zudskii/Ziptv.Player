@@ -152,6 +152,12 @@ export interface DataSettingsDto {
   historyRetentionDays: number;
 }
 
+/** Tips and tours a profile has seen (ids like 'tour-guide'), and the get-started checklist. */
+export interface HelpSettingsDto {
+  seen: string[];
+  checklistDismissed: boolean;
+}
+
 export interface SettingsDto {
   general: GeneralSettingsDto;
   playback: PlaybackSettingsDto;
@@ -159,6 +165,7 @@ export interface SettingsDto {
   epg: EpgSettingsDto;
   parental: ParentalSettingsDto;
   data: DataSettingsDto;
+  help: HelpSettingsDto;
 }
 
 export interface UpdateSettingsRequest {
@@ -167,6 +174,7 @@ export interface UpdateSettingsRequest {
   appearance?: Partial<AppearanceSettingsDto>;
   epg?: Partial<EpgSettingsDto>;
   data?: Partial<DataSettingsDto>;
+  help?: Partial<HelpSettingsDto>;
 }
 
 export interface StorageUsageDto {

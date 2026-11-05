@@ -14,6 +14,7 @@ import { sourceKeys, sourcesApi } from '../../features/sources/api';
 import { ApiError, errorMessage } from '../../lib/api-client';
 import { t } from '../../i18n';
 import { LanguagePicker } from '../../components/ui/LanguagePicker';
+import { Tooltip } from '../../components/ui/Tooltip';
 
 interface LocationState {
   from?: string;
@@ -131,9 +132,11 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   className="field pr-11"
                   aria-invalid={Boolean(issues.password)}
                 />
-                <button type="button" onClick={() => setReveal((v) => !v)} aria-label={reveal ? t('auth.hidePassword') : t('auth.showPassword')} className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
-                  {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+                <Tooltip content={reveal ? t('auth.hidePassword') : t('auth.showPassword')} redundant>
+                  <button type="button" onClick={() => setReveal((v) => !v)} aria-label={reveal ? t('auth.hidePassword') : t('auth.showPassword')} className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+                    {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </Tooltip>
               </div>
               {!isLogin && !issues.password && <p className="text-xs text-fg-subtle">{t('auth.atLeast', { count: MIN_PASSWORD_LENGTH })}</p>}
               {isLogin && features.data?.passwordReset && (

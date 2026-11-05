@@ -2,6 +2,7 @@ import type { ComponentPropsWithRef, ReactNode } from 'react';
 import { Link, type LinkProps } from 'react-router';
 
 import { cn } from '../../lib/cn';
+import { Tooltip } from './Tooltip';
 
 type Variant = 'primary' | 'secondary' | 'ghost' | 'danger';
 type Size = 'sm' | 'md' | 'lg';
@@ -56,14 +57,15 @@ export interface IconButtonProps extends ComponentPropsWithRef<'button'> {
   active?: boolean;
   /** `onDark` for controls drawn over video (always white). */
   tone?: 'default' | 'onDark';
+  /** Where the tooltip appears; `false` turns it off (the label is then only for screen readers). */
+  tooltip?: 'top' | 'bottom' | false;
 }
 
-export function IconButton({ label, active = false, tone = 'default', className, children, type = 'button', ...props }: IconButtonProps) {
-  return (
+export function IconButton({ label, active = false, tone = 'default', tooltip = 'top', className, children, type = 'button', ...props }: IconButtonProps) {
+  const button = (
     <button
       type={type}
       aria-label={label}
-      title={label}
       className={cn(
         'inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors disabled:opacity-40',
         tone === 'onDark'
@@ -79,5 +81,12 @@ export function IconButton({ label, active = false, tone = 'default', className,
     >
       {children}
     </button>
+  );
+  return tooltip ? (
+    <Tooltip content={label} side={tooltip} redundant>
+      {button}
+    </Tooltip>
+  ) : (
+    button
   );
 }

@@ -18,7 +18,7 @@ export function MovieDetailsPage() {
   const { sourceId, key } = useParams();
   const movie = useMovieDetails(sourceId, key);
   if (movie.isPending) return <Spinner className="justify-center py-24" label={t('vod.loading')} />;
-  if (movie.isError) return <div className="p-6"><EmptyState title={t('vod.movieUnavailable')} description={errorMessage(movie.error)} /></div>;
+  if (movie.isError) return <div className="p-6"><EmptyState tone="error" title={t('vod.movieUnavailable')} description={errorMessage(movie.error)} onRetry={() => void movie.refetch()} /></div>;
   const data = movie.data;
   const progress = data.progress && !data.progress.completed && data.progress.position > 0 ? data.progress : null;
   return (

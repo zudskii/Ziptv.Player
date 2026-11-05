@@ -331,7 +331,7 @@ export const en = {
     sources: 'Sources',
     manageSources: 'Manage sources and TV guides',
     about: 'About',
-    shortcuts: 'Shortcuts: Space play/pause · ←/→ seek · ↑/↓ volume · M mute · F fullscreen · N/P next/previous · / search',
+    shortcuts: 'Shortcuts: Space play/pause · ←/→ seek · 0–9 jump · ↑/↓ volume · M mute · F fullscreen · I picture in picture · C subtitles · N/P next/previous · ? all shortcuts · / search',
     general: 'General',
     startPage: 'Start page',
     page: {
@@ -485,6 +485,7 @@ export const en = {
     continue: 'Continue',
     contentLocked: 'This content is locked by parental controls.',
     profileLocked: 'This profile is protected by the parental PIN.',
+    kidsProfile: '{name} (kids)',
   },
   sources: {
     type: {
@@ -742,7 +743,7 @@ export const en = {
     favRemove: 'Remove {name} from favorites',
     favAdd: 'Add {name} to favorites',
     missing: 'This channel is no longer in “{source}” (the source may have been re-synced). Pick another one.',
-    shortcuts: 'Shortcuts: <k>Space</k> play/pause · <k>M</k> mute · <k>F</k> fullscreen · <k>↑</k>/<k>↓</k> volume · <k>N</k>/<k>P</k> next/previous channel',
+    shortcuts: 'Shortcuts: <k>Space</k> play/pause · <k>M</k> mute · <k>F</k> fullscreen · <k>↑</k>/<k>↓</k> volume · <k>N</k>/<k>P</k> next/previous channel · <k>I</k> picture in picture · <k>?</k> all shortcuts',
     group: {
       all: 'All channels',
       fav: 'Favorites',
@@ -811,6 +812,7 @@ export const en = {
     list: 'Channel list',
     noMatch: 'No channels match.',
     needsSub: 'Needs a subscription',
+    parentalLocked: 'Locked by parental controls',
   },
   guide: {
     noLive: 'No live channels yet',
@@ -973,6 +975,14 @@ export const en = {
     noMatch: 'No channels match.',
     channels: 'Channels',
     locked: 'locked',
+    status: '{used, number}/{total, number} playing · press <k>1</k>–<k>4</k> or click a tile to hear it',
+    changeTile: 'Change tile {n, number}',
+    closeTile: 'Close tile {n, number}',
+    title: 'Multi-view',
+    tiles: 'Tiles',
+    sound: 'Sound',
+    muted: 'Muted',
+    addChannel: 'Add a channel',
   },
   myList: {
     removeFailed: 'Could not remove from My List',
@@ -990,6 +1000,7 @@ export const en = {
     empty: 'Nothing saved yet',
     emptyHint: 'Use “My List” on a movie or series, or the star next to a channel, to keep it here.',
     unavailable: 'Unavailable',
+    browse: 'Browse movies',
   },
   kind: {
     live: 'Live',
@@ -1388,6 +1399,93 @@ export const en = {
       missingHint: 'These channels are no longer in their source. If your provider only renamed them, try “Reconnect” first.',
     },
     remove: 'Remove',
+  },
+  archive: {
+    from: 'From the archive · {channel} · {day} {range}',
+    title: 'Archive · {count, plural, one {# day} other {# days}}',
+    backToLive: 'Back to live',
+    label: 'Archive',
+    loading: 'Loading…',
+    empty: 'No programmes in the archive yet.',
+    watch: 'Watch',
+  },
+  help: {
+    about: 'About “{topic}”',
+    settings: {
+      quality: 'Used when a channel or video offers several qualities. Automatic adapts to your connection; a fixed choice picks the closest available quality and may buffer on a slow network.',
+      hwAccel: 'Lets the graphics chip decode video, which saves battery and keeps playback smooth. Some older TVs and drivers show green frames or stutter with it — only then turn it off.',
+      timeShift: 'Some guides list programmes in the wrong time zone, so every programme is off by the same amount. Shift the guide by that amount and the times match what is on air.',
+      keepHistory: 'How long watched channels, movies and episodes stay in History and “Recently watched” for this profile. Older entries are deleted automatically.',
+      autoplay: 'When off, a channel or video opens paused and starts when you press Play — handy on slow connections or when looking around.',
+    },
+    checklist: {
+      title: 'Get started',
+      progress: '{done, number} of {total, number} done',
+      source: 'Add a playlist or Xtream account',
+      sourceAction: 'Add source',
+      settings: 'Set language, start page and playback to your liking',
+      settingsAction: 'Open Settings',
+      watch: 'Watch your first channel',
+      watchAction: 'Browse channels',
+      dismiss: 'Hide the checklist',
+      doneStep: 'done',
+    },
+    tour: {
+      next: 'Next',
+      back: 'Back',
+      done: 'Got it',
+      skip: 'Skip tour',
+      progress: '{n, number} of {total, number}',
+      guide: {
+        grid: {
+          title: 'The TV guide',
+          body: 'Each row is a channel and each block a programme. Click a programme for details, or a channel name to watch it live.',
+        },
+        days: {
+          title: 'Pick a day',
+          body: 'Jump to tomorrow or later in the week.',
+          bodyArchive: 'Jump ahead — or go back: on channels with catch-up you can watch programmes that already aired.',
+        },
+        group: {
+          title: 'Filter by group',
+          body: 'Show only one group of channels, such as News or Sport.',
+        },
+        now: {
+          title: 'Back to now',
+          body: 'Returns to today and scrolls to what is on right now.',
+        },
+      },
+      multiview: {
+        tiles: {
+          title: 'Up to four channels',
+          body: 'Click an empty tile to add a channel. The buttons on a tile change or close it.',
+        },
+        keys: {
+          title: 'Choose what you hear',
+          body: 'Only the selected tile plays sound. Click a tile or press 1–4 to switch.',
+        },
+      },
+      parental: {
+        profile: {
+          title: 'Rules are per profile',
+          body: 'Pick the profile whose rules you are editing; each profile has its own locks.',
+        },
+        adult: {
+          title: 'Hide adult content',
+          body: 'Removes adult groups and channels from lists, search and Home for this profile.',
+        },
+        locks: {
+          title: 'Lock groups or channels',
+          body: 'Locked items stay visible but ask for the PIN before they play.',
+        },
+      },
+    },
+    reset: {
+      label: 'Tips and tours',
+      hint: 'Show the get-started checklist and the screen tours again for this profile.',
+      action: 'Show again',
+      done: 'Tips and tours will show again',
+    },
   },
 } as const satisfies Messages;
 

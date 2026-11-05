@@ -4,6 +4,7 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 import { useDebounced } from '../../lib/use-debounced';
 import { t } from '../../i18n';
+import { Tooltip } from '../../components/ui/Tooltip';
 
 /**
  * Top-bar search: typing opens /search and keeps the URL in sync (debounced), so results are
@@ -76,18 +77,20 @@ export function SearchBox() {
         className="field h-9 pl-9 pr-8 [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
-        <button
-          type="button"
-          aria-label={t('search.clear')}
-          onClick={() => {
-            typed.current = true;
-            setValue('');
-            input.current?.focus();
-          }}
-          className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:text-fg"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <Tooltip content={t('search.clear')} redundant>
+          <button
+            type="button"
+            aria-label={t('search.clear')}
+            onClick={() => {
+              typed.current = true;
+              setValue('');
+              input.current?.focus();
+            }}
+            className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-fg-subtle hover:text-fg"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </Tooltip>
       )}
     </form>
   );
