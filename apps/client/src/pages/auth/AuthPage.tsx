@@ -7,11 +7,13 @@ import { toast } from 'sonner';
 import { Brand } from '../../components/layout/Brand';
 import { Button } from '../../components/ui/Button';
 import { authApi, useAuthFeatures } from '../../features/auth/api';
-import { hasIssues, safeRedirect, validateLogin, validateRegistration, type FormIssues } from '../../features/auth/credentials';
+import { type FormIssues, hasIssues, MIN_PASSWORD_LENGTH, safeRedirect, validateLogin, validateRegistration } from '../../features/auth/credentials';
 import { useSessionStore } from '../../features/session/session';
 import { usePlaylists } from '../../features/playlists/api';
 import { sourceKeys, sourcesApi } from '../../features/sources/api';
 import { ApiError, errorMessage } from '../../lib/api-client';
+import { t } from '../../i18n';
+import { LanguagePicker } from '../../components/ui/LanguagePicker';
 
 interface LocationState {
   from?: string;
@@ -69,7 +71,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
           ...(guest && merge ? { mergeGuest: true } : {}) })
           : await authApi.register({ email: email.trim(), password });
       useSessionStore.getState().setAccount(result.token, result.user.email ?? email.trim().toLowerCase());
-      toast.success(mode === 'login' ? 'Signed in' : 'Account created', { description: result.user.email ?? undefined });
+      toast.success(mode === 'login' ? t('auth.toast.signedIn') : t('auth.toast.created'), { description: result.user.email ?? undefined });
       navigate(safeRedirect(state.from), { replace: true });
     } catch (reason) {
       setError({ message: errorMessage(reason), ...(reason instanceof ApiError ? { code: reason.code } : {}) });
@@ -81,15 +83,16 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
   return (
     <div className="flex min-h-dvh items-center justify-center px-4 py-10">
       <div className="w-full max-w-sm space-y-6">
-        <div className="flex justify-center">
+        <div className="flex items-center justify-between">
           <Brand />
+          <LanguagePicker />
         </div>
 
         <div className="card space-y-5 p-5 sm:p-6">
           <div>
-            <h1 className="text-xl font-bold text-fg">{isLogin ? 'Sign in' : 'Create your account'}</h1>
+            <h1 className="text-xl font-bold text-fg">{isLogin ? t('auth.signIn') : t('auth.createTitle')}</h1>
             <p className="mt-1 text-sm text-fg-muted">
-              {isLogin ? 'Your sources and playlists, on every device.' : guestSources + guestPlaylists > 0 ? 'Everything you have added on this device stays with you.' : 'Keep your sources and playlists across devices.'}
+              {isLogin ? t('auth.loginSubtitle') : guestSources + guestPlaylists > 0 ? t('auth.keepGuest') : t('auth.registerSubtitle')}
             </p>
           </div>
 
@@ -101,22 +104,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
 
           {state.signedOut && isLogin && (
             <p role="status" className="rounded-lg bg-fg/5 px-3 py-2.5 text-sm text-fg-muted">
-              You signed out. Sign in again, or continue without an account.
+              {t('auth.signedOut')}
             </p>
           )}
 
           {state.expired && isLogin && (
             <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2.5 text-sm text-amber-600 dark:text-amber-400">
-              Your session ended. Sign in again to continue — nothing was lost.
+              {t('auth.expired')}
             </p>
           )}
 
           <form onSubmit={submit} noValidate className="space-y-4">
-            <Field id={ids.email} label="Email" issue={issues.email}>
+            <Field id={ids.email} label={t('auth.email')} issue={issues.email}>
               <input id={ids.email} type="email" inputMode="email" autoComplete="email" autoFocus={!state.email} spellCheck={false} value={email} onChange={(e) => setEmail(e.target.value)} className="field" aria-invalid={Boolean(issues.email)} />
             </Field>
 
-            <Field id={ids.password} label="Password" issue={issues.password}>
+            <Field id={ids.password} label={t('auth.password')} issue={issues.password}>
               <div className="relative">
                 <input
                   id={ids.password}
@@ -128,22 +131,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                   className="field pr-11"
                   aria-invalid={Boolean(issues.password)}
                 />
-                <button type="button" onClick={() => setReveal((v) => !v)} aria-label={reveal ? 'Hide password' : 'Show password'} className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+                <button type="button" onClick={() => setReveal((v) => !v)} aria-label={reveal ? t('auth.hidePassword') : t('auth.showPassword')} className="absolute right-1.5 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
                   {reveal ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
-              {!isLogin && !issues.password && <p className="text-xs text-fg-subtle">At least 8 characters.</p>}
+              {!isLogin && !issues.password && <p className="text-xs text-fg-subtle">{t('auth.atLeast', { count: MIN_PASSWORD_LENGTH })}</p>}
               {isLogin && features.data?.passwordReset && (
                 <p className="text-xs">
                   <Link to="/forgot-password" state={{ from: state.from }} className="text-brand-soft hover:underline">
-                    Forgot your password?
+                    {t('auth.forgot')}
                   </Link>
                 </p>
               )}
             </Field>
 
             {!isLogin && (
-              <Field id={ids.confirm} label="Repeat the password" issue={issues.confirm}>
+              <Field id={ids.confirm} label={t('auth.repeatPassword')} issue={issues.confirm}>
                 <input id={ids.confirm} type={reveal ? 'text' : 'password'} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field" aria-invalid={Boolean(issues.confirm)} />
               </Field>
             )}
@@ -152,7 +155,7 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
               <label className="flex items-start gap-2.5 rounded-lg bg-fg/5 p-3 text-sm text-fg">
                 <input type="checkbox" checked={merge} onChange={(e) => setMerge(e.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
                 <span>
-                  Bring what is on this device into my account
+                  {t('auth.merge')}
                   <span className="mt-0.5 block text-xs text-fg-muted">
                     {[guestSources > 0 && `${guestSources} ${guestSources === 1 ? 'source' : 'sources'}`, guestPlaylists > 0 && `${guestPlaylists} ${guestPlaylists === 1 ? 'playlist' : 'playlists'}`].filter(Boolean).join(' and ')}
                   </span>
@@ -166,14 +169,14 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
                 {error.code === 'EMAIL_TAKEN' && (
                   <p className="mt-1">
                     <Link to="/login" state={{ from: state.from, email }} className="font-medium underline">
-                      Sign in instead
+                      {t('auth.signInInstead')}
                     </Link>
                   </p>
                 )}
                 {(error.code === 'SOURCE_LIMIT_REACHED' || error.code === 'PLAYLIST_LIMIT_REACHED') && merge && (
                   <p className="mt-1">
                     <button type="button" className="font-medium underline" onClick={() => { setMerge(false); setError(null); }}>
-                      Sign in without bringing them
+                      {t('auth.signInWithout')}
                     </button>
                   </p>
                 )}
@@ -181,22 +184,22 @@ export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
             )}
 
             <Button type="submit" variant="primary" size="lg" loading={pending} className="w-full" icon={isLogin ? <LogIn className="h-5 w-5" /> : <UserPlus className="h-5 w-5" />}>
-              {isLogin ? 'Sign in' : 'Create account'}
+              {isLogin ? t('auth.signIn') : t('auth.createAccount')}
             </Button>
           </form>
         </div>
 
         <p className="text-center text-sm text-fg-muted">
-          {isLogin ? 'New here? ' : 'Already have an account? '}
+          {isLogin ? t('auth.newHere') : t('auth.haveAccount')}{' '}
           <Link to={isLogin ? '/register' : '/login'} state={{ from: state.from }} className="font-medium text-brand-soft hover:underline">
-            {isLogin ? 'Create an account' : 'Sign in'}
+            {isLogin ? t('auth.createAnAccount') : t('auth.signIn')}
           </Link>
         </p>
         {/* A guest goes back to what it has; a device without a session chooses on the welcome page. */}
         {!account && (
           <p className="text-center text-xs text-fg-subtle">
             <Link to={guest ? safeRedirect(state.from) : '/welcome'} state={guest ? undefined : { from: state.from }} className="hover:underline">
-              Continue without an account
+              {t('auth.continueWithout')}
             </Link>
           </p>
         )}

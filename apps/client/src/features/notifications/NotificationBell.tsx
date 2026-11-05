@@ -11,6 +11,7 @@ import { cn } from '../../lib/cn';
 import { formatAgo } from '../../lib/time';
 import { useClearReadNotifications, useDismissNotification, useMarkNotificationsRead, useNotifications } from './api';
 import { groupByDay } from './grouping';
+import { t } from '../../i18n';
 
 const ICONS = { info: Info, success: CircleCheck, warning: TriangleAlert, error: CircleAlert } as const;
 const TONES = { info: 'text-brand-soft', success: 'text-emerald-500', warning: 'text-amber-500', error: 'text-red-500' } as const;
@@ -46,7 +47,7 @@ export function NotificationBell() {
     <Popover
       trigger={({ toggle, open: isOpen }) => (
         <div className="relative">
-          <IconButton label={unread ? `Notifications (${unread} unread)` : 'Notifications'} onClick={toggle} active={isOpen}>
+          <IconButton label={unread ? t('notifications.titleUnread', { count: unread }) : t('notifications.title')} onClick={toggle} active={isOpen}>
             <Bell className="h-5 w-5" />
           </IconButton>
           {unread > 0 && (
@@ -61,37 +62,37 @@ export function NotificationBell() {
       {(close) => (
         <div>
           <div className="flex items-center gap-2 border-b border-line/5 px-4 py-3">
-            <p className="flex-1 text-sm font-semibold">Notifications</p>
+            <p className="flex-1 text-sm font-semibold">{t('notifications.title')}</p>
             {unread > 0 && (
               <button type="button" onClick={() => markRead.mutate('all')} className="inline-flex items-center gap-1 text-xs text-brand-soft hover:underline">
-                <CheckCheck className="h-3.5 w-3.5" /> Mark all read
+                <CheckCheck className="h-3.5 w-3.5" /> {t('notifications.markAll')}
               </button>
             )}
             {hasRead && (
               <button type="button" onClick={() => clearRead.mutate()} className="inline-flex items-center gap-1 text-xs text-fg-muted hover:text-fg hover:underline">
-                <Trash2 className="h-3.5 w-3.5" /> Clear read
+                <Trash2 className="h-3.5 w-3.5" /> {t('notifications.clearRead')}
               </button>
             )}
           </div>
           {(data?.items.length ?? 0) > 0 && (
             <div className="border-b border-line/5 px-4 py-2">
               <Segmented
-                label="Show"
+                label={t('notifications.show')}
                 value={filter}
                 onChange={setFilter}
                 options={[
-                  { value: 'all', label: 'All' },
-                  { value: 'unread', label: unread ? `Unread (${unread})` : 'Unread' },
+                  { value: 'all', label: t('notifications.all') },
+                  { value: 'unread', label: unread ? t('notifications.unreadCount', { count: unread }) : t('notifications.unread') },
                 ]}
               />
             </div>
           )}
           {items.length === 0 ? (
-            <p className="px-4 py-8 text-center text-sm text-fg-muted">{filter === 'unread' && (data?.items.length ?? 0) > 0 ? 'No unread notifications.' : "You're all caught up."}</p>
+            <p className="px-4 py-8 text-center text-sm text-fg-muted">{filter === 'unread' && (data?.items.length ?? 0) > 0 ? t('notifications.noneUnread') : t('notifications.caughtUp')}</p>
           ) : (
             <div className="scrollbar-thin max-h-[60vh] overflow-y-auto">
               {groups.map((group) => (
-                <section key={group.label} aria-label={group.label}>
+                <section key={group.day} aria-label={group.label}>
                   <p className="sticky top-0 bg-elevated/95 px-4 pb-1 pt-2 text-[11px] font-semibold uppercase tracking-wide text-fg-subtle backdrop-blur">{group.label}</p>
                   <ul className="divide-y divide-line/5">
                     {group.items.map((item) => {
@@ -105,7 +106,7 @@ export function NotificationBell() {
                               {item.body && <span className="mt-0.5 block text-xs text-fg-muted">{item.body}</span>}
                               <span className="mt-1 block text-[11px] text-fg-subtle">{formatAgo(item.createdAt)}</span>
                             </span>
-                            {!item.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-label="Unread" />}
+                            {!item.read && <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-brand" aria-label={t('notifications.unread')} />}
                           </button>
                           <IconButton label={`Dismiss “${item.title}”`} onClick={() => dismiss.mutate(item.id)} className="mr-1 mt-2 h-7 w-7 opacity-60 hover:opacity-100 focus-visible:opacity-100">
                             <X className="h-3.5 w-3.5" />

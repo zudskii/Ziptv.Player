@@ -9,11 +9,14 @@ import type { PlaylistRepository } from '../ports/playlist-repository.js';
 import type { SourceRepository } from '../ports/source-repository.js';
 import type { UserRecord, UserRepository } from '../ports/user-repository.js';
 import type { AuthUser, SessionService } from './session.service.js';
+import type { MailLocale } from './mail-templates.js';
 
 export interface RequestContext {
   /** The authenticated caller, if the request carried a valid token (a guest, for register/login). */
   current: AuthUser | null;
   userAgent: string | null;
+  /** Language for anything sent to the person (the confirmation email). */
+  locale?: MailLocale;
 }
 
 /**
@@ -32,7 +35,7 @@ export class AccountService {
       limits: { maxSourcesPerUser: number; maxPlaylistsPerUser: number };
       logger: Logger;
       /** Runs after an account was created (the confirmation email goes out from here); must not throw. */
-      afterRegister?: (user: { id: string; email: string }) => void;
+      afterRegister?: (user: { id: string; email: string; locale?: MailLocale }) => void;
       /** Profiles moved by a guest merge: checked against the limit, caches refreshed after. */
       profiles?: { listByUser(userId: string): Promise<{ isDefault: boolean }[]>; max: number; afterMerge(accountId: string): Promise<void> };
     },
@@ -57,7 +60,7 @@ export class AccountService {
 
     if (guest) await this.deps.sessions.revokeAll(user.id); // the guest token(s)
     this.deps.logger.info({ userId: user.id, upgradedGuest: guest !== null }, 'Account registered');
-    this.deps.afterRegister?.({ id: user.id, email });
+    this.deps.afterRegister?.({ id: user.id, email, ...(context.locale ? { locale: context.locale } : {}) });
     return this.start(user, context.userAgent);
   }
 

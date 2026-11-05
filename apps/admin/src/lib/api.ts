@@ -1,4 +1,5 @@
 import type { ApiErrorBody, ApiErrorCode } from '@ziptv/contracts';
+import { i18n, t, type TKey } from '../i18n';
 
 export class ApiError extends Error {
   constructor(
@@ -56,7 +57,7 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
       body: init.body !== undefined ? JSON.stringify(init.body) : null,
     });
   } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', 'The console server cannot be reached.');
+    throw new ApiError(0, 'NETWORK_ERROR', t('errors.unreachable'));
   }
   if (response.status === 204) return undefined as T;
   const body = (await response.json().catch(() => null)) as unknown;
@@ -64,20 +65,26 @@ export async function api<T>(path: string, init: { method?: string; body?: unkno
     const error = (body as ApiErrorBody | null)?.error;
     // An expired/revoked session: back to sign-in (sign-in steps themselves keep their error).
     if (response.status === 401 && token && !path.startsWith('/auth/')) consoleSession.set(null);
-    throw new ApiError(response.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? `Request failed (${response.status})`, error?.details);
+    throw new ApiError(response.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? t('common.requestFailed', { status: response.status }), error?.details);
   }
   return body as T;
 }
 
 export function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : 'Something went wrong.';
+  if (error instanceof ApiError && i18n.locale !== 'en') {
+    // The server explains in English; other languages show the translation of its stable code.
+    const key = `errors.code.${error.code}` as TKey;
+    const translated = t(key);
+    if (translated !== key) return translated;
+  }
+  return error instanceof Error ? error.message : t('common.somethingWrong');
 }
 
 /** Downloads a file answer (CSV export) with the console session and saves it. */
 export async function download(path: string, filename: string): Promise<void> {
   const token = consoleSession.token;
   const response = await fetch(`/admin/v1${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
-  if (!response.ok) throw new ApiError(response.status, 'INTERNAL_ERROR', `Download failed (${response.status})`);
+  if (!response.ok) throw new ApiError(response.status, 'INTERNAL_ERROR', t('common.downloadFailed', { status: response.status }));
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement('a');
   link.href = url;

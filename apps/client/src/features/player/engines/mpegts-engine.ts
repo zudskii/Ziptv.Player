@@ -1,6 +1,7 @@
 import mpegts from 'mpegts.js';
 
 import { EngineError, resetMediaElement, seekToLiveEdge, waitForCanPlay, type EngineFactory } from './types';
+import { t } from '../../../i18n';
 
 /**
  * Continuous MPEG-TS / FLV over HTTP (Xtream-style `…/123.ts` channels) via mpegts.js,
@@ -10,7 +11,7 @@ export function createMpegtsEngineFactory(type: 'mpegts' | 'flv'): EngineFactory
   return (video, url) => {
     if (!mpegts.getFeatureList().mseLivePlayback) {
       // mpegts.js reports this when MSE is missing *or* cannot decode H.264/AAC (e.g. open-source Chromium).
-      throw new EngineError('This browser cannot play MPEG-TS streams (needs Media Source Extensions with H.264/AAC support).', 'unsupported');
+      throw new EngineError(t('player.err.tsUnsupported'), 'unsupported');
     }
 
     const player = mpegts.createPlayer(
@@ -76,13 +77,13 @@ export function createMpegtsEngineFactory(type: 'mpegts' | 'flv'): EngineFactory
 function toEngineError(errorType: string, details: string, info?: { code?: number; msg?: string }): EngineError {
   if (errorType === mpegts.ErrorTypes.NETWORK_ERROR) {
     const status = details === mpegts.ErrorDetails.NETWORK_STATUS_CODE_INVALID ? info?.code : undefined;
-    if (details === mpegts.ErrorDetails.NETWORK_TIMEOUT) return new EngineError('The stream server did not answer in time.', 'timeout');
-    return new EngineError(status ? `The stream server answered HTTP ${status}.` : 'Network error while loading the stream.', 'network', status);
+    if (details === mpegts.ErrorDetails.NETWORK_TIMEOUT) return new EngineError(t('player.err.timeout'), 'timeout');
+    return new EngineError(status ? t('player.err.httpStatus', { status }) : t('player.err.network'), 'network', status);
   }
   if (errorType === mpegts.ErrorTypes.MEDIA_ERROR) {
     return details === mpegts.ErrorDetails.MEDIA_CODEC_UNSUPPORTED || details === mpegts.ErrorDetails.MEDIA_FORMAT_UNSUPPORTED
-      ? new EngineError('This stream uses a codec the browser cannot play.', 'unsupported')
-      : new EngineError('The stream could not be decoded.', 'media');
+      ? new EngineError(t('player.err.codec'), 'unsupported')
+      : new EngineError(t('player.err.decode'), 'media');
   }
-  return new EngineError(info?.msg || 'Playback failed.', 'other');
+  return new EngineError(info?.msg || t('player.err.failed'), 'other');
 }

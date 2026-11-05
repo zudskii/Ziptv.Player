@@ -1,10 +1,11 @@
 import { MediaPlayer, supportsMediaSource } from 'dashjs';
 
 import { EngineError, resetMediaElement, seekToLiveEdge, waitForCanPlay, type EngineFactory } from './types';
+import { t } from '../../../i18n';
 
 /** MPEG-DASH (clear, non-DRM) via dash.js. Loaded lazily — most playlists never need it. */
 export const createDashEngine: EngineFactory = (video, url) => {
-  if (!supportsMediaSource()) throw new EngineError('MPEG-DASH needs Media Source Extensions, which this browser does not support.', 'unsupported');
+  if (!supportsMediaSource()) throw new EngineError(t('player.err.dashUnsupported'), 'unsupported');
 
   const player = MediaPlayer().create();
   const listeners = new Set<(error: EngineError) => void>();
@@ -48,7 +49,7 @@ export const createDashEngine: EngineFactory = (video, url) => {
 };
 
 function describe(error: unknown): string {
-  if (typeof error === 'string') return `MPEG-DASH playback failed (${error}).`;
+  if (typeof error === 'string') return t('player.err.dashFailedDetail', { detail: error });
   if (error && typeof error === 'object' && 'message' in error) return String((error as { message: unknown }).message);
-  return 'MPEG-DASH playback failed.';
+  return t('player.err.dashFailed');
 }

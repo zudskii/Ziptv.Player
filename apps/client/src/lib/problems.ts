@@ -1,5 +1,6 @@
 import type { ProblemKind, SourceProblem } from '@ziptv/contracts';
 
+import { t } from '../i18n';
 import { ApiError } from './api-client';
 
 export interface ProblemCopy {
@@ -7,50 +8,44 @@ export interface ProblemCopy {
   description: string;
 }
 
+type CopyKey = ProblemKind | 'invalid' | 'empty' | 'too_large' | 'blocked';
+
+/** Read when shown, so the wording follows the current language (getters: never spread them). */
+const copy = (key: CopyKey): ProblemCopy => ({
+  get title() {
+    return t(`problems.${key}.title`);
+  },
+  get description() {
+    return t(`problems.${key}.description`);
+  },
+});
+
 /**
  * Every failure the user can meet has its own wording and actions (spec: Error UX) —
  * never "Error 502".
  */
 export const PROBLEMS: Record<ProblemKind, ProblemCopy> = {
-  stream_unavailable: { title: 'Stream unavailable', description: "ZIPTV couldn't connect to this stream." },
-  playlist_expired: {
-    title: 'Playlist expired',
-    description: 'Your provider no longer serves this playlist. Renew the subscription or update the playlist link.',
-  },
-  auth_failed: {
-    title: 'Authentication failed',
-    description: 'The provider rejected the credentials. Check the username and password (or the playlist link).',
-  },
-  source_unavailable: {
-    title: 'Source unavailable',
-    description: "Your provider isn't answering right now. ZIPTV keeps retrying in the background.",
-  },
-  epg_unavailable: {
-    title: 'EPG unavailable',
-    description: "The programme guide couldn't be loaded. Channels still play; schedules appear once the guide is reachable.",
-  },
-  unsupported_format: { title: 'Unsupported format', description: "This stream uses a format or codec this browser can't play." },
-  parental_locked: { title: 'Locked', description: 'This content is protected by parental controls. Enter the PIN to watch it.' },
-  not_entitled: { title: 'Not available here', description: 'This channel is not licensed for your country or device right now.' },
+  stream_unavailable: copy('stream_unavailable'),
+  playlist_expired: copy('playlist_expired'),
+  auth_failed: copy('auth_failed'),
+  source_unavailable: copy('source_unavailable'),
+  epg_unavailable: copy('epg_unavailable'),
+  unsupported_format: copy('unsupported_format'),
+  parental_locked: copy('parental_locked'),
+  not_entitled: copy('not_entitled'),
 };
 
+const withKind = (kind: ProblemKind, key: CopyKey): ProblemCopy & { kind: ProblemKind } => Object.defineProperties({ kind }, Object.getOwnPropertyDescriptors(copy(key))) as ProblemCopy & { kind: ProblemKind };
+
 export const SOURCE_PROBLEMS: Record<SourceProblem, ProblemCopy & { kind: ProblemKind }> = {
-  auth_failed: { kind: 'auth_failed', ...PROBLEMS.auth_failed },
-  expired: { kind: 'playlist_expired', ...PROBLEMS.playlist_expired },
-  unavailable: { kind: 'source_unavailable', ...PROBLEMS.source_unavailable },
-  invalid: {
-    kind: 'unsupported_format',
-    title: 'Not a playlist',
-    description: 'The link returned something that is not an M3U playlist (a web page, a login page or another file).',
-  },
-  empty: { kind: 'unsupported_format', title: 'No channels found', description: 'The playlist was read, but it contains no playable entries.' },
-  too_large: { kind: 'unsupported_format', title: 'Playlist too large', description: 'The playlist is bigger than this server accepts.' },
-  blocked: {
-    kind: 'source_unavailable',
-    title: 'Address not allowed',
-    description: 'This link points to a private or local network address, which this server does not access.',
-  },
-  unknown: { kind: 'source_unavailable', ...PROBLEMS.source_unavailable },
+  auth_failed: withKind('auth_failed', 'auth_failed'),
+  expired: withKind('playlist_expired', 'playlist_expired'),
+  unavailable: withKind('source_unavailable', 'source_unavailable'),
+  invalid: withKind('unsupported_format', 'invalid'),
+  empty: withKind('unsupported_format', 'empty'),
+  too_large: withKind('unsupported_format', 'too_large'),
+  blocked: withKind('source_unavailable', 'blocked'),
+  unknown: withKind('source_unavailable', 'source_unavailable'),
 };
 
 /** Problem category of a failed API call (playback plan, catalog read). */

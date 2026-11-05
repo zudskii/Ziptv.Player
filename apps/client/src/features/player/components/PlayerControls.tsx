@@ -22,6 +22,7 @@ import { formatTimecode } from '../../../lib/time';
 import { canUsePictureInPicture, setVolume, toggleFullscreen, toggleMute, togglePictureInPicture, togglePlay } from '../media-actions';
 import type { PlaybackController, PlaybackSnapshot } from '../playback-controller';
 import type { VideoState } from '../use-video-state';
+import { t } from '../../../i18n';
 
 interface PlayerControlsProps {
   video: HTMLVideoElement | null;
@@ -36,7 +37,7 @@ interface PlayerControlsProps {
   nextLabel?: string;
 }
 
-export function PlayerControls({ video, container, controller, snapshot, state, visible, onNext, onPrevious, nextLabel = 'Next channel' }: PlayerControlsProps) {
+export function PlayerControls({ video, container, controller, snapshot, state, visible, onNext, onPrevious, nextLabel = t('player.nextChannel') }: PlayerControlsProps) {
   const active = snapshot.status !== 'idle';
   const vod = snapshot.plan ? snapshot.plan.content.mode !== 'live' : false;
   const VolumeIcon = state.muted || state.volume === 0 ? VolumeX : state.volume < 0.5 ? Volume1 : Volume2;
@@ -51,21 +52,21 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
     >
       {vod && <SeekBar video={video} controller={controller} />}
       <div className="flex items-center gap-0.5 sm:gap-1">
-        <IconButton tone="onDark" label={state.paused ? 'Play (Space)' : 'Pause (Space)'} onClick={() => togglePlay(video)} disabled={!active}>
+        <IconButton tone="onDark" label={state.paused ? t('player.ctl.play') : t('player.ctl.pause')} onClick={() => togglePlay(video)} disabled={!active}>
           {state.paused ? <Play className="h-5 w-5 fill-current" /> : <Pause className="h-5 w-5 fill-current" />}
         </IconButton>
         {vod && (
           <>
-            <IconButton tone="onDark" label="Back 10 seconds (←)" onClick={() => controller?.seekBy(-10)} disabled={!active}>
+            <IconButton tone="onDark" label={t('player.ctl.back')} onClick={() => controller?.seekBy(-10)} disabled={!active}>
               <RotateCcw className="h-4 w-4" />
             </IconButton>
-            <IconButton tone="onDark" label="Forward 10 seconds (→)" onClick={() => controller?.seekBy(10)} disabled={!active}>
+            <IconButton tone="onDark" label={t('player.ctl.forward')} onClick={() => controller?.seekBy(10)} disabled={!active}>
               <RotateCw className="h-4 w-4" />
             </IconButton>
           </>
         )}
         {onPrevious && (
-          <IconButton tone="onDark" label="Previous channel (P)" onClick={onPrevious} className="hidden xs:inline-flex">
+          <IconButton tone="onDark" label={t('player.ctl.prev')} onClick={onPrevious} className="hidden xs:inline-flex">
             <SkipBack className="h-4 w-4" />
           </IconButton>
         )}
@@ -76,7 +77,7 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
         )}
 
         <div className="group/volume flex items-center">
-          <IconButton tone="onDark" label={state.muted ? 'Unmute (M)' : 'Mute (M)'} onClick={() => toggleMute(video)}>
+          <IconButton tone="onDark" label={state.muted ? t('player.ctl.unmute') : t('player.ctl.mute')} onClick={() => toggleMute(video)}>
             <VolumeIcon className="h-5 w-5" />
           </IconButton>
           <input
@@ -85,7 +86,7 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
             max={1}
             step={0.05}
             value={state.muted ? 0 : state.volume}
-            aria-label="Volume"
+            aria-label={t('player.ctl.volume')}
             className="volume-slider ml-1 hidden w-24 sm:block"
             onChange={(event) => setVolume(video, Number(event.target.value))}
           />
@@ -99,10 +100,10 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
             onClick={() => controller?.goLive()}
             disabled={!active}
             className="ml-1 inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white/90 hover:bg-white/10 disabled:opacity-40 sm:ml-2"
-            title="Jump to live"
+            title={t('player.ctl.toLive')}
           >
             <span className={cn('h-2 w-2 rounded-full', snapshot.status === 'playing' ? 'bg-red-500' : 'bg-slate-500')} />
-            Live
+            {t('player.ctl.live')}
           </button>
         )}
 
@@ -110,11 +111,11 @@ export function PlayerControls({ video, container, controller, snapshot, state, 
           {(snapshot.tracks.audio.length > 1 || snapshot.tracks.subtitles.length > 0) && <TracksMenu controller={controller} snapshot={snapshot} />}
           {snapshot.qualities.length > 0 && <QualityMenu controller={controller} snapshot={snapshot} />}
           {canUsePictureInPicture() && (
-            <IconButton tone="onDark" label="Picture in picture" active={state.pictureInPicture} onClick={() => void togglePictureInPicture(video)} disabled={!active}>
+            <IconButton tone="onDark" label={t('player.ctl.pip')} active={state.pictureInPicture} onClick={() => void togglePictureInPicture(video)} disabled={!active}>
               <PictureInPicture2 className="h-4 w-4" />
             </IconButton>
           )}
-          <IconButton tone="onDark" label={state.fullscreen ? 'Exit fullscreen (F)' : 'Fullscreen (F)'} onClick={() => void toggleFullscreen(container, video)}>
+          <IconButton tone="onDark" label={state.fullscreen ? t('player.ctl.exitFs') : t('player.ctl.fs')} onClick={() => void toggleFullscreen(container, video)}>
             {state.fullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
           </IconButton>
         </div>
@@ -185,7 +186,7 @@ function SeekBar({ video, controller }: { video: HTMLVideoElement | null; contro
         max={max}
         step={1}
         value={Math.min(value, max)}
-        aria-label="Seek"
+        aria-label={t('player.ctl.seek')}
         aria-valuetext={`${formatTimecode(value)} of ${formatTimecode(time.duration)}`}
         disabled={!time.duration}
         onPointerDown={() => setDragging(time.current)}
@@ -215,11 +216,11 @@ function TimeLabel({ video }: { video: HTMLVideoElement | null }) {
 function TracksMenu({ controller, snapshot }: { controller: PlaybackController | null; snapshot: PlaybackSnapshot }) {
   const { audio, audioIndex, subtitles, subtitleIndex } = snapshot.tracks;
   return (
-    <MenuButton label="Audio and subtitles" icon={<Captions className="h-4 w-4" />}>
+    <MenuButton label={t('player.ctl.tracks')} icon={<Captions className="h-4 w-4" />}>
       {(close) => (
         <>
           {audio.length > 1 && (
-            <MenuGroup title="Audio">
+            <MenuGroup title={t('player.ctl.audio')}>
               {audio.map((track) => (
                 <MenuOption key={`a${track.index}`} checked={track.index === audioIndex} onClick={() => (controller?.setAudioTrack(track.index), close())}>
                   {track.label}
@@ -228,9 +229,9 @@ function TracksMenu({ controller, snapshot }: { controller: PlaybackController |
             </MenuGroup>
           )}
           {subtitles.length > 0 && (
-            <MenuGroup title="Subtitles">
+            <MenuGroup title={t('player.ctl.subtitles')}>
               <MenuOption checked={subtitleIndex < 0} onClick={() => (controller?.setSubtitleTrack(-1), close())}>
-                Off
+                {t('player.ctl.off')}
               </MenuOption>
               {subtitles.map((track) => (
                 <MenuOption key={`s${track.index}`} checked={track.index === subtitleIndex} onClick={() => (controller?.setSubtitleTrack(track.index), close())}>
@@ -246,11 +247,11 @@ function TracksMenu({ controller, snapshot }: { controller: PlaybackController |
 }
 
 function QualityMenu({ controller, snapshot }: { controller: PlaybackController | null; snapshot: PlaybackSnapshot }) {
-  const chosen = snapshot.qualities.find((level) => level.index === snapshot.quality)?.label ?? 'Auto';
+  const chosen = snapshot.qualities.find((level) => level.index === snapshot.quality)?.label ?? t('player.ctl.auto');
   // On Auto, show what Auto picked.
   const current = snapshot.quality < 0 && snapshot.playingQuality ? `Auto · ${snapshot.playingQuality}` : chosen;
   return (
-    <MenuButton label="Quality" icon={<Settings2 className="h-4 w-4" />} text={current}>
+    <MenuButton label={t('player.ctl.quality')} icon={<Settings2 className="h-4 w-4" />} text={current}>
       {(close) =>
         snapshot.qualities.map((level) => (
           <MenuOption key={level.index} checked={level.index === snapshot.quality} onClick={() => (controller?.setQuality(level.index), close())}>

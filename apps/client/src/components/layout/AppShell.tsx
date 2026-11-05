@@ -15,6 +15,7 @@ import { useThemeStore } from '../../features/theme/theme-store';
 import { cn } from '../../lib/cn';
 import { IconButton } from '../ui/Button';
 import { Brand } from './Brand';
+import { useT } from '../../i18n';
 
 /**
  * App frame: sidebar navigation on desktop, bottom tab bar on phones, top bar with
@@ -41,6 +42,7 @@ export function AppShell({ topBarExtra }: { topBarExtra?: ReactNode }) {
 }
 
 function Sidebar({ items }: { items: NavItem[] }) {
+  const { t } = useT();
   const { pathname } = useLocation();
   const groups = [...new Set(items.map((item) => item.group))];
   return (
@@ -48,7 +50,7 @@ function Sidebar({ items }: { items: NavItem[] }) {
       <div className="px-2 pb-6">
         <Brand />
       </div>
-      <nav className="flex flex-1 flex-col gap-1" aria-label="Main navigation">
+      <nav className="flex flex-1 flex-col gap-1" aria-label={t('nav.main')}>
         {groups.map((group, index) => (
           <Fragment key={group}>
             {index > 0 && <div className="my-2 border-t border-line/5" />}
@@ -64,7 +66,7 @@ function Sidebar({ items }: { items: NavItem[] }) {
                   )}
                 >
                   <item.icon className={cn('h-5 w-5', isActivePath(item, pathname) ? 'text-brand-soft' : '')} />
-                  {item.label}
+                  {t(item.label)}
                 </NavLink>
               ))}
           </Fragment>
@@ -95,18 +97,20 @@ function TopBar({ extra }: { extra?: ReactNode }) {
 }
 
 function ThemeToggle() {
+  const { t } = useT();
   const preference = useThemeStore((state) => state.preference);
   const setPreference = useThemeStore((state) => state.setPreference);
   const next = preference === 'dark' ? 'light' : preference === 'light' ? 'system' : 'dark';
   const Icon = preference === 'dark' ? Moon : preference === 'light' ? Sun : SunMoon;
   return (
-    <IconButton className="hidden sm:inline-flex" label={`Theme: ${preference} (switch to ${next})`} onClick={() => setPreference(next)}>
+    <IconButton className="hidden sm:inline-flex" label={t('nav.theme', { current: t(`nav.themeName.${preference}`), next: t(`nav.themeName.${next}`) })} onClick={() => setPreference(next)}>
       <Icon className="h-5 w-5" />
     </IconButton>
   );
 }
 
 function BottomNav({ items }: { items: NavItem[] }) {
+  const { t } = useT();
   const { pathname } = useLocation();
   const [moreOpen, setMoreOpen] = useState(false);
   const primary = items.filter((item) => item.primary).slice(0, 4);
@@ -117,7 +121,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
     <>
       {moreOpen && (
         <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setMoreOpen(false)}>
-          <nav className="absolute inset-x-3 bottom-[4.5rem] animate-fade-in rounded-2xl border border-line/10 bg-elevated p-2 shadow-2xl" aria-label="More">
+          <nav className="absolute inset-x-3 bottom-[4.5rem] animate-fade-in rounded-2xl border border-line/10 bg-elevated p-2 shadow-2xl" aria-label={t('nav.more')}>
             {rest.map((item) => (
               <NavLink
                 key={item.to}
@@ -126,7 +130,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
                 className={cn('flex items-center gap-3 rounded-lg px-3 py-3 text-sm', isActivePath(item, pathname) ? 'bg-brand/15 text-fg' : 'text-fg-muted')}
               >
                 <item.icon className="h-5 w-5" />
-                {item.label}
+                {t(item.label)}
               </NavLink>
             ))}
           </nav>
@@ -134,7 +138,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
       )}
       <nav
         className="fixed inset-x-0 bottom-0 z-40 flex h-16 border-t border-line/5 bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden"
-        aria-label="Tab bar"
+        aria-label={t('nav.tabBar')}
       >
         {primary.map((item) => (
           <NavLink
@@ -143,7 +147,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
             className={cn('flex flex-1 flex-col items-center justify-center gap-1 text-[11px] font-medium', isActivePath(item, pathname) ? 'text-brand-soft' : 'text-fg-muted')}
           >
             <item.icon className="h-5 w-5" />
-            {item.label}
+            {t(item.label)}
           </NavLink>
         ))}
         {rest.length > 0 && (
@@ -154,7 +158,7 @@ function BottomNav({ items }: { items: NavItem[] }) {
             aria-expanded={moreOpen}
           >
             <Ellipsis className="h-5 w-5" />
-            More
+            {t('nav.more')}
           </button>
         )}
       </nav>

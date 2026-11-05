@@ -8,13 +8,9 @@ import { api } from '../lib/api';
 import { relative } from '../lib/format';
 import { useAction } from '../lib/mutation';
 import { formatTime } from '../lib/nav';
+import { statusLabel, t } from '../i18n';
 
-const KIND_LABEL: Record<ChangeRequestDto['kind'], string> = {
-  'package.create': 'New package',
-  'package.update': 'Package change',
-  'rights.grant': 'New rights grant',
-  'rights.revoke': 'Rights revoked',
-};
+const kindLabel = (kind: ChangeRequestDto['kind']) => t(`approvals.kind.${kind.replace('.', '_') as 'package_create' | 'package_update' | 'rights_grant' | 'rights_revoke'}`);
 
 const STATUS_TONE: Record<ChangeRequestDto['status'], 'neutral' | 'ok' | 'warn' | 'danger' | 'accent'> = {
   pending: 'warn',
@@ -44,54 +40,54 @@ export function ApprovalsPage() {
   });
   const decide = useAction(({ request, action, note }: Decision & { note: string }) => api<ChangeRequestDto>(`/change-requests/${request.id}/${action}`, { method: 'POST', body: note ? { note } : {} }), {
     inlineErrors: true,
-    success: (result) => (result.status === 'failed' ? `Could not apply: ${result.error}` : `Request ${result.status}`),
+    success: (result) => (result.status === 'failed' ? t('approvals.couldNotApply', { error: result.error ?? '' }) : t('approvals.requestStatus', { status: statusLabel(result.status) })),
     invalidate: [['change-requests'], ['overview'], ['packages'], ['package'], ['channel']],
     onSuccess: () => setDecision(null),
   });
 
   return (
     <>
-      <PageHeader title="Approvals" description="Changes to prices, packages and licences are made by two people. You cannot decide on your own requests." />
+      <PageHeader title={t('approvals.title')} description={t('approvals.intro')} />
       <Tabs
-        label="Requests"
+        label={t('approvals.requests')}
         value={tab}
         onChange={(value) => {
           setTab(value);
           setOffset(0);
         }}
         items={[
-          { value: 'open', label: `Waiting${requests.data ? ` (${requests.data.open})` : ''}` },
-          { value: 'all', label: 'History' },
+          { value: 'open', label: requests.data ? t('approvals.waitingCount', { count: requests.data.open }) : t('approvals.waiting') },
+          { value: 'all', label: t('approvals.history') },
         ]}
       />
       <ErrorNote error={requests.error} />
       {requests.isPending ? (
         <Spinner />
       ) : requests.data && requests.data.items.length === 0 ? (
-        <p className="card p-6 text-sm text-fg-muted">{tab === 'open' ? 'Nothing is waiting for a decision.' : 'No requests yet.'}</p>
+        <p className="card p-6 text-sm text-fg-muted">{tab === 'open' ? t('approvals.noneWaiting') : t('approvals.none')}</p>
       ) : (
-        <ul className="space-y-3" aria-label="Change requests">
+        <ul className="space-y-3" aria-label={t('approvals.changeRequests')}>
           {requests.data?.items.map((request) => (
             <li key={request.id} className="card p-4" aria-label={request.summary}>
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="mb-1 flex flex-wrap items-center gap-2">
-                    <Badge tone={request.mode === 'review' ? 'danger' : 'accent'}>{KIND_LABEL[request.kind]}</Badge>
-                    <Badge tone={STATUS_TONE[request.status]}>{request.mode === 'review' && request.status === 'applied' ? 'awaiting review' : request.status}</Badge>
+                    <Badge tone={request.mode === 'review' ? 'danger' : 'accent'}>{kindLabel(request.kind)}</Badge>
+                    <Badge tone={STATUS_TONE[request.status]}>{request.mode === 'review' && request.status === 'applied' ? t('approvals.awaitingReview') : statusLabel(request.status)}</Badge>
                   </div>
                   <p className="font-medium">{request.summary}</p>
                   <p className="mt-1 text-xs text-fg-muted">
-                    {request.mode === 'review' ? 'Applied' : 'Requested'} by {request.requestedBy.name} ({request.requestedBy.email}) · {formatTime(request.requestedAt)} ({relative(request.requestedAt)})
+                    {t(request.mode === 'review' ? 'approvals.appliedBy' : 'approvals.requestedBy', { name: request.requestedBy.name, email: request.requestedBy.email, time: formatTime(request.requestedAt), ago: relative(request.requestedAt) })}
                   </p>
                   {request.decidedBy && (
                     <p className="mt-0.5 text-xs text-fg-muted">
-                      {request.status} by {request.decidedBy.name} · {formatTime(request.decidedAt)}
+                      {t('approvals.decidedBy', { status: statusLabel(request.status), name: request.decidedBy.name, time: formatTime(request.decidedAt) })}
                       {request.decisionNote ? ` — “${request.decisionNote}”` : ''}
                     </p>
                   )}
                   {request.error && <p className="mt-1 text-xs text-red-300">{request.error}</p>}
                   <details className="mt-2 text-xs text-fg-subtle">
-                    <summary className="cursor-pointer select-none">Details</summary>
+                    <summary className="cursor-pointer select-none">{t('approvals.details')}</summary>
                     <pre className="mt-2 overflow-x-auto rounded-lg bg-sunken p-3 font-mono">{JSON.stringify(request.payload, null, 2)}</pre>
                   </details>
                 </div>
@@ -99,24 +95,24 @@ export function ApprovalsPage() {
                   {request.canDecide && request.mode === 'approval' && (
                     <>
                       <Button tone="primary" onClick={() => setDecision({ request, action: 'approve' })}>
-                        <Check className="h-4 w-4" aria-hidden /> Approve
+                        <Check className="h-4 w-4" aria-hidden /> {t('approvals.approve')}
                       </Button>
                       <Button tone="danger" onClick={() => setDecision({ request, action: 'reject' })}>
-                        <X className="h-4 w-4" aria-hidden /> Reject
+                        <X className="h-4 w-4" aria-hidden /> {t('approvals.reject')}
                       </Button>
                     </>
                   )}
                   {request.canDecide && request.mode === 'review' && (
                     <Button tone="primary" onClick={() => setDecision({ request, action: 'review' })}>
-                      <Check className="h-4 w-4" aria-hidden /> Mark reviewed
+                      <Check className="h-4 w-4" aria-hidden /> {t('approvals.markReviewed')}
                     </Button>
                   )}
                   {request.canWithdraw && (
                     <Button onClick={() => setDecision({ request, action: 'withdraw' })}>
-                      <Undo2 className="h-4 w-4" aria-hidden /> Withdraw
+                      <Undo2 className="h-4 w-4" aria-hidden /> {t('approvals.withdraw')}
                     </Button>
                   )}
-                  {request.status === 'pending' && !request.canDecide && !request.canWithdraw && <span className="text-xs text-fg-subtle">Waiting for someone with the right role</span>}
+                  {request.status === 'pending' && !request.canDecide && !request.canWithdraw && <span className="text-xs text-fg-subtle">{t('approvals.waitingRole')}</span>}
                 </div>
               </div>
             </li>
@@ -127,11 +123,11 @@ export function ApprovalsPage() {
 
       <ConfirmDialog
         open={decision !== null}
-        title={decision ? { approve: 'Approve this change?', reject: 'Reject this change?', withdraw: 'Withdraw your request?', review: 'Mark as reviewed?' }[decision.action] : ''}
+        title={decision ? { approve: t('approvals.approveTitle'), reject: t('approvals.rejectTitle'), withdraw: t('approvals.withdrawTitle'), review: t('approvals.reviewTitle') }[decision.action] : ''}
         description={decision && <p>{decision.request.summary}</p>}
-        confirmLabel={decision ? { approve: 'Approve and apply', reject: 'Reject', withdraw: 'Withdraw', review: 'Mark reviewed' }[decision.action] : ''}
+        confirmLabel={decision ? { approve: t('approvals.approveApply'), reject: t('approvals.reject'), withdraw: t('approvals.withdraw'), review: t('approvals.markReviewed') }[decision.action] : ''}
         tone={decision?.action === 'reject' ? 'danger' : 'primary'}
-        note={decision?.action === 'withdraw' ? undefined : { label: decision?.action === 'reject' ? 'Reason (required)' : 'Note (optional)', required: decision?.action === 'reject' }}
+        note={decision?.action === 'withdraw' ? undefined : { label: decision?.action === 'reject' ? t('approvals.reasonRequired') : t('approvals.noteOptional'), required: decision?.action === 'reject' }}
         busy={decide.isPending}
         error={decide.error}
         onConfirm={(note) => decision && decide.mutate({ ...decision, note })}

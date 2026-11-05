@@ -2,6 +2,7 @@ import type { PlaybackPlanDto, PlaybackSessionDto, StartPlaybackSessionRequest }
 
 import { ApiError } from '../../lib/api-client';
 import { isDeviceRequired, type DeviceRegistry } from './device';
+import { t } from '../../i18n';
 
 export interface PlaybackSessionApi {
   startSession(body: StartPlaybackSessionRequest): Promise<PlaybackSessionDto>;
@@ -15,7 +16,7 @@ interface Timers {
 }
 
 const browserTimers: Timers = { setInterval: (handler, ms) => setInterval(handler, ms), clearInterval: (handle) => clearInterval(handle as ReturnType<typeof setInterval>) };
-const aborted = () => new ApiError(0, 'ABORTED', 'Request was cancelled.');
+const aborted = () => new ApiError(0, 'ABORTED', t('common.requestCancelled'));
 const noop = () => undefined;
 
 /**

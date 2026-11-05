@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { cn } from '../../lib/cn';
+import { t } from '../../i18n';
 
 type Tone = 'neutral' | 'brand' | 'success' | 'warning' | 'danger' | 'live';
 
@@ -26,7 +27,7 @@ export function LiveBadge({ className }: { className?: string }) {
   return (
     <Badge tone="live" className={className}>
       <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden />
-      Live
+      {t('common.live')}
     </Badge>
   );
 }

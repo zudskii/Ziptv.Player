@@ -16,6 +16,7 @@ import { usePlaylistEntries } from '../api';
 import { hasDrag, readDrag, writeDrag } from '../drag';
 import type { EntryFilter } from '../entry-filter';
 import { idsInRange, idsToDrag } from '../selection';
+import { t } from '../../../i18n';
 
 const ROW_HEIGHT = 60;
 
@@ -57,13 +58,13 @@ export function EntryList({ playlistId, filter, groupNames, selected, onSelect, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [playlistId, filter.scope.type, filter.scope.type === 'group' ? filter.scope.groupId : '', filter.search, filter.missingOnly]);
 
-  if (isPending) return <Spinner className="py-16" label="Loading channels…" />;
-  if (isError) return <FullscreenMessage tone="error" title="Couldn't load the channels" description={errorMessage(error)} action={{ label: 'Try again', onClick: () => void refetch() }} />;
+  if (isPending) return <Spinner className="py-16" label={t('playlists.loadingChannels')} />;
+  if (isError) return <FullscreenMessage tone="error" title={t('playlists.list.loadFailed')} description={errorMessage(error)} action={{ label: t('playlists.retry'), onClick: () => void refetch() }} />;
   if (total === 0) {
     return filter.search || filter.missingOnly || filter.scope.type !== 'all' ? (
-      <EmptyState className="m-4" icon={<SearchX className="h-8 w-8" />} title="No channels here" description="Nothing matches this view." />
+      <EmptyState className="m-4" icon={<SearchX className="h-8 w-8" />} title={t('playlists.list.empty')} description={t('playlists.list.emptyHint')} />
     ) : (
-      <EmptyState className="m-4" icon={<SearchX className="h-8 w-8" />} title="This playlist is empty" description="Use “Add channels” to pick channels from your sources." />
+      <EmptyState className="m-4" icon={<SearchX className="h-8 w-8" />} title={t('playlists.list.playlistEmpty')} description={t('playlists.list.playlistEmptyHint')} />
     );
   }
 
@@ -83,7 +84,7 @@ export function EntryList({ playlistId, filter, groupNames, selected, onSelect, 
   };
 
   return (
-    <div ref={scrollRef} className="scrollbar-thin h-full overflow-y-auto overscroll-contain" role="list" aria-label="Channels in this playlist">
+    <div ref={scrollRef} className="scrollbar-thin h-full overflow-y-auto overscroll-contain" role="list" aria-label={t('playlists.list.label')}>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {items.map((item) => {
           const entry = entryAt(item.index);
@@ -166,7 +167,7 @@ function Row({ entry, index, groupName, showGroup, checked, dropping, selected, 
       <input
         type="checkbox"
         checked={checked}
-        aria-label={`Select ${entry.name}`}
+        aria-label={t('playlists.selectNamed', { name: entry.name })}
         onChange={() => undefined}
         onClick={(event) => onClick(index, entry.id, event.shiftKey)}
         className="h-4 w-4 shrink-0 accent-brand"
@@ -182,17 +183,17 @@ function Row({ entry, index, groupName, showGroup, checked, dropping, selected, 
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="truncate text-sm text-fg">{entry.name}</span>
-          {missing && <Badge tone="danger">Missing</Badge>}
+          {missing && <Badge tone="danger">{t('playlists.list.missing')}</Badge>}
         </span>
         <span className="block truncate text-xs text-fg-subtle">
-          {[showGroup ? (groupName ?? 'No group') : null, entry.sourceName, entry.status === 'unplayable' ? 'not playable in the browser' : null].filter(Boolean).join(' · ')}
+          {[showGroup ? (groupName ?? t('playlists.noGroup')) : null, entry.sourceName, entry.status === 'unplayable' ? t('playlists.list.notPlayable') : null].filter(Boolean).join(' · ')}
         </span>
       </span>
       {entry.number !== null && <span className="shrink-0 rounded-md bg-fg/5 px-1.5 py-0.5 text-xs font-medium tabular-nums text-fg-muted">#{entry.number}</span>}
-      <IconButton label={`Edit ${entry.name}`} onClick={() => onEdit(entry)}>
+      <IconButton label={t('playlists.editNamed', { name: entry.name })} onClick={() => onEdit(entry)}>
         <Pencil className="h-4 w-4" />
       </IconButton>
-      <IconButton label={`Remove ${entry.name}`} onClick={() => onRemove(entry)}>
+      <IconButton label={t('playlists.removeNamed', { name: entry.name })} onClick={() => onRemove(entry)}>
         <Trash2 className="h-4 w-4" />
       </IconButton>
     </div>

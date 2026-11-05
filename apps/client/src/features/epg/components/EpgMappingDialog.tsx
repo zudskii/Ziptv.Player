@@ -11,8 +11,8 @@ import { Spinner } from '../../../components/ui/Spinner';
 import { errorMessage } from '../../../lib/api-client';
 import { imageSources } from '../../../lib/images';
 import { useEpgLink, useGuideChannelSearch, useRemoveMapping, useSetMapping } from '../api';
+import { t } from '../../../i18n';
 
-const MATCH_LABELS = { manual: 'Chosen by you', 'tvg-id': 'Matched by tvg-id', name: 'Matched by name' } as const;
 
 interface EpgMappingDialogProps {
   sourceId: string;
@@ -35,10 +35,10 @@ export function EpgMappingDialog({ sourceId, channel, onClose }: EpgMappingDialo
     if (!channel) return;
     try {
       await setMapping.mutateAsync({ sourceId, channelKey: channel.key, guideId, epgChannelId });
-      toast.success('Guide channel updated', { description: 'Programmes appear in a moment.' });
+      toast.success(t('epg.mapping.updated'), { description: t('epg.mapping.soon') });
       onClose();
     } catch (error) {
-      toast.error('Could not change the guide channel', { description: errorMessage(error) });
+      toast.error(t('epg.mapping.failed'), { description: errorMessage(error) });
     }
   };
 
@@ -46,7 +46,7 @@ export function EpgMappingDialog({ sourceId, channel, onClose }: EpgMappingDialo
     if (!channel) return;
     try {
       await removeMapping.mutateAsync({ sourceId, channelKey: channel.key });
-      toast.success('Back to automatic matching');
+      toast.success(t('epg.mapping.backToAuto'));
       onClose();
     } catch (error) {
       toast.error(errorMessage(error));
@@ -54,33 +54,33 @@ export function EpgMappingDialog({ sourceId, channel, onClose }: EpgMappingDialo
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Programme guide" description={channel ? `Which guide channel shows programmes for “${channel.name}”` : undefined}>
+    <Dialog open={open} onClose={onClose} title={t('epg.mapping.title')} description={channel ? t('epg.mappingFor', { name: channel.name }) : undefined}>
       <div className="space-y-4">
         <div className="rounded-lg bg-sunken/50 p-3 text-sm">
           {link.isPending ? (
             <Spinner />
           ) : current ? (
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-fg-muted">Now:</span>
+              <span className="text-fg-muted">{t('epg.mapping.now')}</span>
               <span className="font-medium text-fg">{current.epgChannelName}</span>
               <span className="text-fg-subtle">· {current.guideName}</span>
-              <Badge tone={current.match === 'manual' ? 'brand' : 'neutral'}>{MATCH_LABELS[current.match]}</Badge>
+              <Badge tone={current.match === 'manual' ? 'brand' : 'neutral'}>{t(`epg.match.${current.match}`)}</Badge>
             </div>
           ) : (
-            <p className="text-fg-muted">No guide channel matched automatically. Pick one below.</p>
+            <p className="text-fg-muted">{t('epg.mapping.noAuto')}</p>
           )}
         </div>
 
         <label className="relative block">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search guide channels…" aria-label="Search guide channels" className="field pl-9" />
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('epg.mapping.searchPlaceholder')} aria-label={t('epg.mapping.search')} className="field pl-9" />
         </label>
 
-        <ul className="scrollbar-thin max-h-72 space-y-1 overflow-y-auto" aria-label="Guide channels">
+        <ul className="scrollbar-thin max-h-72 space-y-1 overflow-y-auto" aria-label={t('epg.mapping.channels')}>
           {options.isPending ? (
             <Spinner className="py-6" />
           ) : (options.data ?? []).length === 0 ? (
-            <li className="py-6 text-center text-sm text-fg-muted">No guide channels match.</li>
+            <li className="py-6 text-center text-sm text-fg-muted">{t('epg.mapping.noMatch')}</li>
           ) : (
             options.data!.map((option) => {
               const selected = current?.guideId === option.guideId && current.epgChannelId === option.id;
@@ -109,9 +109,9 @@ export function EpgMappingDialog({ sourceId, channel, onClose }: EpgMappingDialo
 
         <div className="flex justify-between gap-2">
           <Button variant="ghost" icon={<RotateCcw className="h-4 w-4" />} onClick={() => void reset()} disabled={current?.match !== 'manual'} loading={removeMapping.isPending}>
-            Use automatic
+            {t('epg.mapping.useAuto')}
           </Button>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>{t('epg.close')}</Button>
         </div>
       </div>
     </Dialog>

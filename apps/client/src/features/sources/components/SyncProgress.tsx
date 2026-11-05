@@ -3,6 +3,7 @@ import { Check, LoaderCircle } from 'lucide-react';
 
 import { cn } from '../../../lib/cn';
 import { stageIndex, SYNC_STAGES } from '../source-status';
+import { t } from '../../../i18n';
 
 /** "Connecting… → Parsing channels… → Matching EPG… → Building your library…" */
 export function SyncProgress({ source, className }: { source: Pick<SourceDto, 'sync' | 'revision'>; className?: string }) {
@@ -10,7 +11,7 @@ export function SyncProgress({ source, className }: { source: Pick<SourceDto, 's
   const current = source.sync.status === 'running' ? Math.max(0, stageIndex(source.sync.stage)) : source.sync.status === 'queued' ? 0 : -1;
 
   return (
-    <ol className={cn('space-y-2.5', className)} aria-label="Sync progress">
+    <ol className={cn('space-y-2.5', className)} aria-label={t('sources.progress')}>
       {SYNC_STAGES.map((step, index) => {
         const done = finished || index < current;
         const active = !finished && index === current && source.sync.status !== 'failed';

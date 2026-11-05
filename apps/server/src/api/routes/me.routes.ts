@@ -1,7 +1,6 @@
 import { Router, type RequestHandler } from 'express';
 import { z } from 'zod';
 
-import type { ParentalService } from '../../application/identity/parental.service.js';
 import type { ProfileService } from '../../application/identity/profile.service.js';
 import type { MyListService } from '../../application/user-state/my-list.service.js';
 import type { ViewerDataService } from '../../application/user-state/viewer-data.service.js';
@@ -10,6 +9,7 @@ import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentViewer, queryParam, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import { ContentKey, EntityId } from './schemas.js';
+import type { ParentalService } from '../../application/identity/parental.service.js';
 
 const ListType = z.enum(['channel', 'movie', 'series']);
 const ProgressType = z.enum(['movie', 'episode']);
@@ -20,7 +20,7 @@ const ImportBody = z.object({ favorites: KeyList, recents: KeyList }).strict();
 const LANGUAGE = z.string().max(16);
 const SettingsBody = z
   .object({
-    general: z.object({ startPage: z.enum(['home', 'live', 'guide', 'movies', 'series']), use24hClock: z.boolean() }).partial().strict().optional(),
+    general: z.object({ startPage: z.enum(['home', 'live', 'guide', 'movies', 'series']), use24hClock: z.boolean(), language: z.enum(['', 'ka', 'en', 'ru']) }).partial().strict().optional(),
     playback: z
       .object({
         autoplay: z.boolean(),
@@ -40,27 +40,13 @@ const SettingsBody = z
   })
   .strict();
 
-const PIN = z.string().max(12);
-const SetPinBody = z.object({ currentPin: PIN.optional(), pin: PIN }).strict();
-const PinOnly = z.object({ pin: PIN }).strict();
-const LockSource = z.union([EntityId, z.literal('operator')]);
-const RulesBody = z
-  .object({
-    pin: PIN,
-    profileId: EntityId.optional(),
-    hideAdult: z.boolean().optional(),
-    lockedGroups: z.array(z.object({ sourceId: LockSource, group: z.string().min(1).max(200) }).strict()).max(500).optional(),
-    lockedChannels: z.array(z.object({ sourceId: LockSource, key: z.string().min(1).max(200), name: z.string().max(200).optional() }).strict()).max(500).optional(),
-  })
-  .strict();
-
 /** The active profile's own state: My List, Continue Watching, History, Settings, Data & Storage. */
 export function createMeRouter(deps: {
   myList: MyListService;
   watch: WatchStateService;
   data: ViewerDataService;
-  profiles: ProfileService;
   parental: ParentalService;
+  profiles: ProfileService;
   auth: RequestHandler;
   limit: RateLimiterFactory;
 }): Router {
@@ -124,26 +110,6 @@ export function createMeRouter(deps: {
   router.patch('/settings', writeLimiter, async (req, res) => {
     res.json(await deps.profiles.updateSettings(currentViewer(req), parseInput(SettingsBody, req.body)));
   });
-  // --- parental controls (PIN per account, rules per profile) --------------------------------------
-  const pinLimiter = deps.limit({ name: 'me:pin', windowMs: 10 * 60 * 1000, limit: 30, perUser: true });
-  router.get('/parental', async (req, res) => {
-    const profileId = req.query.profileId === undefined ? undefined : parseInput(EntityId, req.query.profileId, 'Profile id');
-    res.json(await deps.parental.settings(currentViewer(req), profileId));
-  });
-  router.put('/parental/pin', pinLimiter, async (req, res) => {
-    res.json(await deps.parental.setPin(currentViewer(req), parseInput(SetPinBody, req.body)));
-  });
-  router.delete('/parental/pin', pinLimiter, async (req, res) => {
-    res.json(await deps.parental.removePin(currentViewer(req), parseInput(PinOnly, req.body ?? {}).pin));
-  });
-  router.post('/parental/unlock', pinLimiter, async (req, res) => {
-    res.setHeader('Cache-Control', 'no-store');
-    res.json(await deps.parental.unlock(currentViewer(req), parseInput(PinOnly, req.body ?? {}).pin));
-  });
-  router.put('/parental/rules', pinLimiter, async (req, res) => {
-    res.json(await deps.parental.updateRules(currentViewer(req), parseInput(RulesBody, req.body)));
-  });
-
   router.get('/storage', async (req, res) => {
     res.json(await deps.data.usage(currentViewer(req)));
   });

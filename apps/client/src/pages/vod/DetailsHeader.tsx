@@ -6,6 +6,7 @@ import { Badge } from '../../components/ui/Badge';
 import { IconButton } from '../../components/ui/Button';
 import { Img, Initials } from '../../components/ui/Img';
 import { catalogImageProxy, imageSources } from '../../lib/images';
+import { t } from '../../i18n';
 
 interface DetailsHeaderProps {
   sourceId: string;
@@ -34,7 +35,7 @@ export function DetailsHeader({ sourceId, type, itemKey, title, image, meta, gen
       )}
       <div className="absolute inset-0 -z-10 bg-gradient-to-b from-canvas/40 to-canvas" aria-hidden />
       <div className="mx-auto max-w-5xl px-4 pb-6 pt-4 sm:px-6">
-        <IconButton label="Back" onClick={() => navigate(-1)}>
+        <IconButton label={t('vod.back')} onClick={() => navigate(-1)}>
           <ArrowLeft className="h-5 w-5" />
         </IconButton>
         <div className="mt-2 flex flex-col gap-5 sm:flex-row">
@@ -50,7 +51,7 @@ export function DetailsHeader({ sourceId, type, itemKey, title, image, meta, gen
               {meta.filter(Boolean).join(' · ')}
               {locked && (
                 <Badge tone="warning" icon={<Lock className="h-3 w-3" />}>
-                  Locked
+                  {t('vod.locked')}
                 </Badge>
               )}
             </p>

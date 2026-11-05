@@ -123,7 +123,11 @@ export interface GeneralSettingsDto {
   startPage: StartPage;
   /** 24-hour clock in the guide. */
   use24hClock: boolean;
+  /** The app's language for this profile; '' = the device's (browser / last choice on this device). */
+  language: AppLanguage | '';
 }
+
+export type AppLanguage = 'ka' | 'en' | 'ru';
 
 export interface AppearanceSettingsDto {
   theme: ThemePreference;

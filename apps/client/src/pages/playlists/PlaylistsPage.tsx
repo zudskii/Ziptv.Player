@@ -13,6 +13,7 @@ import { PromptDialog } from '../../components/ui/PromptDialog';
 import { Spinner } from '../../components/ui/Spinner';
 import { errorMessage } from '../../lib/api-client';
 import { useCreatePlaylist, useDeletePlaylist, usePlaylists } from '../../features/playlists/api';
+import { t } from '../../i18n';
 
 /** Playlists: the channel lists the user builds from their sources and can open anywhere. */
 export function PlaylistsPage() {
@@ -26,7 +27,7 @@ export function PlaylistsPage() {
 
   const newButton = (
     <Button variant="primary" icon={<Plus className="h-4 w-4" />} onClick={() => setCreating(true)}>
-      New playlist
+      {t('playlists.new')}
     </Button>
   );
 
@@ -34,18 +35,18 @@ export function PlaylistsPage() {
     <div className="mx-auto w-full max-w-4xl space-y-6 p-4 sm:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-fg">Playlists</h1>
-          <p className="mt-1 text-sm text-fg-muted">Pick channels from your sources, group, rename and number them, then open the result in any player with a link.</p>
+          <h1 className="text-2xl font-bold text-fg">{t('playlists.title')}</h1>
+          <p className="mt-1 text-sm text-fg-muted">{t('playlists.intro')}</p>
         </div>
         {newButton}
       </header>
 
       {playlists.isPending ? (
-        <Spinner className="py-16" label="Loading playlists…" />
+        <Spinner className="py-16" label={t('playlists.loading')} />
       ) : playlists.isError ? (
-        <FullscreenMessage tone="error" title="Couldn't load your playlists" description={errorMessage(playlists.error)} action={{ label: 'Try again', onClick: () => void playlists.refetch() }} />
+        <FullscreenMessage tone="error" title={t('playlists.loadFailed')} description={errorMessage(playlists.error)} action={{ label: t('playlists.retry'), onClick: () => void playlists.refetch() }} />
       ) : list.length === 0 ? (
-        <EmptyState icon={<ListVideo className="h-8 w-8" />} title="No playlists yet" description="A playlist is your own selection of channels, organised the way you like." action={newButton} />
+        <EmptyState icon={<ListVideo className="h-8 w-8" />} title={t('playlists.none')} description={t('playlists.noneHint')} action={newButton} />
       ) : (
         <ul className="space-y-3">
           {list.map((playlist) => (
@@ -55,17 +56,17 @@ export function PlaylistsPage() {
                 <span className="min-w-0 flex-1">
                   <span className="block truncate font-medium text-fg">{playlist.name}</span>
                   <span className="block truncate text-xs text-fg-muted">
-                    {playlist.entryCount.toLocaleString()} channels · {playlist.groupCount} {playlist.groupCount === 1 ? 'group' : 'groups'}
+                    {t('playlists.count.channelsGroups', { channels: playlist.entryCount, groups: playlist.groupCount })}
                   </span>
                 </span>
                 {playlist.exportEnabled && (
                   <Badge tone="success" icon={<Link2 className="h-3 w-3" />}>
-                    Link on
+                    {t('playlists.linkOn')}
                   </Badge>
                 )}
                 <ChevronRight className="h-4 w-4 shrink-0 text-fg-subtle" aria-hidden />
               </Link>
-              <IconButton label={`Delete ${playlist.name}`} onClick={() => setDeleting(playlist)}>
+              <IconButton label={t('playlists.deleteNamed', { name: playlist.name })} onClick={() => setDeleting(playlist)}>
                 <Trash2 className="h-4 w-4" />
               </IconButton>
             </li>
@@ -76,10 +77,10 @@ export function PlaylistsPage() {
       <PromptDialog
         open={creating}
         onClose={() => setCreating(false)}
-        title="New playlist"
-        label="Name"
-        placeholder="e.g. Family, Sports, My favourites"
-        submitLabel="Create"
+        title={t('playlists.new')}
+        label={t('playlists.name')}
+        placeholder={t('playlists.namePlaceholder')}
+        submitLabel={t('playlists.create')}
         onSubmit={async (name) => {
           const created = await create.mutateAsync(name);
           navigate(`/playlists/${created.id}`);
@@ -88,13 +89,13 @@ export function PlaylistsPage() {
       <ConfirmDialog
         open={deleting !== null}
         onClose={() => setDeleting(null)}
-        title={`Delete “${deleting?.name ?? ''}”?`}
+        title={t('playlists.deleteTitle', { name: deleting?.name ?? '' })}
         description={
           <>
-            Its {deleting?.entryCount.toLocaleString()} channels are removed from this playlist, and its link stops working. Your sources are not affected.
+            {t('playlists.deleteHint', { count: deleting?.entryCount ?? 0 })}
           </>
         }
-        confirmLabel="Delete playlist"
+        confirmLabel={t('playlists.delete')}
         onConfirm={async () => {
           if (!deleting) return;
           await remove.mutateAsync(deleting.id);

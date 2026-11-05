@@ -3,6 +3,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { errorMessage } from '../../lib/api-client';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { useT } from '../../i18n';
 
 interface PromptDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function PromptDialog({ open, onClose, ...rest }: PromptDialogProps) {
 }
 
 function PromptForm({ onClose, label, submitLabel, initialValue = '', placeholder, maxLength = 120, onSubmit }: Omit<PromptDialogProps, 'open' | 'title'>) {
+  const { t } = useT();
   const id = useId();
   const [value, setValue] = useState(initialValue);
   const [pending, setPending] = useState(false);
@@ -62,7 +64,7 @@ function PromptForm({ onClose, label, submitLabel, initialValue = '', placeholde
       </div>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={pending}>
-          Cancel
+          {t('common.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={pending} disabled={!trimmed || trimmed === initialValue.trim()}>
           {submitLabel}

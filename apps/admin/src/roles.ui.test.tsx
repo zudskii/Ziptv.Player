@@ -6,6 +6,7 @@ import { MemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 
 import { App } from './App';
+import { t } from './i18n';
 import { consoleSession } from './lib/api';
 import { AuthProvider } from './lib/auth';
 import { NAV, visibleNav } from './lib/nav';
@@ -71,7 +72,7 @@ describe.skipIf(!hasBackend)('Console by role (9 · RBAC)', () => {
 
       const view = renderAt('/');
       const nav = await screen.findByRole('navigation', { name: 'Console navigation' });
-      await waitFor(() => expect(within(nav).getAllByRole('link').map((link) => link.textContent?.replace(/\d+$/, '').trim())).toEqual(expected.map((item) => item.label)));
+      await waitFor(() => expect(within(nav).getAllByRole('link').map((link) => link.textContent?.replace(/\d+$/, '').trim())).toEqual(expected.map((item) => t(item.label))));
       view.unmount();
 
       for (const item of NAV) {

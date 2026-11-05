@@ -17,8 +17,9 @@ import { itemPath, paths } from '../lib/routes';
 import { useNow } from '../lib/use-now';
 import { ContinueCard, LiveTile, RecentCard } from './home/HomeCards';
 import { NoSourcesState } from '../features/sources/components/NoSourcesState';
+import { i18n, t } from '../i18n';
 
-const TYPE_LABELS = { channel: 'Channel', movie: 'Movie', series: 'Series' } as const;
+const TYPE_KEYS = { channel: 'kind.channel', movie: 'kind.movie', series: 'kind.series' } as const;
 const START_PATHS = { home: '/', live: '/live', guide: '/guide', movies: '/movies', series: '/series' } as const;
 
 // Settings → General → Start page applies when the app is opened at "/", once per page load.
@@ -47,15 +48,15 @@ export function HomePage() {
   // No own sources yet: the operator's channels are the home (if any); otherwise Home explains
   // itself and offers to add a source — it never sends the person to another page on its own.
   if (sources.data && sources.data.length === 0) {
-    if (operator.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
+    if (operator.isPending) return <Spinner className="py-24 justify-center" label={t('home.loading')} />;
     if ((operator.data?.channels.length ?? 0) > 0) return <Navigate to="/channels" replace />;
     return <NoSourcesState area="home" />;
   }
-  if (home.isPending) return <Spinner className="py-24 justify-center" label="Loading your home…" />;
+  if (home.isPending) return <Spinner className="py-24 justify-center" label={t('home.loading')} />;
   if (home.isError) {
     return (
       <div className="p-4 sm:p-6">
-        <EmptyState icon={<AlertTriangle className="h-8 w-8" />} title="Home could not be loaded" description={errorMessage(home.error)} />
+        <EmptyState icon={<AlertTriangle className="h-8 w-8" />} title={t('home.loadFailed')} description={errorMessage(home.error)} />
       </div>
     );
   }
@@ -65,12 +66,12 @@ export function HomePage() {
   return (
     <div className="space-y-7 py-4 sm:py-6">
       <header className="px-4 sm:px-6">
-        <h1 className="text-2xl font-bold text-fg">Home</h1>
+        <h1 className="text-2xl font-bold text-fg">{t('home.title')}</h1>
       </header>
       <LibraryNotice data={data} />
 
       {data.continueWatching.length > 0 && (
-        <Rail title="Continue watching">
+        <Rail title={t('home.continue')}>
           {data.continueWatching.map((item) => (
             <ContinueCard
               key={`${item.sourceId}:${item.seriesKey ?? ''}:${item.key}`}
@@ -83,49 +84,49 @@ export function HomePage() {
         </Rail>
       )}
       {data.liveNow.length > 0 && (
-        <Rail title="Live now" to="/guide">
+        <Rail title={t('home.liveNow')} to="/guide">
           {data.liveNow.map((item) => (
             <LiveTile key={`${item.sourceId}:${item.channel.key}`} item={item} now={now} />
           ))}
         </Rail>
       )}
       {data.favorites.length > 0 && (
-        <Rail title="My List" to="/my-list">
+        <Rail title={t('home.myList')} to="/my-list">
           {data.favorites.map((item) => (
             <PosterCard key={`${item.sourceId}:${item.type}:${item.key}`} to={itemPath(item)} sourceId={item.sourceId} type={item.type} itemKey={item.key} title={item.title} image={item.image} subtitle={item.subtitle} />
           ))}
         </Rail>
       )}
       {data.recentlyWatched.length > 0 && (
-        <Rail title="Recently watched" to="/history">
+        <Rail title={t('home.recent')} to="/history">
           {data.recentlyWatched.map((item) => (
             <RecentCard key={item.id} item={item} now={now} />
           ))}
         </Rail>
       )}
       {data.sportsLive.length > 0 && (
-        <Rail title="Sports live">
+        <Rail title={t('home.sports')}>
           {data.sportsLive.map((item) => (
             <LiveTile key={`${item.sourceId}:${item.channel.key}`} item={item} now={now} />
           ))}
         </Rail>
       )}
       {data.movies.length > 0 && (
-        <Rail title="Movies" to="/movies">
+        <Rail title={t('home.movies')} to="/movies">
           {data.movies.map((movie) => (
             <PosterCard key={`${movie.sourceId}:${movie.key}`} to={paths.movie(movie.sourceId, movie.key)} sourceId={movie.sourceId} type="movie" itemKey={movie.key} title={movie.name} image={movie.poster} subtitle={movie.year ? String(movie.year) : (movie.groups[0] ?? null)} locked={movie.locked} />
           ))}
         </Rail>
       )}
       {data.series.length > 0 && (
-        <Rail title="Series" to="/series">
+        <Rail title={t('home.series')} to="/series">
           {data.series.map((series) => (
             <PosterCard key={`${series.sourceId}:${series.key}`} to={paths.series(series.sourceId, series.key)} sourceId={series.sourceId} type="series" itemKey={series.key} title={series.name} image={series.cover} subtitle={series.year ? String(series.year) : (series.groups[0] ?? null)} locked={series.locked} />
           ))}
         </Rail>
       )}
       {data.recentlyAdded.length > 0 && (
-        <Rail title="Recently added">
+        <Rail title={t('home.added')}>
           {data.recentlyAdded.map((item) => (
             <PosterCard
               key={`${item.sourceId}:${item.type}:${item.key}`}
@@ -135,7 +136,7 @@ export function HomePage() {
               itemKey={item.key}
               title={item.title}
               image={item.image}
-              badge={<Badge tone="brand">{TYPE_LABELS[item.type]}</Badge>}
+              badge={<Badge tone="brand">{t(TYPE_KEYS[item.type])}</Badge>}
             />
           ))}
         </Rail>
@@ -145,11 +146,11 @@ export function HomePage() {
         <div className="px-4 sm:px-6">
           <EmptyState
             icon={<Clapperboard className="h-8 w-8" />}
-            title="Nothing here yet"
-            description="Start a channel, a movie or a series — what you watch, save to My List and leave halfway shows up here."
+            title={t('home.empty')}
+            description={t('home.emptyHint')}
             action={
               <Link to="/live" className="text-sm font-medium text-brand-soft hover:underline">
-                Open Live TV
+                {t('home.openLive')}
               </Link>
             }
           />
@@ -170,8 +171,8 @@ function LibraryNotice({ data }: { data: HomeDto }) {
         {loading.length > 0 ? <LoaderCircle className="h-4 w-4 shrink-0 animate-spin text-brand-soft" /> : <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />}
         <span className="min-w-0 flex-1 text-fg-muted">
           {loading.length > 0
-            ? `${loading.map((source) => source.name).join(', ')} ${loading.length === 1 ? 'is' : 'are'} still loading — rails fill in as soon as the library is ready.`
-            : `${failed.map((source) => source.name).join(', ')} could not be updated. Open Sources for details.`}
+            ? t('home.loadingSources', { names: i18n.formatList(loading.map((source) => source.name)), count: loading.length })
+            : t('home.failedSources', { names: i18n.formatList(failed.map((source) => source.name)) })}
         </span>
       </Link>
     </div>

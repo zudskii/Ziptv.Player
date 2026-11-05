@@ -82,6 +82,20 @@ describe.skipIf(!TEST_DATABASE_URL)('Email links end-to-end', () => {
     expect((await post('/auth/verify-email', { token: secret }).expect(400)).body.error.code).toBe('INVALID_TOKEN'); // single use
   });
 
+  it('writes each email in the language of the screen that asked for it', async () => {
+    const email = nextEmail();
+    const before = mailer.sent.length;
+    await post('/auth/register', { email, password: PASSWORD }, { 'Accept-Language': 'ka' }).expect(201);
+    const [confirmation] = (await mailer.waitFor(before + 1)).slice(before);
+    expect(confirmation!.subject).toBe('დაადასტურეთ ელფოსტა ZIPTV-სთვის');
+    expect(CapturingMailer.tokenIn(confirmation!)).toMatch(TOKEN); // the link works the same in every language
+
+    const next = mailer.sent.length;
+    await post('/auth/forgot-password', { email }, { 'Accept-Language': 'ru-RU,ru;q=0.9' }).expect(202);
+    const [reset] = (await mailer.waitFor(next + 1)).slice(next);
+    expect(reset!.subject).toBe('Сброс пароля ZIPTV');
+  });
+
   it('answers every bad link the same way: malformed, unknown, wrong kind', async () => {
     await register();
     const second = await register(); // waits for its confirmation email, so the count below is stable

@@ -6,6 +6,7 @@ import { cn } from '../../lib/cn';
 import { itemImageSources, type CatalogImageType } from '../../lib/images';
 import { Img, Initials } from '../ui/Img';
 import { ProgressBar } from '../ui/ProgressBar';
+import { t } from '../../i18n';
 
 interface PosterCardProps {
   to: string;
@@ -43,7 +44,7 @@ export function PosterCard({ to, sourceId, type, itemKey, title, image, subtitle
           fallback={<Initials name={title} className="text-2xl" />}
         />
         {locked && (
-          <span className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1 text-white" title="Locked">
+          <span className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1 text-white" title={t('media.locked')}>
             <Lock className="h-3 w-3" />
           </span>
         )}

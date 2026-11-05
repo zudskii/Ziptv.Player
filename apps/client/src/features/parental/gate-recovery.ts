@@ -3,6 +3,7 @@ import { queryClient } from '../../lib/query-client';
 import { useProfileStore } from '../profiles/profile-store';
 import { askPin } from './pin-prompt';
 import { apiRequest } from '../../lib/api-client';
+import { t } from '../../i18n';
 
 /**
  * Recovers from the server's profile gate: a device held in a kids profile goes back to it; a
@@ -19,9 +20,9 @@ export function installGateRecovery(): void {
     }
     // Several requests fail at once: one dialog for all of them.
     asking ??= askPin({
-      title: 'Enter the PIN',
-      description: 'This profile is protected by the parental PIN.',
-      verify: async (pin) => void (await apiRequest(`/api/v1/profiles/${gate.profileId}/access`, { method: 'POST', body: { pin } })),
+      title: t('parental.enterPin'),
+      description: t('parental.profileLocked'),
+      verify: async (pin) => void (await apiRequest(`/api/v1/profiles/${gate.profileId}/access`, { method: 'POST', body: { pin }, gateRecovery: false, })),
     }).finally(() => {
       asking = null;
     });

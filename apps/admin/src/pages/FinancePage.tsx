@@ -6,7 +6,8 @@ import { toast } from 'sonner';
 
 import { Badge, Button, DataTable, ErrorNote, PageHeader, Section, Spinner, Stat } from '../components/ui';
 import { api, download } from '../lib/api';
-import { dateInput, minutes, money, moneyList, percent } from '../lib/format';
+import { dateInput, formatDate, minutes, money, moneyList, percent } from '../lib/format';
+import { statusLabel, t } from '../i18n';
 
 type Preset = '30d' | '90d' | 'month' | 'last-month' | 'custom';
 
@@ -42,15 +43,15 @@ export function FinancePage() {
 
   return (
     <>
-      <PageHeader title="Finance" description="Money facts come from the payment processor (invoices and refunds). Amounts are per currency; nothing is converted." />
-      <div className="mb-6 flex flex-wrap items-end gap-2" role="group" aria-label="Report period">
+      <PageHeader title={t('finance.title')} description={t('finance.intro')} />
+      <div className="mb-6 flex flex-wrap items-end gap-2" role="group" aria-label={t('finance.reportPeriod')}>
         {(
           [
-            ['30d', 'Last 30 days'],
-            ['90d', 'Last 90 days'],
-            ['month', 'This month'],
-            ['last-month', 'Last month'],
-            ['custom', 'Custom'],
+            ['30d', t('finance.last30')],
+            ['90d', t('finance.last90')],
+            ['month', t('finance.thisMonth')],
+            ['last-month', t('finance.lastMonth')],
+            ['custom', t('finance.custom')],
           ] as [Preset, string][]
         ).map(([value, label]) => (
           <Button key={value} tone={preset === value ? 'primary' : 'ghost'} onClick={() => setPreset(value)} aria-pressed={preset === value}>
@@ -59,8 +60,8 @@ export function FinancePage() {
         ))}
         {preset === 'custom' && (
           <>
-            <input type="date" aria-label="From" className="field w-auto" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} />
-            <input type="date" aria-label="To" className="field w-auto" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} />
+            <input type="date" aria-label={t('finance.from')} className="field w-auto" value={custom.from} onChange={(e) => setCustom({ ...custom, from: e.target.value })} />
+            <input type="date" aria-label={t('finance.to')} className="field w-auto" value={custom.to} onChange={(e) => setCustom({ ...custom, to: e.target.value })} />
           </>
         )}
       </div>
@@ -68,24 +69,24 @@ export function FinancePage() {
       {summary.isPending && <Spinner />}
       {data && (
         <>
-          <Section title="Now">
+          <Section title={t('finance.now')}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="MRR" value={moneyList(data.mrr)} note="Paying subscriptions; yearly ÷ 12" />
-              <Stat label="Paying" value={data.subscriptions.active + data.subscriptions.pastDue + data.subscriptions.grace} note={`${data.subscriptions.endingAtPeriodEnd} ending at period end`} />
-              <Stat label="Free trials" value={data.subscriptions.trialing} />
-              <Stat label="Payment problems" value={data.subscriptions.pastDue + data.subscriptions.grace} tone={data.subscriptions.pastDue + data.subscriptions.grace > 0 ? 'warn' : undefined} note={`${data.subscriptions.pastDue} past due · ${data.subscriptions.grace} in grace`} />
+              <Stat label={t('finance.mrr')} value={moneyList(data.mrr)} note="Paying subscriptions; yearly ÷ 12" />
+              <Stat label={t('finance.paying')} value={data.subscriptions.active + data.subscriptions.pastDue + data.subscriptions.grace} note={t('fin.endingAtEnd', { count: data.subscriptions.endingAtPeriodEnd })} />
+              <Stat label={t('finance.trials')} value={data.subscriptions.trialing} />
+              <Stat label={t('finance.paymentProblems')} value={data.subscriptions.pastDue + data.subscriptions.grace} tone={data.subscriptions.pastDue + data.subscriptions.grace > 0 ? 'warn' : undefined} note={t('fin.pastDueGrace', { pastDue: data.subscriptions.pastDue, grace: data.subscriptions.grace })} />
             </div>
           </Section>
-          <Section title="Period" description={`${new Date(data.from).toLocaleDateString()} – ${new Date(data.to).toLocaleDateString()}`}>
+          <Section title={t('common.period')} description={t('fin.range', { from: formatDate(data.from), to: formatDate(data.to) })}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Net revenue" value={moneyList(data.period.net)} note={`paid ${moneyList(data.period.revenue)} · refunded ${moneyList(data.period.refunds)}`} />
-              <Stat label="New subscriptions" value={data.period.newSubscriptions} />
-              <Stat label="Churned" value={data.period.churned} note={`of ${data.period.activeAtStart} at the start`} />
-              <Stat label="Churn rate" value={data.period.churnRate === null ? '—' : percent(data.period.churnRate * 100)} tone={data.period.churnRate !== null && data.period.churnRate > 0.05 ? 'warn' : undefined} />
+              <Stat label={t('finance.net')} value={moneyList(data.period.net)} note={t('fin.paidRefunded', { paid: moneyList(data.period.revenue), refunded: moneyList(data.period.refunds) })} />
+              <Stat label={t('finance.newSubs')} value={data.period.newSubscriptions} />
+              <Stat label={t('finance.churned')} value={data.period.churned} note={t('fin.ofAtStart', { count: data.period.activeAtStart })} />
+              <Stat label={t('finance.churnRate')} value={data.period.churnRate === null ? '—' : percent(data.period.churnRate * 100)} tone={data.period.churnRate !== null && data.period.churnRate > 0.05 ? 'warn' : undefined} />
             </div>
           </Section>
-          <Section title="Last 12 months" description={`Net revenue in ${currency}`}>
-            <div className="card flex h-48 items-end gap-2 p-4" role="img" aria-label="Net revenue per month">
+          <Section title={t('finance.last12')} description={t('fin.netIn', { currency })}>
+            <div className="card flex h-48 items-end gap-2 p-4" role="img" aria-label={t('finance.netPerMonth')}>
               {data.months.map((month) => (
                 <div key={month.month} className="flex flex-1 flex-col items-center gap-1" title={`${month.month}: ${moneyList(month.net)} · +${month.newSubscriptions} / −${month.churned}`}>
                   <div className="w-full rounded-t bg-accent/70" style={{ height: `${Math.max(2, (monthValue(month.net) / peak) * 130)}px` }} />
@@ -94,29 +95,29 @@ export function FinancePage() {
               ))}
             </div>
           </Section>
-          <Section title="Packages">
+          <Section title={t('finance.packages')}>
             <DataTable
-              label="Package finance"
+              label={t('finance.packageFinance')}
               rows={data.packages}
               rowKey={(row) => row.id}
-              empty="No packages."
+              empty={t('finance.noPackages')}
               columns={[
-                { header: 'Package', cell: (row) => row.name },
-                { header: 'Status', cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{row.status}</Badge> },
-                { header: 'Live subscriptions', cell: (row) => row.activeSubscriptions, className: 'tabular-nums' },
-                { header: 'MRR', cell: (row) => moneyList(row.mrr) },
-                { header: 'Net in period', cell: (row) => moneyList(row.net) },
+                { header: t('common.package'), cell: (row) => row.name },
+                { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Badge> },
+                { header: t('finance.liveSubs'), cell: (row) => row.activeSubscriptions, className: 'tabular-nums' },
+                { header: t('finance.mrr'), cell: (row) => moneyList(row.mrr) },
+                { header: t('finance.netInPeriod'), cell: (row) => moneyList(row.net) },
               ]}
             />
           </Section>
         </>
       )}
       <Section
-        title="Partner report"
-        description="Each package's net revenue split between licensors by the minutes viewers watched their feeds."
+        title={t('finance.partnerReport')}
+        description={t('finance.partnerHint')}
         actions={
           <Button onClick={() => download(`/finance/partners.csv?${query}`, 'ziptv-partners.csv').catch((error: Error) => toast.error(error.message))}>
-            <Download className="h-4 w-4" aria-hidden /> CSV
+            <Download className="h-4 w-4" aria-hidden /> {t('finance.csv')}
           </Button>
         }
       >
@@ -124,19 +125,19 @@ export function FinancePage() {
         {partners.data && (
           <>
             <DataTable
-              label="Partners"
+              label={t('finance.partners')}
               rows={partners.data.partners}
               rowKey={(row) => row.providerId}
-              empty="No providers."
+              empty={t('finance.noProviders')}
               columns={[
-                { header: 'Licensor', cell: (row) => <div><p className="font-medium">{row.providerName}</p><p className="text-xs text-fg-muted">{row.contractRef ?? '—'}</p></div> },
-                { header: 'Watched', cell: (row) => minutes(row.minutes), className: 'whitespace-nowrap' },
-                { header: 'Share', cell: (row) => percent(row.share * 100) },
-                { header: 'Revenue share', cell: (row) => moneyList(row.revenue) },
-                { header: 'Cost / month', cell: (row) => money(row.monthlyCost) },
+                { header: t('finance.licensor'), cell: (row) => <div><p className="font-medium">{row.providerName}</p><p className="text-xs text-fg-muted">{row.contractRef ?? '—'}</p></div> },
+                { header: t('finance.watched'), cell: (row) => minutes(row.minutes), className: 'whitespace-nowrap' },
+                { header: t('finance.share'), cell: (row) => percent(row.share * 100) },
+                { header: t('finance.revenueShare'), cell: (row) => moneyList(row.revenue) },
+                { header: t('finance.costMonth'), cell: (row) => money(row.monthlyCost) },
               ]}
             />
-            {partners.data.unattributedRevenue.length > 0 && <p className="mt-2 text-xs text-fg-muted">Not attributable (no viewing in the period): {moneyList(partners.data.unattributedRevenue)}</p>}
+            {partners.data.unattributedRevenue.length > 0 && <p className="mt-2 text-xs text-fg-muted">{t('fin.unattributed', { amount: moneyList(partners.data.unattributedRevenue) })}</p>}
           </>
         )}
       </Section>

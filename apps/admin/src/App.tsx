@@ -21,11 +21,12 @@ import { OverviewPage } from './pages/OverviewPage';
 import { StaffPage } from './pages/StaffPage';
 import { UserDetailPage } from './pages/UserDetailPage';
 import { UsersPage } from './pages/UsersPage';
+import { t, useT } from './i18n';
 
 function RequireSession({ children }: { children: ReactNode }) {
   const { me, loading } = useAuth();
   const location = useLocation();
-  if (loading) return <Spinner label="Checking your session…" />;
+  if (loading) return <Spinner label={t('common.checkingSession')} />;
   if (!me) return <Navigate to="/login" replace />;
   if (me.mustChangePassword && location.pathname !== '/password') return <Navigate to="/password" replace />;
   return <>{children}</>;
@@ -33,11 +34,13 @@ function RequireSession({ children }: { children: ReactNode }) {
 
 function Allowed({ permission, children }: { permission: StaffPermission; children: ReactNode }) {
   const { can } = useAuth();
-  if (!can(permission)) return <p className="card p-6 text-sm text-fg-muted">Your role does not include this section.</p>;
+  if (!can(permission)) return <p className="card p-6 text-sm text-fg-muted">{t('common.noAccess')}</p>;
   return <>{children}</>;
 }
 
 export function App() {
+  // Subscribing here re-renders the console when the language changes.
+  useT();
   const { me } = useAuth();
   return (
     <Routes>

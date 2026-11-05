@@ -20,6 +20,7 @@ import { WelcomePage } from '../pages/onboarding/WelcomePage';
 import { PlaylistsPage } from '../pages/playlists/PlaylistsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { SourcesPage } from '../pages/SourcesPage';
+import { t, useT } from '../i18n';
 
 // Player-heavy screens are only downloaded when opened.
 const LivePage = lazy(() => import('../pages/live/LivePage').then((module) => ({ default: module.LivePage })));
@@ -39,6 +40,8 @@ const MultiViewPage = lazy(() => import('../pages/MultiViewPage').then((module) 
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
+  // Subscribing here re-renders the whole tree when the language changes.
+  useT();
   useEffect(() => installThemeSync(), []);
   const theme = resolveTheme(useThemeStore((state) => state.preference));
 
@@ -96,7 +99,7 @@ function Gate({ children }: { children: ReactNode }) {
 }
 
 function Lazy({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<Spinner className="min-h-[50vh] justify-center" label="Loading…" />}>{children}</Suspense>;
+  return <Suspense fallback={<Spinner className="min-h-[50vh] justify-center" label={t('common.loading')} />}>{children}</Suspense>;
 }
 
 function LegacyWatchRedirect() {

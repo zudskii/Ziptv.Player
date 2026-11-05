@@ -14,18 +14,34 @@ import { errorMessage } from '../../lib/api-client';
 import { cn } from '../../lib/cn';
 import { paths } from '../../lib/routes';
 import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
+import { t } from '../../i18n';
 
-const SORTS: { value: VodSort; label: string }[] = [
-  { value: 'recent', label: 'Recently added' },
-  { value: 'name', label: 'A–Z' },
-  { value: 'rating', label: 'Rating' },
-  { value: 'year', label: 'Year' },
-];
+const SORTS: { readonly value: VodSort; readonly label: string }[] = (['recent', 'name', 'rating', 'year'] as const).map((value) => ({
+  value,
+  get label() {
+    return t(`vod.sort.${value}`);
+  },
+}));
+
+/** Labels are getters: read when shown, in the current language. */
+const copyFor = (kind: 'movies' | 'series', icon: typeof Clapperboard, list: typeof paths.movies) => ({
+  get title() {
+    return t(`vod.${kind}.title`);
+  },
+  get all() {
+    return t(`vod.${kind}.all`);
+  },
+  get empty() {
+    return t(`vod.${kind}.empty`);
+  },
+  icon,
+  list,
+});
 
 const COPY = {
-  movies: { title: 'Movies', all: 'All movies', empty: 'No movies yet', icon: Clapperboard, list: paths.movies },
-  series: { title: 'Series', all: 'All series', empty: 'No series yet', icon: MonitorPlay, list: paths.seriesList },
-} as const;
+  movies: copyFor('movies', Clapperboard, paths.movies),
+  series: copyFor('series', MonitorPlay, paths.seriesList),
+};
 
 /** /movies[/:sourceId] and /series[/:sourceId]: rails + categories + a sortable, paged grid. */
 export function VodBrowsePage({ kind }: { kind: VodKind }) {
@@ -47,7 +63,7 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
   const overview = useVodOverview(source?.id, kind);
   const list = useVodList(source?.id, kind, { category, sort });
 
-  if (sources.isPending) return <Spinner className="justify-center py-24" label="Loading…" />;
+  if (sources.isPending) return <Spinner className="justify-center py-24" label={t('vod.loading')} />;
   if (sources.data && sources.data.length === 0) return <NoSourcesState area={kind} />;
   if (!source) {
     return (
@@ -56,10 +72,10 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
         <EmptyState
           icon={<copy.icon className="h-8 w-8" />}
           title={copy.empty}
-          description="Movies and series come from Xtream Codes accounts and from playlists that contain VOD. Add or switch a source to see them here."
+          description={t('vod.emptyHint')}
           action={
             <Link to="/sources">
-              <Button icon={<Server className="h-4 w-4" />}>Sources</Button>
+              <Button icon={<Server className="h-4 w-4" />}>{t('vod.sources')}</Button>
             </Link>
           }
         />
@@ -88,8 +104,8 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
         <h1 className="text-2xl font-bold text-fg">{copy.title}</h1>
         {withItems.length > 1 && <SourcePicker sources={withItems} value={source.id} onChange={(id) => navigate(copy.list(id))} />}
         <label className="ml-auto flex items-center gap-2 text-sm text-fg-muted">
-          Sort
-          <select className="field h-9 w-auto" value={sort} onChange={(event) => update({ sort: event.target.value as VodSort })} aria-label="Sort">
+          {t('vod.sortLabel')}
+          <select className="field h-9 w-auto" value={sort} onChange={(event) => update({ sort: event.target.value as VodSort })} aria-label={t('vod.sortLabel')}>
             {SORTS.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}
@@ -100,9 +116,9 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
       </header>
 
       {overview.data && overview.data.categories.length > 0 && (
-        <nav aria-label="Categories" className="no-scrollbar flex gap-2 overflow-x-auto px-4 sm:px-6">
+        <nav aria-label={t('vod.categories')} className="no-scrollbar flex gap-2 overflow-x-auto px-4 sm:px-6">
           <Chip active={!category} onClick={() => update({ category: null })}>
-            All
+            {t('vod.all')}
           </Chip>
           {overview.data.categories.map((item) => (
             <Chip key={item.name} active={category === item.name} onClick={() => update({ category: item.name })}>
@@ -127,11 +143,11 @@ export function VodBrowsePage({ kind }: { kind: VodKind }) {
           {total !== undefined && <span className="ml-2 text-sm font-normal text-fg-subtle">{total.toLocaleString()}</span>}
         </h2>
         {list.isPending ? (
-          <Spinner label="Loading…" />
+          <Spinner label={t('vod.loading')} />
         ) : list.isError ? (
-          <EmptyState title="Could not load this list" description={errorMessage(list.error)} />
+          <EmptyState title={t('vod.listFailed')} description={errorMessage(list.error)} />
         ) : items.length === 0 ? (
-          <EmptyState title="Nothing in this category" />
+          <EmptyState title={t('vod.emptyCategory')} />
         ) : (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
             {items.map((item) => (
@@ -177,7 +193,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 function SourcePicker({ sources, value, onChange }: { sources: SourceDto[]; value: string; onChange: (id: string) => void }) {
   return (
-    <select className="field h-9 w-auto max-w-[12rem]" value={value} onChange={(event) => onChange(event.target.value)} aria-label="Source">
+    <select className="field h-9 w-auto max-w-[12rem]" value={value} onChange={(event) => onChange(event.target.value)} aria-label={t('vod.source')}>
       {sources.map((source) => (
         <option key={source.id} value={source.id}>
           {source.name}
@@ -207,7 +223,7 @@ export function LoadMore({ loading, onLoad }: { loading: boolean; onLoad: () => 
   return (
     <div ref={ref} className="mt-6 flex justify-center">
       <Button onClick={onLoad} loading={loading}>
-        Load more
+        {t('vod.loadMore')}
       </Button>
     </div>
   );

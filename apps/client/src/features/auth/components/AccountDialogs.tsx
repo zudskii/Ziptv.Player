@@ -11,7 +11,8 @@ import { errorMessage } from '../../../lib/api-client';
 import { formatAgo } from '../../../lib/time';
 import { useSessionStore } from '../../session/session';
 import { useChangePassword, useDeleteAccount, useDevices, useRevokeDevice } from '../api';
-import { describeDevice, hasIssues, passwordProblem } from '../credentials';
+import { describeDevice, hasIssues, MIN_PASSWORD_LENGTH, passwordProblem } from '../credentials';
+import { t } from '../../../i18n';
 
 interface DialogProps {
   open: boolean;
@@ -24,7 +25,7 @@ export function DevicesDialog({ open, onClose }: DialogProps) {
   const revoke = useRevokeDevice();
 
   return (
-    <Dialog open={open} onClose={onClose} title="Signed-in devices" description="Sign out any device you do not recognise.">
+    <Dialog open={open} onClose={onClose} title={t('auth.devicesTitle')} description={t('auth.devicesHint')}>
       {devices.isPending ? (
         <Spinner className="py-8" />
       ) : devices.isError ? (
@@ -39,9 +40,9 @@ export function DevicesDialog({ open, onClose }: DialogProps) {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 text-sm text-fg">
                   <span className="truncate">{describeDevice(device.userAgent)}</span>
-                  {device.current && <Badge tone="brand">This device</Badge>}
+                  {device.current && <Badge tone="brand">{t('auth.thisDevice')}</Badge>}
                 </p>
-                <p className="text-xs text-fg-muted">Last active {formatAgo(device.lastSeenAt)}</p>
+                <p className="text-xs text-fg-muted">{t('auth.lastActive', { when: formatAgo(device.lastSeenAt) })}</p>
               </div>
               {!device.current && (
                 <Button
@@ -51,14 +52,14 @@ export function DevicesDialog({ open, onClose }: DialogProps) {
                   onClick={() =>
                     revoke.mutate(device.id, {
                       onSuccess: () => {
-                        toast.success('Device signed out');
+                        toast.success(t('auth.deviceSignedOut'));
                         void devices.refetch();
                       },
                       onError: (reason) => toast.error(errorMessage(reason)),
                     })
                   }
                 >
-                  Sign out
+                  {t('auth.signOut')}
                 </Button>
               )}
             </li>
@@ -71,7 +72,7 @@ export function DevicesDialog({ open, onClose }: DialogProps) {
 
 export function ChangePasswordDialog({ open, onClose }: DialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title="Change password" description="Other devices are signed out when you change it.">
+    <Dialog open={open} onClose={onClose} title={t('auth.changePassword')} description={t('auth.changeHint')}>
       {open && <ChangePasswordForm onClose={onClose} />}
     </Dialog>
   );
@@ -91,12 +92,12 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
     const found: { next?: string; confirm?: string } = {};
     const problem = passwordProblem(next, email);
     if (problem) found.next = problem;
-    else if (confirm !== next) found.confirm = 'The passwords do not match.';
+    else if (confirm !== next) found.confirm = t('auth.validation.mismatch');
     setIssues(found);
     if (hasIssues(found)) return;
     try {
       await change.mutateAsync({ currentPassword: current, newPassword: next });
-      toast.success('Password changed', { description: 'Your other devices were signed out.' });
+      toast.success(t('auth.passwordChanged'), { description: t('auth.othersSignedOut') });
       onClose();
     } catch {
       /* shown below */
@@ -105,13 +106,13 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Row id={ids.current} label="Current password">
+      <Row id={ids.current} label={t('auth.currentPassword')}>
         <input id={ids.current} type="password" autoComplete="current-password" autoFocus value={current} onChange={(e) => setCurrent(e.target.value)} className="field" />
       </Row>
-      <Row id={ids.next} label="New password" issue={issues.next} hint="At least 8 characters.">
+      <Row id={ids.next} label={t('auth.newPassword')} issue={issues.next} hint={t('auth.atLeast', { count: MIN_PASSWORD_LENGTH })}>
         <input id={ids.next} type="password" autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} className="field" />
       </Row>
-      <Row id={ids.confirm} label="Repeat the new password" issue={issues.confirm}>
+      <Row id={ids.confirm} label={t('auth.repeatNew')} issue={issues.confirm}>
         <input id={ids.confirm} type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="field" />
       </Row>
       {change.error && (
@@ -121,10 +122,10 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={change.isPending}>
-          Cancel
+          {t('auth.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={change.isPending} disabled={!current || !next || !confirm}>
-          Change password
+          {t('auth.changePassword')}
         </Button>
       </div>
     </form>
@@ -133,7 +134,7 @@ function ChangePasswordForm({ onClose }: { onClose: () => void }) {
 
 export function DeleteAccountDialog({ open, onClose }: DialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title="Delete account" description="This removes your sources, playlists and every saved setting. It cannot be undone.">
+    <Dialog open={open} onClose={onClose} title={t('auth.deleteAccount')} description={t('auth.deleteHint')}>
       {open && <DeleteAccountForm onClose={onClose} />}
     </Dialog>
   );
@@ -150,7 +151,7 @@ function DeleteAccountForm({ onClose }: { onClose: () => void }) {
     try {
       await remove.mutateAsync({ password });
       useSessionStore.getState().clear(false); // nothing to sign in to any more: the welcome page
-      toast.success('Your account was deleted');
+      toast.success(t('auth.deleted'));
       navigate('/', { replace: true });
     } catch {
       /* shown below */
@@ -159,7 +160,7 @@ function DeleteAccountForm({ onClose }: { onClose: () => void }) {
 
   return (
     <form onSubmit={submit} className="space-y-4">
-      <Row id={id} label="Enter your password to confirm">
+      <Row id={id} label={t('auth.confirmWithPassword')}>
         <input id={id} type="password" autoComplete="current-password" autoFocus value={password} onChange={(e) => setPassword(e.target.value)} className="field" />
       </Row>
       {remove.error && (
@@ -169,10 +170,10 @@ function DeleteAccountForm({ onClose }: { onClose: () => void }) {
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={remove.isPending}>
-          Cancel
+          {t('auth.cancel')}
         </Button>
         <Button type="submit" variant="danger" loading={remove.isPending} disabled={!password} icon={<Trash2 className="h-4 w-4" />}>
-          Delete my account
+          {t('auth.deleteMine')}
         </Button>
       </div>
     </form>

@@ -2,6 +2,7 @@ import type { DeviceDto } from '@ziptv/contracts';
 
 import { ApiError } from '../../lib/api-client';
 import { readRawStorage } from '../../lib/storage';
+import { t } from '../../i18n';
 
 const KEY_STORAGE = 'ziptv:device-key';
 const ID_STORAGE = 'ziptv:device-id';
@@ -32,7 +33,7 @@ export function currentDeviceId(): string | null {
 
 /** "Chrome on Windows" — what the account page shows for this browser. */
 export function deviceName(userAgent = typeof navigator === 'undefined' ? '' : navigator.userAgent): string {
-  const browser = /Edg\//.test(userAgent) ? 'Edge' : /OPR\//.test(userAgent) ? 'Opera' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : 'Browser';
+  const browser = /Edg\//.test(userAgent) ? 'Edge' : /OPR\//.test(userAgent) ? 'Opera' : /Firefox\//.test(userAgent) ? 'Firefox' : /Chrome\//.test(userAgent) ? 'Chrome' : /Safari\//.test(userAgent) ? 'Safari' : t('access.browser');
   const os = /Windows/.test(userAgent) ? 'Windows' : /Android/.test(userAgent) ? 'Android' : /iPhone|iPad|iPod/.test(userAgent) ? 'iOS' : /Mac OS X/.test(userAgent) ? 'macOS' : /Linux/.test(userAgent) ? 'Linux' : null;
   return os ? `${browser} on ${os}` : browser;
 }

@@ -15,6 +15,7 @@ import { PLAYER_SHORTCUTS, usePlayerShortcuts } from '../use-player-shortcuts';
 import { useVideoState } from '../use-video-state';
 import { PlayerControls } from './PlayerControls';
 import { PlayerOverlay } from './PlayerOverlay';
+import { t } from '../../../i18n';
 
 const CONTROLS_HIDE_DELAY_MS = 2500;
 
@@ -151,7 +152,7 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
       }}
       onDoubleClick={() => void toggleFullscreen(container, video)}
     >
-      <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="none" aria-label={title ?? 'Video player'} />
+      <video ref={videoRef} className="h-full w-full bg-black object-contain" playsInline preload="none" aria-label={title ?? t('player.videoPlayer')} />
 
       {infoOverlay && content && snapshot.status !== 'error' && (
         <div className={cn('pointer-events-none absolute inset-x-0 top-0 z-10 transition-opacity duration-300', showControls ? 'opacity-100' : 'opacity-0')}>
@@ -200,9 +201,9 @@ export function VideoPlayer({ content, title, emptyLabel, onNext, onPrevious, on
 /** "?" — the keyboard shortcuts, over the video. */
 function ShortcutsHelp({ onClose }: { onClose: () => void }) {
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-4" onClick={(event) => (event.stopPropagation(), onClose())} role="dialog" aria-label="Keyboard shortcuts">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/70 p-4" onClick={(event) => (event.stopPropagation(), onClose())} role="dialog" aria-label={t('player.shortcuts')}>
       <div className="max-h-full w-full max-w-sm overflow-y-auto rounded-xl border border-white/10 bg-ink-900/95 p-4 text-white shadow-2xl">
-        <p className="mb-2 text-sm font-semibold">Keyboard shortcuts</p>
+        <p className="mb-2 text-sm font-semibold">{t('player.shortcuts')}</p>
         <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-xs">
           {PLAYER_SHORTCUTS.map((shortcut) => (
             <div key={shortcut.keys} className="contents">

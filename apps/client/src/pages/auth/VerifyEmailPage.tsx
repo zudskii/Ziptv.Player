@@ -8,6 +8,7 @@ import { authApi, authKeys } from '../../features/auth/api';
 import { tokenFromFragment } from '../../features/auth/email-links';
 import { errorMessage } from '../../lib/api-client';
 import { AuthShell, FormError } from './AuthShell';
+import { t, tx } from '../../i18n';
 
 type State = { status: 'working' } | { status: 'done' } | { status: 'failed'; message: string };
 
@@ -17,7 +18,7 @@ export function VerifyEmailPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [token] = useState(() => tokenFromFragment(location.hash));
-  const [state, setState] = useState<State>(token ? { status: 'working' } : { status: 'failed', message: 'The address is incomplete or damaged. Open the link from the email again.' });
+  const [state, setState] = useState<State>(token ? { status: 'working' } : { status: 'failed', message: t('auth.linkDamagedShort') });
   // The link works once; development builds run effects twice and the second try would read "already used".
   const started = useRef(false);
 
@@ -36,37 +37,39 @@ export function VerifyEmailPage() {
 
   const home = (
     <Link to="/" className="font-medium text-brand-soft hover:underline">
-      Continue to ZIPTV
+      {t('auth.continueToApp')}
     </Link>
   );
 
   if (state.status === 'working') {
     return (
-      <AuthShell title="Confirming your email">
-        <Spinner label="One moment…" />
+      <AuthShell title={t('auth.confirming')}>
+        <Spinner label={t('auth.oneMoment')} />
       </AuthShell>
     );
   }
   if (state.status === 'done') {
     return (
-      <AuthShell title="Email confirmed" footer={home}>
+      <AuthShell title={t('auth.emailConfirmed')} footer={home}>
         <div className="flex gap-3 text-sm text-fg-muted">
           <CircleCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" aria-hidden />
-          <p role="status">Thank you. If you ever forget your password, we can now reach you at this address.</p>
+          <p role="status">{t('auth.confirmedText')}</p>
         </div>
       </AuthShell>
     );
   }
   return (
     <AuthShell
-      title="This link does not work"
+      title={t('auth.linkBroken')}
       footer={
         <>
-          Signed in? Request a new link in{' '}
-          <Link to="/settings" className="font-medium text-brand-soft hover:underline">
-            Settings
-          </Link>
-          .
+          {tx('auth.verifyFooter', {
+            link: (chunks) => (
+              <Link to="/settings" className="font-medium text-brand-soft hover:underline">
+                {chunks}
+              </Link>
+            ),
+          })}
         </>
       }
     >

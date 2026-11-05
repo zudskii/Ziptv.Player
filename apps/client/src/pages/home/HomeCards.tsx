@@ -10,6 +10,7 @@ import { cn } from '../../lib/cn';
 import { catalogImageProxy, historyImageSources, imageSources } from '../../lib/images';
 import { historyPath, paths } from '../../lib/routes';
 import { formatAgo, formatDuration } from '../../lib/time';
+import { t } from '../../i18n';
 
 const CARD = 'group block w-60 shrink-0 snap-start rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-brand sm:w-72';
 
@@ -42,7 +43,7 @@ export function ContinueCard({ item, onRemove }: { item: ProgressItemDto; onRemo
       <button
         type="button"
         onClick={onRemove}
-        aria-label={`Remove ${item.title} from Continue Watching`}
+        aria-label={t('home.removeContinue', { title: item.title })}
         className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white opacity-80 hover:bg-black/80 hover:opacity-100"
       >
         <X className="h-3.5 w-3.5" />
@@ -59,14 +60,14 @@ export function LiveTile({ item, now }: { item: LiveNowItemDto; now: number }) {
         <ChannelLogo sourceId={item.sourceId} channel={item.channel} className="h-10 w-14" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold text-fg group-hover:text-brand-soft">{item.channel.name}</p>
-          <p className="truncate text-xs text-fg-muted">{item.now?.title ?? 'On air'}</p>
+          <p className="truncate text-xs text-fg-muted">{item.now?.title ?? t('home.onAir')}</p>
         </div>
         <span className="flex shrink-0 items-center gap-1 text-[10px] font-bold uppercase tracking-wide text-live">
-          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-live" /> Live
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-live" /> {t('home.live')}
         </span>
       </div>
       {item.now && <ProgressBar value={programmeProgress(item.now, now)} tone="live" className="mt-2.5" />}
-      {item.next && <p className="mt-1.5 truncate text-xs text-fg-subtle">Next: {item.next.title}</p>}
+      {item.next && <p className="mt-1.5 truncate text-xs text-fg-subtle">{t('home.next', { title: item.next.title })}</p>}
     </Link>
   );
 }

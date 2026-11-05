@@ -11,6 +11,7 @@ import { playlistKeys, useCreateGroup, usePlaylists, useTransferEntries } from '
 import { playlistsApi } from '../client';
 import { isChoiceReady, NO_GROUP, type GroupChoice } from '../group-choice';
 import { GroupPicker } from './GroupPicker';
+import { t } from '../../../i18n';
 
 interface TransferDialogProps {
   open: boolean;
@@ -25,7 +26,7 @@ type Placement = 'keep' | 'group';
 /** Copy or move channels into another playlist of yours. */
 export function TransferDialog({ open, onClose, ...rest }: TransferDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title={`Send ${rest.entryIds.length.toLocaleString()} ${rest.entryIds.length === 1 ? 'channel' : 'channels'} to another playlist`}>
+    <Dialog open={open} onClose={onClose} title={t('playlists.sendTitle', { count: rest.entryIds.length })}>
       {open && <TransferForm onClose={onClose} {...rest} />}
     </Dialog>
   );
@@ -45,8 +46,8 @@ function TransferForm({ onClose, playlistId, entryIds, onDone }: Omit<TransferDi
   const createGroup = useCreateGroup(targetId);
   const pending = transfer.isPending || createGroup.isPending;
 
-  if (playlists.isPending) return <p className="py-6 text-center text-sm text-fg-muted">Loading…</p>;
-  if (others.length === 0) return <p className="py-6 text-center text-sm text-fg-muted">Create another playlist first.</p>;
+  if (playlists.isPending) return <p className="py-6 text-center text-sm text-fg-muted">{t('playlists.loading')}</p>;
+  if (others.length === 0) return <p className="py-6 text-center text-sm text-fg-muted">{t('playlists.transfer.createFirst')}</p>;
 
   const ready = Boolean(targetId) && (placement === 'keep' || (target.data !== undefined && isChoiceReady(choice)));
 
@@ -59,7 +60,7 @@ function TransferForm({ onClose, playlistId, entryIds, onDone }: Omit<TransferDi
         request = { ...request, group: { groupId } };
       }
       const result = await transfer.mutateAsync(request);
-      toast.success(`${result.transferred.toLocaleString()} ${mode === 'copy' ? 'copied' : 'moved'}`, { description: result.skipped > 0 ? `${result.skipped.toLocaleString()} already there.` : undefined });
+      toast.success(t(mode === 'copy' ? 'playlists.toast.copied' : 'playlists.toast.moved', { count: result.transferred }), { description: result.skipped > 0 ? t('playlists.toast.skippedThere', { count: result.skipped }) : undefined });
       onDone();
       onClose();
     } catch (reason) {
@@ -69,14 +70,14 @@ function TransferForm({ onClose, playlistId, entryIds, onDone }: Omit<TransferDi
 
   return (
     <div className="space-y-4">
-      <Segmented label="What to do" value={mode} onChange={setMode} options={[{ value: 'copy', label: 'Copy' }, { value: 'move', label: 'Move' }]} />
+      <Segmented label={t('playlists.transfer.what')} value={mode} onChange={setMode} options={[{ value: 'copy', label: t('playlists.copy') }, { value: 'move', label: t('playlists.move.move') }]} />
 
       <div className="space-y-1.5">
         <label htmlFor="transfer-target" className="text-sm text-fg-muted">
-          Playlist
+          {t('playlists.transfer.playlist')}
         </label>
         <select id="transfer-target" value={targetId} onChange={(event) => { setTargetId(event.target.value); setChoice(NO_GROUP); }} className="field">
-          <option value="">Choose…</option>
+          <option value="">{t('playlists.transfer.choose')}</option>
           {others.map((playlist) => (
             <option key={playlist.id} value={playlist.id}>
               {playlist.name} ({playlist.entryCount.toLocaleString()})
@@ -86,9 +87,9 @@ function TransferForm({ onClose, playlistId, entryIds, onDone }: Omit<TransferDi
       </div>
 
       <div className="space-y-2">
-        <p className="text-sm text-fg-muted">Groups</p>
-        <Segmented label="Groups" size="sm" value={placement} onChange={setPlacement} options={[{ value: 'keep', label: 'Keep group names' }, { value: 'group', label: 'Choose a group' }]} />
-        {placement === 'group' && targetId && (target.isPending ? <p className="text-sm text-fg-muted">Loading groups…</p> : <GroupPicker groups={target.data?.groups ?? []} value={choice} onChange={setChoice} />)}
+        <p className="text-sm text-fg-muted">{t('playlists.groups')}</p>
+        <Segmented label={t('playlists.groups')} size="sm" value={placement} onChange={setPlacement} options={[{ value: 'keep', label: t('playlists.transfer.keepNames') }, { value: 'group', label: t('playlists.transfer.chooseGroup') }]} />
+        {placement === 'group' && targetId && (target.isPending ? <p className="text-sm text-fg-muted">{t('playlists.transfer.loadingGroups')}</p> : <GroupPicker groups={target.data?.groups ?? []} value={choice} onChange={setChoice} />)}
       </div>
 
       {error && (
@@ -98,10 +99,10 @@ function TransferForm({ onClose, playlistId, entryIds, onDone }: Omit<TransferDi
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={pending}>
-          Cancel
+          {t('playlists.cancel')}
         </Button>
         <Button variant="primary" loading={pending} disabled={!ready} onClick={submit}>
-          {mode === 'copy' ? 'Copy' : 'Move'}
+          {mode === 'copy' ? t('playlists.copy') : t('playlists.move.move')}
         </Button>
       </div>
     </div>

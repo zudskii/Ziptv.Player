@@ -8,6 +8,7 @@ import { cn } from '../../lib/cn';
 import { useActiveProfile, useProfiles } from './api';
 import { errorMessage } from '../../lib/api-client';
 import { openProfile } from '../parental/api';
+import { t } from '../../i18n';
 
 export function ProfileAvatar({ profile, className }: { profile: Pick<ProfileDto, 'name' | 'color' | 'kind'>; className?: string }) {
   return (
@@ -34,7 +35,7 @@ export function ProfileSwitcher() {
           onClick={toggle}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label={`Profile: ${active.name}`}
+          aria-label={t('profiles.current', { name: active.name })}
           className={cn('rounded-full p-1 transition hover:bg-fg/5', open && 'bg-fg/5')}
         >
           <ProfileAvatar profile={active} />
@@ -43,8 +44,8 @@ export function ProfileSwitcher() {
       className="w-60 p-1.5"
     >
       {(close) => (
-        <div role="menu" aria-label="Profiles">
-          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-fg-subtle">Who's watching?</p>
+        <div role="menu" aria-label={t('profiles.title')}>
+          <p className="px-3 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-fg-subtle">{t('profiles.whoIsWatching')}</p>
           {profiles.map((profile) => (
             <button
               key={profile.id}
@@ -55,22 +56,22 @@ export function ProfileSwitcher() {
                 close();
                 if (profile.id === active.id) return;
                 // The server decides whether this device may open it (PIN-protected profile, kids lock).
-                void openProfile(profile).catch((error: unknown) => toast.error('Profile not opened', { description: errorMessage(error) }));
+                void openProfile(profile).catch((error: unknown) => toast.error(t('profiles.notOpened'), { description: errorMessage(error) }));
               }}
               className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left text-sm text-fg hover:bg-fg/5"
             >
               <ProfileAvatar profile={profile} />
               <span className="min-w-0 flex-1 truncate">
                 {profile.name}
-                {profile.kind === 'kids' && <span className="ml-1.5 text-xs text-fg-subtle">Kids</span>}
+                {profile.kind === 'kids' && <span className="ml-1.5 text-xs text-fg-subtle">{t('profiles.kids')}</span>}
               </span>
-              {profile.pinProtected && profile.id !== active.id && <Lock className="h-3.5 w-3.5 text-fg-subtle" aria-label="PIN protected" />}
+              {profile.pinProtected && profile.id !== active.id && <Lock className="h-3.5 w-3.5 text-fg-subtle" aria-label={t('profiles.pinProtected')} />}
               {profile.id === active.id && <Check className="h-4 w-4 text-brand-soft" />}
             </button>
           ))}
           <div className="my-1 border-t border-line/5" />
           <Link to="/settings#profiles" onClick={close} role="menuitem" className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-fg-muted hover:bg-fg/5 hover:text-fg">
-            <Users className="h-4 w-4" /> Manage profiles
+            <Users className="h-4 w-4" /> {t('profiles.manage')}
           </Link>
         </div>
       )}

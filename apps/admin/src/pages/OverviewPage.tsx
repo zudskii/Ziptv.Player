@@ -7,15 +7,16 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { moneyList } from '../lib/format';
 import { formatTime } from '../lib/nav';
+import { t } from '../i18n';
 
-const HEALTH_ORDER: { state: FeedHealthState; label: string; tone?: 'warn' | 'danger' }[] = [
-  { state: 'HEALTHY', label: 'Healthy' },
-  { state: 'UNHEALTHY', label: 'Unhealthy', tone: 'danger' },
-  { state: 'PROVIDER_OUTAGE', label: 'Provider outage', tone: 'danger' },
-  { state: 'GEO_BLOCKED', label: 'Geo-blocked', tone: 'warn' },
-  { state: 'NOT_ENTITLED', label: 'Not entitled', tone: 'warn' },
-  { state: 'MAINTENANCE', label: 'Maintenance' },
-  { state: 'UNKNOWN', label: 'Unknown' },
+const HEALTH_ORDER: { state: FeedHealthState; tone?: 'warn' | 'danger' }[] = [
+  { state: 'HEALTHY' },
+  { state: 'UNHEALTHY', tone: 'danger' },
+  { state: 'PROVIDER_OUTAGE', tone: 'danger' },
+  { state: 'GEO_BLOCKED', tone: 'warn' },
+  { state: 'NOT_ENTITLED', tone: 'warn' },
+  { state: 'MAINTENANCE' },
+  { state: 'UNKNOWN' },
 ];
 
 /** 9.1 — the operator's day at a glance: viewing, catalog health, revenue, things waiting for a decision. */
@@ -27,7 +28,7 @@ export function OverviewPage() {
   const healthy = data?.channels.feeds.HEALTHY ?? 0;
   return (
     <>
-      <PageHeader title="Overview" description={data ? `Updated ${formatTime(data.generatedAt)} · refreshes every 30 s` : undefined} />
+      <PageHeader title={t('overview.title')} description={data ? t('overview.updated', { time: formatTime(data.generatedAt) }) : undefined} />
       {overview.isPending && <Spinner />}
       <ErrorNote error={overview.error} />
       {data && (
@@ -35,52 +36,52 @@ export function OverviewPage() {
           {data.approvals.open > 0 && (
             <Link to="/approvals" className="mb-6 flex items-center justify-between rounded-xl border border-accent/30 bg-accent/10 px-4 py-3 text-sm text-amber-200 hover:bg-accent/15">
               <span>
-                {data.approvals.open} change{data.approvals.open === 1 ? '' : 's'} waiting for a second person
+                {t('overview.waiting', { count: data.approvals.open })}
               </span>
               <span aria-hidden>→</span>
             </Link>
           )}
-          <Section title="Viewing">
+          <Section title={t('overview.viewing')}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Watching now" value={data.viewers.playingNow} note="Authorized operator viewings" />
-              <Stat label="Viewings (24 h)" value={data.viewers.started24h} />
-              <Stat label="Subscribers" value={data.users.total} note={`${data.users.registered} with an account · ${data.users.activeLast24h} active in 24 h`} />
-              <Stat label="Signed-in devices" value={data.sessions.active} />
+              <Stat label={t('overview.watchingNow')} value={data.viewers.playingNow} note="Authorized operator viewings" />
+              <Stat label={t('overview.viewings24')} value={data.viewers.started24h} />
+              <Stat label={t('overview.subscribers')} value={data.users.total} note={t('overview.usersNote', { registered: data.users.registered, active: data.users.activeLast24h })} />
+              <Stat label={t('overview.devices')} value={data.sessions.active} />
             </div>
           </Section>
-          <Section title="Channels" description="Playable feeds of the operator catalog by health (regions combined).">
+          <Section title={t('overview.channels')} description={t('overview.channelsHint')}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Active channels" value={data.channels.active} />
-              <Stat label="Healthy feeds" value={feeds ? `${healthy} / ${feeds}` : '—'} tone={feeds && healthy < feeds ? 'warn' : undefined} />
-              <Stat label="Open incidents" value={data.channels.openIncidents} tone={data.channels.openIncidents > 0 ? 'danger' : undefined} />
-              <Stat label="Failing BYO sources" value={data.sources.failing} tone={data.sources.failing > 0 ? 'warn' : undefined} note={`${data.sources.total} subscriber sources`} />
+              <Stat label={t('overview.activeChannels')} value={data.channels.active} />
+              <Stat label={t('overview.healthyFeeds')} value={feeds ? `${healthy} / ${feeds}` : '—'} tone={feeds && healthy < feeds ? 'warn' : undefined} />
+              <Stat label={t('overview.openIncidents')} value={data.channels.openIncidents} tone={data.channels.openIncidents > 0 ? 'danger' : undefined} />
+              <Stat label={t('overview.failingSources')} value={data.sources.failing} tone={data.sources.failing > 0 ? 'warn' : undefined} note={t('overview.sourcesNote', { total: data.sources.total })} />
             </div>
             {feeds > 0 && (
-              <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label="Feeds by health">
+              <ul className="mt-3 flex flex-wrap gap-2 text-xs" aria-label={t('overview.feedsByHealth')}>
                 {HEALTH_ORDER.filter((item) => data.channels.feeds[item.state] > 0).map((item) => (
                   <li key={item.state} className={`rounded-md px-2 py-1 ${item.tone === 'danger' ? 'bg-danger/15 text-red-300' : item.tone === 'warn' ? 'bg-accent/15 text-amber-300' : 'bg-line/10 text-fg-muted'}`}>
-                    {item.label}: {data.channels.feeds[item.state]}
+                    {t(`overview.health.${item.state}`)}: {data.channels.feeds[item.state]}
                   </li>
                 ))}
               </ul>
             )}
           </Section>
           {data.revenue && (
-            <Section title="Revenue" description="Monthly recurring revenue from what paying subscribers pay (yearly plans ÷ 12)." actions={can('billing:read') ? <Link className="text-sm text-amber-200 hover:underline" to="/finance">Finance →</Link> : undefined}>
+            <Section title={t('overview.revenue')} description={t('overview.revenueHint')} actions={can('billing:read') ? <Link className="text-sm text-amber-200 hover:underline" to="/finance">{t('overview.financeLink')}</Link> : undefined}>
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-                <Stat label="MRR" value={moneyList(data.revenue.mrr)} />
-                <Stat label="Paying subscriptions" value={data.revenue.activeSubscriptions} />
-                <Stat label="Free trials" value={data.revenue.trialing} />
-                <Stat label="Payment problems" value={data.revenue.inDunning} tone={data.revenue.inDunning > 0 ? 'warn' : undefined} note="Past due or in grace" />
+                <Stat label={t('overview.mrr')} value={moneyList(data.revenue.mrr)} />
+                <Stat label={t('overview.paying')} value={data.revenue.activeSubscriptions} />
+                <Stat label={t('overview.trials')} value={data.revenue.trialing} />
+                <Stat label={t('overview.paymentProblems')} value={data.revenue.inDunning} tone={data.revenue.inDunning > 0 ? 'warn' : undefined} note="Past due or in grace" />
               </div>
             </Section>
           )}
-          <Section title="System">
+          <Section title={t('overview.system')}>
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-              <Stat label="Staff" value={data.staff.total} />
-              <Stat label="Staff without 2FA" value={data.staff.withoutMfa} tone={data.staff.withoutMfa > 0 ? 'warn' : undefined} note="Not signed in yet" />
-              <Stat label="Outbox pending" value={data.outbox.pending} />
-              <Stat label="Outbox failing" value={data.outbox.failing} tone={data.outbox.failing > 0 ? 'danger' : undefined} />
+              <Stat label={t('overview.staff')} value={data.staff.total} />
+              <Stat label={t('overview.staffNo2fa')} value={data.staff.withoutMfa} tone={data.staff.withoutMfa > 0 ? 'warn' : undefined} note="Not signed in yet" />
+              <Stat label={t('overview.outboxPending')} value={data.outbox.pending} />
+              <Stat label={t('overview.outboxFailing')} value={data.outbox.failing} tone={data.outbox.failing > 0 ? 'danger' : undefined} />
             </div>
           </Section>
         </>

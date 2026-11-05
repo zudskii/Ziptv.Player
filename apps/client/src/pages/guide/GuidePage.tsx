@@ -18,6 +18,7 @@ import { buildGroupOptions } from '../../features/live/browse';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
 import { useChannelList, useSources } from '../../features/sources/api';
 import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
+import { t } from '../../i18n';
 
 const DAYS_AHEAD = 6;
 
@@ -37,7 +38,7 @@ export function GuidePage() {
   if (sourcesQuery.isPending) return <Spinner className="py-24" />;
   if ((sourcesQuery.data ?? []).length === 0) return <NoSourcesState area="guide" />;
   if (!source) {
-    return <EmptyState className="m-6" icon={<LayoutGrid className="h-8 w-8" />} title="No live channels yet" description="The TV Guide appears once a source with live channels has synced." />;
+    return <EmptyState className="m-6" icon={<LayoutGrid className="h-8 w-8" />} title={t('guide.noLive')} description={t('guide.noLiveHint')} />;
   }
   return <GuideView key={source.id} source={source} sources={sources} />;
 }
@@ -63,10 +64,10 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
   return (
     <div className="flex h-[calc(100dvh-3.5rem-4rem)] flex-col gap-3 p-3 sm:p-5 lg:h-[calc(100dvh-3.5rem)]">
       <header className="flex flex-wrap items-center gap-2">
-        <h1 className="mr-2 text-xl font-bold text-fg sm:text-2xl">TV Guide</h1>
+        <h1 className="mr-2 text-xl font-bold text-fg sm:text-2xl">{t('guide.title')}</h1>
         {sources.length > 1 && (
           <label className="relative">
-            <span className="sr-only">Source</span>
+            <span className="sr-only">{t('guide.source')}</span>
             <Server className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" />
             <select value={source.id} onChange={(event) => navigate(`/guide/${event.target.value}`)} className="field h-9 w-auto appearance-none pl-8 pr-8">
               {sources.map((item) => (
@@ -78,9 +79,9 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
           </label>
         )}
         <label>
-          <span className="sr-only">Group</span>
+          <span className="sr-only">{t('guide.group')}</span>
           <select value={group} onChange={(event) => setGroup(event.target.value)} className="field h-9 w-auto max-w-[12rem] appearance-none pr-8">
-            <option value="">All channels</option>
+            <option value="">{t('guide.allChannels')}</option>
             {groups.map((option) => (
               <option key={option.value} value={option.value === 'none' ? '\u0000none' : option.value.slice(2)}>
                 {option.label} ({option.count})
@@ -96,11 +97,11 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
             setNowSignal((value) => value + 1);
           }}
         >
-          Now
+          {t('guide.now')}
         </Button>
       </header>
 
-      <nav className="scrollbar-none -mx-1 flex gap-1 overflow-x-auto px-1" aria-label="Day">
+      <nav className="scrollbar-none -mx-1 flex gap-1 overflow-x-auto px-1" aria-label={t('guide.day')}>
         {days.map((offset) => (
           <button
             key={offset}
@@ -125,15 +126,15 @@ function GuideView({ source, sources }: { source: SourceDto; sources: SourceDto[
             <p className="text-fg-muted">{PROBLEMS.epg_unavailable.description}</p>
           </div>
           <Link to="/sources" className="shrink-0 text-brand-soft hover:underline">
-            Manage guides
+            {t('guide.manage')}
           </Link>
         </div>
       )}
       {!guideFailed && source.stats.epgMapped === 0 && (
         <div className="rounded-lg border border-line/10 bg-fg/[0.03] p-3 text-sm text-fg-muted">
-          {sourceGuides.length === 0 ? 'This source does not announce a programme guide.' : 'The guide is loading or none of its channels matched yet.'}{' '}
+          {sourceGuides.length === 0 ? t('guide.noAnnounce') : t('guide.loadingOrUnmatched')}{' '}
           <Link to="/sources" className="text-brand-soft hover:underline">
-            Add an XMLTV guide
+            {t('guide.addXmltv')}
           </Link>
         </div>
       )}

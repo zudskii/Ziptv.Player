@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router';
 
 import { useDebounced } from '../../lib/use-debounced';
+import { t } from '../../i18n';
 
 /**
  * Top-bar search: typing opens /search and keeps the URL in sync (debounced), so results are
@@ -70,14 +71,14 @@ export function SearchBox() {
             input.current?.blur();
           }
         }}
-        placeholder="Search channels, movies, series…"
-        aria-label="Search"
+        placeholder={t('search.placeholder')}
+        aria-label={t('search.label')}
         className="field h-9 pl-9 pr-8 [&::-webkit-search-cancel-button]:hidden"
       />
       {value && (
         <button
           type="button"
-          aria-label="Clear search"
+          aria-label={t('search.clear')}
           onClick={() => {
             typed.current = true;
             setValue('');

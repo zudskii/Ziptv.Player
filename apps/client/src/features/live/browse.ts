@@ -1,6 +1,7 @@
 import type { ChannelDto } from '@ziptv/contracts';
 
 import { matchesQuery, normalizeForSearch } from '../../lib/search';
+import { t } from '../../i18n';
 
 /** Channel plus precomputed search text (computed once per channel list, not per keystroke). */
 export interface BrowsableChannel extends ChannelDto {
@@ -35,11 +36,11 @@ export function buildGroupOptions(channels: ChannelDto[], favoriteCount: number,
     for (const group of channel.groups) counts.set(group, (counts.get(group) ?? 0) + 1);
   }
 
-  const options: GroupOption[] = [{ value: 'all', label: 'All channels', count: channels.length }];
-  if (favoriteCount > 0) options.push({ value: 'fav', label: 'Favorites', count: favoriteCount });
-  if (recentCount > 0) options.push({ value: 'recent', label: 'Recently watched', count: recentCount });
+  const options: GroupOption[] = [{ value: 'all', label: t('live.group.all'), count: channels.length }];
+  if (favoriteCount > 0) options.push({ value: 'fav', label: t('live.group.fav'), count: favoriteCount });
+  if (recentCount > 0) options.push({ value: 'recent', label: t('live.group.recent'), count: recentCount });
   for (const [label, count] of counts) options.push({ value: `g:${label}`, label, count });
-  if (ungrouped > 0 && counts.size > 0) options.push({ value: 'none', label: 'Uncategorized', count: ungrouped });
+  if (ungrouped > 0 && counts.size > 0) options.push({ value: 'none', label: t('live.group.none'), count: ungrouped });
   return options;
 }
 

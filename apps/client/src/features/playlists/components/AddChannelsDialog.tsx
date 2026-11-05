@@ -16,6 +16,7 @@ import { buildPlacement, buildSelection, countSelected, findGroupByName, selecti
 import { isChoiceReady, NO_GROUP, type GroupChoice } from '../group-choice';
 import { toggled } from '../selection';
 import { GroupPicker } from './GroupPicker';
+import { t, tx } from '../../../i18n';
 
 interface AddChannelsDialogProps {
   open: boolean;
@@ -26,7 +27,7 @@ interface AddChannelsDialogProps {
 /** Pick channels from one of your sources: all of them, whole groups, or single channels. */
 export function AddChannelsDialog({ open, onClose, playlist }: AddChannelsDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title="Add channels" description="Channels already in this playlist are skipped, so you can add a source again later to pick up its new channels." className="w-[min(94vw,40rem)]">
+    <Dialog open={open} onClose={onClose} title={t('playlists.add.title')} description={t('playlists.add.hint')} className="w-[min(94vw,40rem)]">
       {open && <AddForm onClose={onClose} playlist={playlist} />}
     </Dialog>
   );
@@ -42,7 +43,7 @@ function AddForm({ onClose, playlist }: { onClose: () => void; playlist: Playlis
   if (ready.length === 0) {
     return (
       <p className="py-6 text-center text-sm text-fg-muted">
-        You have no loaded sources yet. <Link to="/sources" className="font-medium text-brand-soft hover:underline">Add a source</Link> first.
+        {tx('playlists.noSources', { link: (chunks) => <Link to="/sources" className="font-medium text-brand-soft hover:underline">{chunks}</Link> })}
       </p>
     );
   }
@@ -77,7 +78,7 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
       if (!keepGroups && choice.type === 'group') groupId = choice.groupId;
       if (!keepGroups && choice.type === 'new') groupId = (findGroupByName(playlist.groups, choice.name) ?? (await createGroup.mutateAsync(choice.name.trim()))).id;
       const result = await add.mutateAsync({ sourceId: source.id, select: buildSelection(mode, picks), placement: buildPlacement(keepGroups, groupId) });
-      toast.success(`${result.added.toLocaleString()} ${result.added === 1 ? 'channel' : 'channels'} added`, { description: result.skipped > 0 ? `${result.skipped.toLocaleString()} were already in the playlist.` : undefined });
+      toast.success(t('playlists.toast.added', { count: result.added }), { description: result.skipped > 0 ? t('playlists.toast.skippedPlaylist', { count: result.skipped }) : undefined });
       onClose();
     } catch (reason) {
       setError(errorMessage(reason));
@@ -89,12 +90,12 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
       {sources.length > 1 && (
         <div className="space-y-1.5">
           <label htmlFor="add-source" className="text-sm text-fg-muted">
-            Source
+            {t('playlists.add.source')}
           </label>
           <select id="add-source" value={source.id} onChange={(event) => onSourceChange(event.target.value)} className="field">
             {sources.map((item) => (
               <option key={item.id} value={item.id}>
-                {item.name} ({item.stats.live.toLocaleString()} channels)
+                {t('playlists.count.sourceChannels', { name: item.name, count: item.stats.live })}
               </option>
             ))}
           </select>
@@ -102,7 +103,7 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
       )}
 
       {list.isPending ? (
-        <Spinner className="py-8" label="Loading channels…" />
+        <Spinner className="py-8" label={t('playlists.loadingChannels')} />
       ) : list.isError ? (
         <p role="alert" className="text-sm text-red-500">
           {errorMessage(list.error)}
@@ -110,27 +111,27 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
       ) : (
         <>
           <Segmented
-            label="What to add"
+            label={t('playlists.add.what')}
             value={mode}
             onChange={setMode}
             options={[
-              { value: 'all', label: `Everything (${channels.length.toLocaleString()})` },
-              { value: 'groups', label: 'Groups' },
-              { value: 'channels', label: 'Channels' },
+              { value: 'all', label: t('playlists.count.everything', { count: channels.length }) },
+              { value: 'groups', label: t('playlists.groups') },
+              { value: 'channels', label: t('playlists.channels') },
             ]}
           />
 
           {mode === 'groups' &&
             (groupOptions.length === 0 ? (
-              <p className="text-sm text-fg-muted">This source has no groups. Add everything, or pick channels.</p>
+              <p className="text-sm text-fg-muted">{t('playlists.add.noGroups')}</p>
             ) : (
               <div>
                 <div className="mb-1 flex justify-end gap-3 text-xs">
                   <button type="button" className="text-brand-soft hover:underline" onClick={() => setGroups(new Set(groupOptions.map((option) => option.label)))}>
-                    Select all
+                    {t('playlists.selectAll')}
                   </button>
                   <button type="button" className="text-brand-soft hover:underline" onClick={() => setGroups(new Set())}>
-                    None
+                    {t('playlists.selectNone')}
                   </button>
                 </div>
                 <ul className="max-h-60 space-y-0.5 overflow-y-auto rounded-lg border border-line/5 p-1">
@@ -150,8 +151,8 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
           {mode === 'channels' && <ChannelPicker channels={browsable} keys={keys} onKeys={setKeys} search={search} onSearch={setSearch} />}
 
           <div className="space-y-2">
-            <p className="text-sm text-fg-muted">Where they go</p>
-            <Segmented label="Where they go" size="sm" value={keepGroups ? 'keep' : 'one'} onChange={(value) => setKeepGroups(value === 'keep')} options={[{ value: 'keep', label: "Keep the source's groups" }, { value: 'one', label: 'Put into one group' }]} />
+            <p className="text-sm text-fg-muted">{t('playlists.add.where')}</p>
+            <Segmented label={t('playlists.add.where')} size="sm" value={keepGroups ? 'keep' : 'one'} onChange={(value) => setKeepGroups(value === 'keep')} options={[{ value: 'keep', label: t('playlists.add.keepGroups') }, { value: 'one', label: t('playlists.add.oneGroup') }]} />
             {!keepGroups && <GroupPicker groups={playlist.groups} value={choice} onChange={setChoice} />}
           </div>
         </>
@@ -166,10 +167,10 @@ function SourcePicker({ sources, source, onSourceChange, playlist, onClose }: { 
         <p className="text-sm text-fg-muted">{list.data && !problem ? `${count.toLocaleString()} ${count === 1 ? 'channel' : 'channels'}` : (problem && list.data ? problem : '')}</p>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={onClose} disabled={pending}>
-            Cancel
+            {t('playlists.cancel')}
           </Button>
           <Button variant="primary" loading={pending} disabled={!canSubmit || !list.data} onClick={submit}>
-            Add
+            {t('playlists.add.add')}
           </Button>
         </div>
       </div>
@@ -187,12 +188,12 @@ function ChannelPicker({ channels, keys, onKeys, search, onSearch }: { channels:
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2">
-        <input type="search" value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search channels" aria-label="Search channels" className="field" />
+        <input type="search" value={search} onChange={(event) => onSearch(event.target.value)} placeholder={t('playlists.searchChannels')} aria-label={t('playlists.searchChannels')} className="field" />
         <Button size="sm" onClick={() => onKeys(new Set([...keys, ...shown.map((channel) => channel.key)]))} disabled={shown.length === 0}>
-          Select {shown.length.toLocaleString()}
+          {t('playlists.select')} {shown.length.toLocaleString()}
         </Button>
         <Button size="sm" variant="ghost" onClick={() => onKeys(new Set())} disabled={keys.size === 0}>
-          Clear
+          {t('playlists.clear')}
         </Button>
       </div>
       <div ref={scrollRef} className="scrollbar-thin h-60 overflow-y-auto rounded-lg border border-line/5">
@@ -210,7 +211,7 @@ function ChannelPicker({ channels, keys, onKeys, search, onSearch }: { channels:
           })}
         </div>
       </div>
-      <p className="text-xs text-fg-subtle">{keys.size.toLocaleString()} selected</p>
+      <p className="text-xs text-fg-subtle">{t('playlists.count.selected', { count: keys.size })}</p>
     </div>
   );
 }

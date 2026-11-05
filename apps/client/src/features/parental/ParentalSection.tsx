@@ -13,6 +13,7 @@ import { useChannelList, useSources } from '../sources/api';
 import { useVodOverview } from '../vod/api';
 import { useParental, useRemovePin, useSetPin, useUpdateRules } from './api';
 import { askPin, pinErrorMessage } from './pin-prompt';
+import { t } from '../../i18n';
 
 const OPERATOR = 'operator';
 
@@ -29,16 +30,16 @@ export function ParentalSection() {
     <section id="parental" className="card space-y-4 p-4" aria-labelledby="parental-title">
       <div>
         <h2 id="parental-title" className="flex items-center gap-2 font-semibold text-fg">
-          <ShieldCheck className="h-4 w-4 text-brand-soft" /> Parental controls
+          <ShieldCheck className="h-4 w-4 text-brand-soft" /> {t('parental.title')}
         </h2>
         <p className="mt-1 text-sm text-fg-muted">
-          Lock groups or channels per profile; they play only after the PIN. Kids profiles never see locked or adult content at all, and cannot change these settings.
+          {t('parental.intro')}
         </p>
       </div>
       {active?.kind === 'kids' ? (
-        <p className="rounded-lg bg-fg/5 p-3 text-sm text-fg-muted">Parental controls are managed from a grown-up profile.</p>
+        <p className="rounded-lg bg-fg/5 p-3 text-sm text-fg-muted">{t('parental.managedByAdult')}</p>
       ) : parental.isPending ? (
-        <Spinner label="Loading…" />
+        <Spinner label={t('parental.loading')} />
       ) : !data ? (
         <p className="text-sm text-red-500">{errorMessage(parental.error)}</p>
       ) : data.pinSet ? (
@@ -65,10 +66,10 @@ function SetPinForm({ current }: { current?: boolean }) {
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setError(null);
-    if (pin !== confirm) return setError('The two PINs are different.');
+    if (pin !== confirm) return setError(t('parental.pinsDiffer'));
     try {
       await setPin.mutateAsync({ pin, ...(current ? { currentPin } : {}) });
-      toast.success(current ? 'PIN changed' : 'PIN set');
+      toast.success(current ? t('parental.pinChanged') : t('parental.pinSet'));
       setCurrentPin('');
       setPinValue('');
       setConfirm('');
@@ -86,12 +87,12 @@ function SetPinForm({ current }: { current?: boolean }) {
 
   return (
     <form onSubmit={(event) => void submit(event)} className="grid gap-3 sm:grid-cols-3 sm:items-end">
-      {current && field('Current PIN', currentPin, setCurrentPin, 'current')}
-      {field(current ? 'New PIN (4–8 digits)' : 'PIN (4–8 digits)', pin, setPinValue, 'pin')}
-      {field('Repeat PIN', confirm, setConfirm, 'confirm')}
+      {current && field(t('parental.currentPin'), currentPin, setCurrentPin, 'current')}
+      {field(current ? t('parental.newPin') : t('parental.pinDigits'), pin, setPinValue, 'pin')}
+      {field(t('parental.repeatPin'), confirm, setConfirm, 'confirm')}
       <div className={current ? 'sm:col-span-3' : ''}>
         <Button type="submit" variant="primary" icon={<KeyRound className="h-4 w-4" />} loading={setPin.isPending} disabled={pin.length < 4 || confirm.length < 4}>
-          {current ? 'Change PIN' : 'Set PIN'}
+          {current ? t('parental.changePin') : t('parental.setPin')}
         </Button>
       </div>
       {error && (
@@ -110,11 +111,11 @@ function PinManagement() {
     <div className="space-y-3 border-b border-line/5 pb-4">
       <div className="flex flex-wrap items-center gap-2">
         <span className="inline-flex items-center gap-1.5 text-sm text-fg">
-          <Lock className="h-4 w-4 text-emerald-500" /> PIN is set
+          <Lock className="h-4 w-4 text-emerald-500" /> {t('parental.pinIsSet')}
         </span>
         <span className="flex-1" />
         <Button size="sm" onClick={() => setChanging((value) => !value)}>
-          {changing ? 'Cancel' : 'Change PIN'}
+          {changing ? t('parental.cancel') : t('parental.changePin')}
         </Button>
         <Button
           size="sm"
@@ -122,13 +123,13 @@ function PinManagement() {
           icon={<LockOpen className="h-4 w-4" />}
           onClick={() =>
             void askPin({
-              title: 'Remove the PIN?',
-              description: 'Locks and profile protection are turned off with it.',
+              title: t('parental.removeTitle'),
+              description: t('parental.removeHint'),
               verify: async (pin) => void (await remove.mutateAsync(pin)),
-            }).then((done) => done && toast.success('PIN removed'))
+            }).then((done) => done && toast.success(t('parental.pinRemoved')))
           }
         >
-          Remove PIN
+          {t('parental.removePin')}
         </Button>
       </div>
       {changing && <SetPinForm current />}
@@ -145,7 +146,7 @@ function RulesEditor() {
   return (
     <div className="space-y-3">
       <label className="flex items-center justify-between gap-3">
-        <span className="text-sm text-fg">Rules for</span>
+        <span className="text-sm text-fg">{t('parental.rulesFor')}</span>
         <select className="field h-9 w-auto" value={target.id} onChange={(event) => setTargetId(event.target.value)}>
           {profiles.map((profile) => (
             <option key={profile.id} value={profile.id}>
@@ -162,7 +163,7 @@ function RulesEditor() {
 
 function ProfileRulesLoader({ profile }: { profile: ProfileDto }) {
   const query = useParental(profile.id);
-  if (query.isPending) return <Spinner label="Loading rules…" />;
+  if (query.isPending) return <Spinner label={t('parental.loadingRules')} />;
   if (!query.data) return <p className="text-sm text-red-500">{errorMessage(query.error)}</p>;
   return <ProfileRules profile={profile} initial={query.data} />;
 }
@@ -175,13 +176,13 @@ function ProfileRules({ profile, initial }: { profile: ProfileDto; initial: Pare
 
   const save = (next: Pick<ParentalSettingsDto, 'hideAdult' | 'lockedGroups' | 'lockedChannels'>) =>
     askPin({
-      title: 'Enter the PIN',
-      description: `Save the rules of “${profile.name}”.`,
+      title: t('parental.enterPin'),
+      description: t('parental.saveRulesOf', { name: profile.name }),
       verify: async (pin) => {
         const saved = await update.mutateAsync({ pin, profileId: profile.id, hideAdult: next.hideAdult, lockedGroups: next.lockedGroups, lockedChannels: next.lockedChannels });
         setRules({ hideAdult: saved.hideAdult, lockedGroups: saved.lockedGroups, lockedChannels: saved.lockedChannels });
       },
-    }).then((done) => done && toast.success('Parental rules saved'));
+    }).then((done) => done && toast.success(t('parental.rulesSaved')));
 
   const toggleGroup = (source: string, group: string) => {
     const exists = rules.lockedGroups.some((item) => item.sourceId === source && item.group === group);
@@ -195,12 +196,12 @@ function ProfileRules({ profile, initial }: { profile: ProfileDto; initial: Pare
   return (
     <div className="space-y-3">
       {profile.kind === 'kids' ? (
-        <p className="text-sm text-fg-muted">Adult content is always hidden in kids profiles.</p>
+        <p className="text-sm text-fg-muted">{t('parental.kidsAlwaysHidden')}</p>
       ) : (
-        <Switch label="Hide adult content" description="Adult groups and channels disappear from every list, search and Home." checked={rules.hideAdult} onChange={(hideAdult) => void save({ ...rules, hideAdult })} />
+        <Switch label={t('parental.hideAdult')} description={t('parental.hideAdultHint')} checked={rules.hideAdult} onChange={(hideAdult) => void save({ ...rules, hideAdult })} />
       )}
       {(rules.lockedGroups.length > 0 || rules.lockedChannels.length > 0) && (
-        <ul className="flex flex-wrap gap-1.5" aria-label="Locked">
+        <ul className="flex flex-wrap gap-1.5" aria-label={t('parental.locked')}>
           {rules.lockedGroups.map((item) => (
             <LockChip key={`g${item.sourceId}${item.group}`} label={`${item.group}${item.sourceId === OPERATOR ? ' (licensed)' : ''}`} onRemove={() => toggleGroup(item.sourceId, item.group)} />
           ))}
@@ -258,15 +259,15 @@ function LockPicker({ sources, sourceId, onSourceChange, rules, onToggleGroup, o
   return (
     <div className="space-y-2 rounded-lg border border-line/10 p-3">
       <div className="flex flex-wrap items-center gap-2">
-        <select className="field h-9 w-auto" value={sourceId} onChange={(event) => onSourceChange(event.target.value)} aria-label="Lock content from">
+        <select className="field h-9 w-auto" value={sourceId} onChange={(event) => onSourceChange(event.target.value)} aria-label={t('parental.lockFrom')}>
           {sources.map((item) => (
             <option key={item.id} value={item.id}>
               {item.name}
             </option>
           ))}
-          {operator && <option value={OPERATOR}>Licensed channels</option>}
+          {operator && <option value={OPERATOR}>{t('parental.licensed')}</option>}
         </select>
-        <input className="field h-9 min-w-0 flex-1" placeholder="Find a channel to lock…" value={filter} onChange={(event) => setFilter(event.target.value)} aria-label="Find a channel" />
+        <input className="field h-9 min-w-0 flex-1" placeholder={t('parental.findToLock')} value={filter} onChange={(event) => setFilter(event.target.value)} aria-label={t('parental.findChannel')} />
       </div>
       {channelOptions.length > 0 && (
         <ul className="divide-y divide-line/5">
@@ -277,18 +278,18 @@ function LockPicker({ sources, sourceId, onSourceChange, rules, onToggleGroup, o
                 size="sm"
                 variant={lockedChannel(channel.key) ? 'secondary' : 'ghost'}
                 icon={lockedChannel(channel.key) ? <LockOpen className="h-3.5 w-3.5" /> : <Lock className="h-3.5 w-3.5" />}
-                aria-label={`${lockedChannel(channel.key) ? 'Unlock' : 'Lock'} ${channel.name}`}
+                aria-label={t(lockedChannel(channel.key) ? 'parental.unlockNamed' : 'parental.lockNamed', { name: channel.name })}
                 onClick={() => onToggleChannel(sourceId, channel.key, channel.name)}
               >
-                {lockedChannel(channel.key) ? 'Unlock' : 'Lock'}
+                {lockedChannel(channel.key) ? t('parental.unlock') : t('parental.lock')}
               </Button>
             </li>
           ))}
         </ul>
       )}
-      <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">Groups</p>
+      <p className="text-xs font-semibold uppercase tracking-wide text-fg-subtle">{t('parental.groups')}</p>
       <div className="flex max-h-48 flex-wrap gap-1.5 overflow-y-auto">
-        {groups.length === 0 && <span className="text-sm text-fg-muted">No groups.</span>}
+        {groups.length === 0 && <span className="text-sm text-fg-muted">{t('parental.noGroups')}</span>}
         {groups.map((group) => (
           <button
             key={group}

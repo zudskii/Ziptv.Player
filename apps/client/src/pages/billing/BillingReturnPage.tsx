@@ -5,6 +5,7 @@ import { Link, useSearchParams } from 'react-router';
 import { Button } from '../../components/ui/Button';
 import { useCheckoutStatus, useInvalidateCommerce } from '../../features/billing/api';
 import { errorMessage } from '../../lib/api-client';
+import { t } from '../../i18n';
 
 /**
  * /billing/return?checkout=… — where the processor sends the browser back. Shows "confirming"
@@ -24,35 +25,35 @@ export function BillingReturnPage() {
   let body;
   if (!id || status.isError) {
     body = (
-      <Outcome icon={<CircleX className="h-10 w-10 text-red-500" />} title="We could not find this checkout" description={status.isError ? errorMessage(status.error) : 'The link is incomplete.'}>
+      <Outcome icon={<CircleX className="h-10 w-10 text-red-500" />} title={t('billing.return.notFound')} description={status.isError ? errorMessage(status.error) : t('billing.return.incomplete')}>
         <Link to="/plans">
-          <Button>Back to plans</Button>
+          <Button>{t('billing.return.back')}</Button>
         </Link>
       </Outcome>
     );
   } else if (!status.data || status.data.status === 'open') {
-    body = <Outcome icon={<LoaderCircle className="h-10 w-10 animate-spin text-brand" />} title="Confirming your payment…" description="This takes a few seconds. You can leave this page — your subscription activates as soon as the payment is confirmed." />;
+    body = <Outcome icon={<LoaderCircle className="h-10 w-10 animate-spin text-brand" />} title={t('billing.return.confirming')} description={t('billing.return.confirmingHint')} />;
   } else if (status.data.status === 'completed') {
     const subscription = status.data.subscription;
     body = (
       <Outcome
         icon={<CircleCheck className="h-10 w-10 text-emerald-500" />}
-        title={subscription?.status === 'trialing' ? 'Your free trial has started' : 'You are subscribed'}
-        description={subscription ? `${subscription.package.name} is ready to watch on all your devices.` : 'Your package is ready to watch.'}
+        title={subscription?.status === 'trialing' ? t('billing.return.trialStarted') : t('billing.return.subscribed')}
+        description={subscription ? t('billing.readyPackage', { name: subscription.package.name }) : t('billing.return.ready')}
       >
         <Link to="/channels">
-          <Button variant="primary">Watch channels</Button>
+          <Button variant="primary">{t('billing.return.watch')}</Button>
         </Link>
         <Link to="/account">
-          <Button>My subscription</Button>
+          <Button>{t('billing.return.mine')}</Button>
         </Link>
       </Outcome>
     );
   } else {
     body = (
-      <Outcome icon={<CircleX className="h-10 w-10 text-fg-subtle" />} title="This checkout has expired" description="Nothing was charged. Start again from the plans page.">
+      <Outcome icon={<CircleX className="h-10 w-10 text-fg-subtle" />} title={t('billing.return.expired')} description={t('billing.return.expiredHint')}>
         <Link to="/plans">
-          <Button>Back to plans</Button>
+          <Button>{t('billing.return.back')}</Button>
         </Link>
       </Outcome>
     );

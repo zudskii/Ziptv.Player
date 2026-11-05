@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { useAction } from '../lib/mutation';
 import { formatTime } from '../lib/nav';
+import { statusLabel, t } from '../i18n';
 
 type Tab = 'channels' | 'review' | 'duplicates' | 'categories' | 'lineups';
 const PAGE = 50;
@@ -18,17 +19,17 @@ export function ChannelsPage() {
   const [tab, setTab] = useState<Tab>('channels');
   return (
     <>
-      <PageHeader title="Channels" description="One master channel per real channel; provider streams are its feeds (primary first, backups after)." />
+      <PageHeader title={t('common.channels')} description={t('channels.intro')} />
       <Tabs
-        label="Catalog"
+        label={t('channels.catalog')}
         value={tab}
         onChange={setTab}
         items={[
-          { value: 'channels', label: 'Channels' },
-          { value: 'review', label: 'Review queue' },
-          { value: 'duplicates', label: 'Duplicates' },
-          { value: 'categories', label: 'Categories' },
-          { value: 'lineups', label: 'Lineups' },
+          { value: 'channels', label: t('common.channels') },
+          { value: 'review', label: t('channels.reviewQueue') },
+          { value: 'duplicates', label: t('channels.duplicates') },
+          { value: 'categories', label: t('common.categories') },
+          { value: 'lineups', label: t('common.lineups') },
         ]}
       />
       {tab === 'channels' && <ChannelList />}
@@ -41,7 +42,7 @@ export function ChannelsPage() {
 }
 
 export function HealthBadge({ health }: { health: MasterChannelStatsDto['health'] }) {
-  if (!health) return <Badge>No feed</Badge>;
+  if (!health) return <Badge>{t('channels.noFeed')}</Badge>;
   const tone = health === 'HEALTHY' ? 'ok' : health === 'UNHEALTHY' || health === 'PROVIDER_OUTAGE' ? 'danger' : health === 'UNKNOWN' || health === 'MAINTENANCE' ? 'neutral' : 'warn';
   return <Badge tone={tone}>{health.replace('_', ' ').toLowerCase()}</Badge>;
 }
@@ -63,11 +64,11 @@ function ChannelList() {
     <>
       <div className="mb-4 flex flex-wrap items-end gap-3">
         <label className="relative block w-full max-w-sm">
-          <span className="sr-only">Search channels</span>
+          <span className="sr-only">{t('channels.search')}</span>
           <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-fg-subtle" aria-hidden />
           <input
             className="field pl-9"
-            placeholder="Search channels"
+            placeholder={t('channels.search')}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
@@ -76,7 +77,7 @@ function ChannelList() {
           />
         </label>
         <select
-          aria-label="Status"
+          aria-label={t('common.status')}
           className="field w-auto"
           value={status}
           onChange={(e) => {
@@ -84,25 +85,25 @@ function ChannelList() {
             setOffset(0);
           }}
         >
-          <option value="">All statuses</option>
-          <option value="active">Active</option>
-          <option value="hidden">Hidden</option>
+          <option value="">{t('channels.allStatuses')}</option>
+          <option value="active">{t('common.activeCap')}</option>
+          <option value="hidden">{t('common.hiddenCap')}</option>
         </select>
         {can('catalog:write') && (
           <Button tone="primary" className="ml-auto" onClick={() => setCreating(true)}>
-            <Plus className="h-4 w-4" aria-hidden /> New channel
+            <Plus className="h-4 w-4" aria-hidden /> {t('channels.new')}
           </Button>
         )}
       </div>
       <ErrorNote error={channels.error} />
       <DataTable
-        label="Channels"
+        label={t('common.channels')}
         rows={channels.data?.items ?? []}
         rowKey={(row) => row.id}
-        empty={channels.isPending ? 'Loading…' : 'No channels match.'}
+        empty={channels.isPending ? t('common.loading') : t('channels.noMatch')}
         columns={[
           {
-            header: 'Channel',
+            header: t('common.channel'),
             cell: (row) => (
               <div className="flex items-center gap-3">
                 {row.logo ? <img src={row.logo} alt="" className="h-8 w-12 rounded bg-line/10 object-contain" loading="lazy" onError={(event) => (event.currentTarget.style.visibility = 'hidden')} /> : <span className="h-8 w-12 rounded bg-line/10" aria-hidden />}
@@ -112,11 +113,11 @@ function ChannelList() {
               </div>
             ),
           },
-          { header: 'Status', cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{row.status}</Badge> },
-          { header: 'Feeds', cell: (row) => `${row.playableFeeds} / ${row.feeds}`, className: 'tabular-nums' },
-          { header: 'Rights', cell: (row) => (row.activeGrants ? row.activeGrants : <Badge tone="warn">none</Badge>), className: 'tabular-nums' },
-          { header: 'Health', cell: (row) => <HealthBadge health={row.health} /> },
-          { header: 'Country', cell: (row) => row.originCountry ?? '—' },
+          { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Badge> },
+          { header: t('common.feeds'), cell: (row) => `${row.playableFeeds} / ${row.feeds}`, className: 'tabular-nums' },
+          { header: t('common.rights'), cell: (row) => (row.activeGrants ? row.activeGrants : <Badge tone="warn">{t('channels.none')}</Badge>), className: 'tabular-nums' },
+          { header: t('common.health'), cell: (row) => <HealthBadge health={row.health} /> },
+          { header: t('common.country'), cell: (row) => row.originCountry ?? '—' },
         ]}
       />
       {channels.data && <Pager offset={offset} limit={PAGE} total={channels.data.total} onChange={setOffset} />}
@@ -127,7 +128,7 @@ function ChannelList() {
 
 function CreateChannelDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (channel: MasterChannelDetailDto) => void }) {
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api<CategoryDto[]>('/categories'), enabled: open });
-  const create = useAction((body: Record<string, unknown>) => api<MasterChannelDetailDto>('/channels', { method: 'POST', body }), { inlineErrors: true, success: 'Channel created', invalidate: [['channels']], onSuccess: onCreated });
+  const create = useAction((body: Record<string, unknown>) => api<MasterChannelDetailDto>('/channels', { method: 'POST', body }), { inlineErrors: true, success: t('channels.created'), invalidate: [['channels']], onSuccess: onCreated });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -141,11 +142,11 @@ function CreateChannelDialog({ open, onClose, onCreated }: { open: boolean; onCl
     });
   };
   return (
-    <Dialog open={open} title="New channel" onClose={onClose}>
+    <Dialog open={open} title={t('channels.new')} onClose={onClose}>
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Name" name="name" required maxLength={120} />
-        <Field label="Origin country" name="country" placeholder="GE" maxLength={2} />
-        <SelectField label="Category" name="category" defaultValue="">
+        <Field label={t('common.name')} name="name" required maxLength={120} />
+        <Field label={t('channels.originCountry')} name="country" placeholder="GE" maxLength={2} />
+        <SelectField label={t('common.category')} name="category" defaultValue="">
           <option value="">—</option>
           {categories.data?.map((category) => (
             <option key={category.id} value={category.id}>
@@ -153,13 +154,13 @@ function CreateChannelDialog({ open, onClose, onCreated }: { open: boolean; onCl
             </option>
           ))}
         </SelectField>
-        <Field label="Global id (tvg-id)" name="globalUid" hint="Provider streams with this tvg-id are matched to the channel automatically." />
-        <Field label="Logo URL" name="logo" type="url" placeholder="https://…" />
+        <Field label={t('channels.globalId')} name="globalUid" hint={t('channels.globalIdHint')} />
+        <Field label={t('channels.logo')} name="logo" type="url" placeholder="https://…" />
         <ErrorNote error={create.error} />
         <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button tone="primary" type="submit" busy={create.isPending}>
-            Create
+            {t('common.create')}
           </Button>
         </div>
       </form>
@@ -177,14 +178,14 @@ function ReviewQueue() {
     queryFn: () => api<ProviderStreamPageDto>(`/streams?status=pending&limit=${PAGE}&offset=${offset}${providerId ? `&providerId=${providerId}` : ''}`),
     placeholderData: keepPreviousData,
   });
-  const review = useAction(({ id, body }: { id: string; body: Record<string, unknown> }) => api(`/streams/${id}/review`, { method: 'POST', body }), { success: 'Stream reviewed', invalidate: [['streams'], ['channels']] });
+  const review = useAction(({ id, body }: { id: string; body: Record<string, unknown> }) => api(`/streams/${id}/review`, { method: 'POST', body }), { success: t('channels.reviewed'), invalidate: [['streams'], ['channels']] });
   const writable = can('catalog:write');
   return (
     <>
-      <p className="mb-4 text-sm text-fg-muted">Streams no alias matched. Match one to an existing channel (it becomes a feed), create a channel from it, or ignore it.</p>
+      <p className="mb-4 text-sm text-fg-muted">{t('channels.reviewIntro')}</p>
       {providers.data && (
-        <select aria-label="Provider" className="field mb-4 w-auto" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
-          <option value="">All providers</option>
+        <select aria-label={t('common.provider')} className="field mb-4 w-auto" value={providerId} onChange={(e) => setProviderId(e.target.value)}>
+          <option value="">{t('channels.allProviders')}</option>
           {providers.data.map((provider) => (
             <option key={provider.id} value={provider.id}>
               {provider.name}
@@ -194,28 +195,28 @@ function ReviewQueue() {
       )}
       <ErrorNote error={streams.error} />
       <DataTable
-        label="Pending streams"
+        label={t('channels.pending')}
         rows={streams.data?.items ?? []}
         rowKey={(row) => row.id}
-        empty={streams.isPending ? 'Loading…' : 'The review queue is empty.'}
+        empty={streams.isPending ? t('common.loading') : t('channels.queueEmpty')}
         columns={[
-          { header: 'Stream', cell: (row) => <div><p className="font-medium">{row.name}</p><p className="text-xs text-fg-muted">{[row.tvgId, ...row.groups].filter(Boolean).join(' · ') || '—'}</p></div> },
-          { header: 'Seen', cell: (row) => formatTime(row.firstSeenAt), className: 'whitespace-nowrap' },
+          { header: t('channels.stream'), cell: (row) => <div><p className="font-medium">{row.name}</p><p className="text-xs text-fg-muted">{[row.tvgId, ...row.groups].filter(Boolean).join(' · ') || '—'}</p></div> },
+          { header: t('channels.seen'), cell: (row) => formatTime(row.firstSeenAt), className: 'whitespace-nowrap' },
           {
-            header: 'Decision',
+            header: t('channels.decision'),
             cell: (row) =>
               writable ? (
                 <div className="flex flex-wrap gap-2">
                   {row.suggestion && (
                     <Button onClick={() => review.mutate({ id: row.id, body: { action: 'match', channelId: row.suggestion!.id } })}>
-                      Match “{row.suggestion.name}”
+                      {t('catalog.match', { name: row.suggestion.name })}
                     </Button>
                   )}
-                  <Button onClick={() => review.mutate({ id: row.id, body: { action: 'create' } })}>Create channel</Button>
-                  <Button onClick={() => review.mutate({ id: row.id, body: { action: 'ignore' } })}>Ignore</Button>
+                  <Button onClick={() => review.mutate({ id: row.id, body: { action: 'create' } })}>{t('channels.createChannel')}</Button>
+                  <Button onClick={() => review.mutate({ id: row.id, body: { action: 'ignore' } })}>{t('channels.ignore')}</Button>
                 </div>
               ) : (
-                row.suggestion ? `Suggests ${row.suggestion.name}` : '—'
+                row.suggestion ? t('catalog.suggests', { name: row.suggestion.name }) : '—'
               ),
           },
         ]}
@@ -229,27 +230,27 @@ function Duplicates() {
   const { can } = useAuth();
   const groups = useQuery({ queryKey: ['duplicates'], queryFn: () => api<DuplicateGroupDto[]>('/channels/duplicates') });
   const [merge, setMerge] = useState<{ into: { id: string; name: string }; from: { id: string; name: string } } | null>(null);
-  const run = useAction(({ into, from }: { into: string; from: string }) => api(`/channels/${into}/merge`, { method: 'POST', body: { fromChannelId: from } }), { inlineErrors: true, success: 'Channels merged', invalidate: [['duplicates'], ['channels']], onSuccess: () => setMerge(null) });
+  const run = useAction(({ into, from }: { into: string; from: string }) => api(`/channels/${into}/merge`, { method: 'POST', body: { fromChannelId: from } }), { inlineErrors: true, success: t('channels.merged'), invalidate: [['duplicates'], ['channels']], onSuccess: () => setMerge(null) });
   return (
     <>
-      <p className="mb-4 text-sm text-fg-muted">Channels whose names are the same once quality tags (HD, FHD, 4K…) and spacing are ignored. Merging moves feeds, rights, aliases and lineups into the channel you keep.</p>
+      <p className="mb-4 text-sm text-fg-muted">{t('channels.dupIntro')}</p>
       <ErrorNote error={groups.error} />
-      {groups.data?.length === 0 && <p className="card p-6 text-sm text-fg-muted">No likely duplicates.</p>}
+      {groups.data?.length === 0 && <p className="card p-6 text-sm text-fg-muted">{t('channels.noDups')}</p>}
       <ul className="space-y-3">
         {groups.data?.map((group) => (
           <li key={group.key} className="card p-4">
-            <p className="mb-2 text-xs uppercase tracking-wide text-fg-subtle">Same name: {group.key}</p>
+            <p className="mb-2 text-xs uppercase tracking-wide text-fg-subtle">{t('catalog.sameName', { key: group.key })}</p>
             <ul className="space-y-2">
               {group.channels.map((channel, index) => (
                 <li key={channel.id} className="flex flex-wrap items-center gap-3 text-sm">
                   <Link to={`/channels/${channel.id}`} className="font-medium text-amber-200 hover:underline">
                     {channel.name}
                   </Link>
-                  <Badge>{channel.feeds} feeds</Badge>
-                  <Badge tone={channel.status === 'active' ? 'ok' : 'neutral'}>{channel.status}</Badge>
+                  <Badge>{t('catalog.feedsCount', { count: channel.feeds })}</Badge>
+                  <Badge tone={channel.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(channel.status)}</Badge>
                   {can('catalog:write') && index > 0 && (
                     <Button className="ml-auto" onClick={() => setMerge({ into: group.channels[0]!, from: channel })}>
-                      <GitMerge className="h-4 w-4" aria-hidden /> Merge into “{group.channels[0]!.name}”
+                      <GitMerge className="h-4 w-4" aria-hidden /> {t('catalog.mergeInto', { name: group.channels[0]!.name })}
                     </Button>
                   )}
                 </li>
@@ -260,9 +261,9 @@ function Duplicates() {
       </ul>
       <ConfirmDialog
         open={merge !== null}
-        title="Merge channels?"
-        description={merge && <p>“{merge.from.name}” disappears; its feeds, rights, aliases and lineup numbers move to “{merge.into.name}”. This cannot be undone.</p>}
-        confirmLabel="Merge"
+        title={t('channels.mergeTitle')}
+        description={merge && <p>{t('catalog.mergeHint', { from: merge.from.name, into: merge.into.name })}</p>}
+        confirmLabel={t('channels.merge')}
         tone="danger"
         busy={run.isPending}
         error={run.error}
@@ -277,7 +278,7 @@ function Categories() {
   const { can } = useAuth();
   const categories = useQuery({ queryKey: ['categories'], queryFn: () => api<CategoryDto[]>('/categories') });
   const [name, setName] = useState('');
-  const create = useAction((value: string) => api<CategoryDto>('/categories', { method: 'POST', body: { name: value } }), { success: 'Category added', invalidate: [['categories']], onSuccess: () => setName('') });
+  const create = useAction((value: string) => api<CategoryDto>('/categories', { method: 'POST', body: { name: value } }), { success: t('channels.categoryAdded'), invalidate: [['categories']], onSuccess: () => setName('') });
   return (
     <>
       {can('catalog:write') && (
@@ -288,13 +289,13 @@ function Categories() {
             if (name.trim()) create.mutate(name.trim());
           }}
         >
-          <input className="field" aria-label="New category" placeholder="New category" value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
+          <input className="field" aria-label={t('channels.newCategory')} placeholder={t('channels.newCategory')} value={name} onChange={(e) => setName(e.target.value)} maxLength={120} />
           <Button tone="primary" type="submit" busy={create.isPending}>
-            Add
+            {t('common.add')}
           </Button>
         </form>
       )}
-      <DataTable label="Categories" rows={categories.data ?? []} rowKey={(row) => row.id} empty="No categories yet." columns={[{ header: 'Name', cell: (row) => row.name }, { header: 'Slug', cell: (row) => <code className="text-xs">{row.slug}</code> }]} />
+      <DataTable label={t('common.categories')} rows={categories.data ?? []} rowKey={(row) => row.id} empty={t('channels.noCategories')} columns={[{ header: t('common.name'), cell: (row) => row.name }, { header: t('common.slug'), cell: (row) => <code className="text-xs">{row.slug}</code> }]} />
     </>
   );
 }
@@ -303,15 +304,15 @@ function Lineups() {
   const lineups = useQuery({ queryKey: ['lineups'], queryFn: () => api<LineupDto[]>('/lineups') });
   return (
     <DataTable
-      label="Lineups"
+      label={t('common.lineups')}
       rows={lineups.data ?? []}
       rowKey={(row) => row.id}
-      empty="No lineups yet."
+      empty={t('channels.noLineups')}
       columns={[
-        { header: 'Lineup', cell: (row) => row.name },
-        { header: 'Country', cell: (row) => row.country },
-        { header: 'Status', cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{row.status}</Badge> },
-        { header: 'Channels', cell: (row) => row.channels, className: 'tabular-nums' },
+        { header: t('common.lineup'), cell: (row) => row.name },
+        { header: t('common.country'), cell: (row) => row.country },
+        { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Badge> },
+        { header: t('common.channels'), cell: (row) => row.channels, className: 'tabular-nums' },
       ]}
     />
   );

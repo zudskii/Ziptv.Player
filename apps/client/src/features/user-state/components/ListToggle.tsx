@@ -5,6 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '../../../components/ui/Button';
 import { errorMessage } from '../../../lib/api-client';
 import { useListKeys, useMyList, useToggleListItem } from '../api';
+import { t } from '../../../i18n';
 
 /** "My List" button for details pages (optimistic; `initial` until the list has loaded). */
 export function ListToggle({ type, sourceId, itemKey, initial = false }: { type: ListItemType; sourceId: string; itemKey: string; initial?: boolean }) {
@@ -19,11 +20,11 @@ export function ListToggle({ type, sourceId, itemKey, initial = false }: { type:
       onClick={() =>
         toggle.mutate(
           { item: { type, sourceId, key: itemKey }, add: !inList },
-          { onError: (error) => toast.error(inList ? 'Could not remove from My List' : 'Could not add to My List', { description: errorMessage(error) }) },
+          { onError: (error) => toast.error(inList ? t('myList.removeFailed') : t('myList.addFailed'), { description: errorMessage(error) }) },
         )
       }
     >
-      {inList ? 'In My List' : 'My List'}
+      {inList ? t('myList.inList') : t('myList.title')}
     </Button>
   );
 }

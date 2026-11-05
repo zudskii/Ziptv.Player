@@ -9,6 +9,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatTime } from '../lib/nav';
 import { Incidents } from './MonitoringPage';
+import { statusLabel, t } from '../i18n';
 
 /** 9.8 — support desk: find a subscriber, the latest support notes, what is broken right now. */
 export function SupportPage() {
@@ -19,38 +20,38 @@ export function SupportPage() {
   const notes = useQuery({ queryKey: ['support-notes'], queryFn: () => api<SupportNoteDto[]>('/support/notes?limit=30') });
   return (
     <>
-      <PageHeader title="Support & incidents" description="Look up a subscriber, read what colleagues noted, and check whether a complaint is part of a known incident." />
+      <PageHeader title={t('support.title')} description={t('support.intro')} />
       {can('users:read') && (
-        <Section title="Find a subscriber">
+        <Section title={t('support.find')}>
           <label className="relative block max-w-md">
-            <span className="sr-only">Email or account id</span>
+            <span className="sr-only">{t('support.placeholder')}</span>
             <Search className="pointer-events-none absolute left-3 top-2.5 h-4 w-4 text-fg-subtle" aria-hidden />
-            <input className="field pl-9" placeholder="Email or account id" value={text} onChange={(e) => setText(e.target.value)} />
+            <input className="field pl-9" placeholder={t('support.placeholder')} value={text} onChange={(e) => setText(e.target.value)} />
           </label>
           {users.data && (
-            <ul className="mt-2 max-w-md space-y-1" aria-label="Matching subscribers">
+            <ul className="mt-2 max-w-md space-y-1" aria-label={t('support.matching')}>
               {users.data.items.map((user) => (
                 <li key={user.id}>
                   <Link to={`/users/${user.id}`} className="flex items-center justify-between rounded-lg px-3 py-2 text-sm hover:bg-line/10">
-                    <span className="text-amber-200">{user.email ?? `Guest ${user.id.slice(-8)}`}</span>
+                    <span className="text-amber-200">{user.email ?? t('people.guestId', { id: user.id.slice(-8) })}</span>
                     <span className="flex gap-1">
-                      {user.blocked && <Badge tone="danger">blocked</Badge>}
-                      {user.subscription && <Badge tone="ok">{user.subscription.replace('_', ' ')}</Badge>}
+                      {user.blocked && <Badge tone="danger">{t('support.blocked')}</Badge>}
+                      {user.subscription && <Badge tone="ok">{statusLabel(user.subscription)}</Badge>}
                     </span>
                   </Link>
                 </li>
               ))}
-              {users.data.items.length === 0 && <li className="px-3 py-2 text-sm text-fg-muted">No subscriber matches.</li>}
+              {users.data.items.length === 0 && <li className="px-3 py-2 text-sm text-fg-muted">{t('support.noMatch')}</li>}
             </ul>
           )}
         </Section>
       )}
       {can('monitoring:read') && (
-        <Section title="Open incidents" description="Channels or providers known to be failing right now.">
+        <Section title={t('support.openIncidents')} description={t('support.openIncidentsHint')}>
           <Incidents compact />
         </Section>
       )}
-      <Section title="Latest support notes">
+      <Section title={t('support.latestNotes')}>
         <ErrorNote error={notes.error} />
         <ul className="space-y-2">
           {notes.data?.map((note) => (
@@ -64,7 +65,7 @@ export function SupportPage() {
               </p>
             </li>
           ))}
-          {notes.data?.length === 0 && <li className="text-sm text-fg-muted">No notes yet.</li>}
+          {notes.data?.length === 0 && <li className="text-sm text-fg-muted">{t('support.noNotes')}</li>}
         </ul>
       </Section>
     </>

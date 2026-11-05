@@ -4,6 +4,7 @@ import { useId, useState, type FormEvent } from 'react';
 import { Button } from '../../components/ui/Button';
 import { Dialog } from '../../components/ui/Dialog';
 import { pinErrorMessage, usePinPrompt, type PinRequest } from './pin-prompt';
+import { t } from '../../i18n';
 
 /** The parental PIN dialog (mounted once, opened through `askPin`). */
 export function PinDialog() {
@@ -14,7 +15,7 @@ export function PinDialog() {
     close();
   };
   return (
-    <Dialog open={Boolean(request)} onClose={cancel} title={request?.title ?? 'Parental PIN'} description={request?.description} className="w-[min(94vw,22rem)]">
+    <Dialog open={Boolean(request)} onClose={cancel} title={request?.title ?? t('parental.pinTitle')} description={request?.description} className="w-[min(94vw,22rem)]">
       {request && <PinForm key={request.title} request={request} onDone={close} onCancel={cancel} />}
     </Dialog>
   );
@@ -45,7 +46,7 @@ function PinForm({ request, onDone, onCancel }: { request: PinRequest; onDone: (
   return (
     <form onSubmit={(event) => void submit(event)} className="space-y-4">
       <label htmlFor={id} className="flex items-center gap-2 text-sm text-fg-muted">
-        <Lock className="h-4 w-4 text-brand-soft" aria-hidden /> PIN
+        <Lock className="h-4 w-4 text-brand-soft" aria-hidden /> {t('parental.pin')}
       </label>
       <input
         id={id}
@@ -67,9 +68,9 @@ function PinForm({ request, onDone, onCancel }: { request: PinRequest; onDone: (
         </p>
       )}
       <div className="flex justify-end gap-2">
-        <Button onClick={onCancel}>Cancel</Button>
+        <Button onClick={onCancel}>{t('parental.cancel')}</Button>
         <Button type="submit" variant="primary" loading={pending} disabled={pin.length < 4}>
-          Continue
+          {t('parental.continue')}
         </Button>
       </div>
     </form>

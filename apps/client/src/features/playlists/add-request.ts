@@ -1,4 +1,5 @@
 import type { AddPlacement, AddSelection, ChannelDto } from '@ziptv/contracts';
+import { t } from '../../i18n';
 
 /** What "Add channels" lets the person pick: everything, whole source groups, or single channels. */
 export type AddMode = 'all' | 'groups' | 'channels';
@@ -28,10 +29,10 @@ export function countSelected(channels: readonly ChannelLike[], mode: AddMode, p
 
 /** Why the choice cannot be sent, or null. */
 export function selectionProblem(mode: AddMode, picks: AddPicks, channelCount: number): string | null {
-  if (channelCount === 0) return 'This source has no channels.';
-  if (mode === 'groups' && picks.groups.size === 0) return 'Pick at least one group.';
-  if (mode === 'channels' && picks.keys.size === 0) return 'Pick at least one channel.';
-  if (mode === 'channels' && picks.keys.size > MAX_PICKED_CHANNELS) return `Pick at most ${MAX_PICKED_CHANNELS.toLocaleString('en-US')} channels at a time, or add whole groups instead.`;
+  if (channelCount === 0) return t('playlists.v.noChannels');
+  if (mode === 'groups' && picks.groups.size === 0) return t('playlists.v.pickGroup');
+  if (mode === 'channels' && picks.keys.size === 0) return t('playlists.v.pickChannel');
+  if (mode === 'channels' && picks.keys.size > MAX_PICKED_CHANNELS) return t('playlists.v.tooMany', { max: MAX_PICKED_CHANNELS });
   return null;
 }
 

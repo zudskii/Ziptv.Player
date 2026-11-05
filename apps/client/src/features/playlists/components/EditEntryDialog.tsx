@@ -7,6 +7,7 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { errorMessage } from '../../../lib/api-client';
 import { useUpdateEntry } from '../api';
 import { buildEntryPatch, formFromEntry, type EntryFormErrors, type EntryFormValues } from '../entry-form';
+import { t } from '../../../i18n';
 
 interface EditEntryDialogProps {
   entry: PlaylistEntryDto | null;
@@ -17,7 +18,7 @@ interface EditEntryDialogProps {
 /** Rename a channel, give it a number, fix its guide id or logo. Only this playlist changes, never the source. */
 export function EditEntryDialog({ entry, playlistId, onClose }: EditEntryDialogProps) {
   return (
-    <Dialog open={entry !== null} onClose={onClose} title="Edit channel" description="Changes apply to this playlist only; your source stays as it is.">
+    <Dialog open={entry !== null} onClose={onClose} title={t('playlists.edit.title')} description={t('playlists.edit.hint')}>
       {entry && <EditForm key={entry.id} entry={entry} playlistId={playlistId} onClose={onClose} />}
     </Dialog>
   );
@@ -46,24 +47,24 @@ function EditForm({ entry, playlistId, onClose }: { entry: PlaylistEntryDto; pla
 
   return (
     <form onSubmit={submit} noValidate className="space-y-4">
-      <Field id={ids.name} label="Name" error={errors.name}>
+      <Field id={ids.name} label={t('playlists.name')} error={errors.name}>
         <input id={ids.name} autoFocus value={form.name} maxLength={300} onChange={set('name')} className="field" />
       </Field>
-      <Field id={ids.number} label="Channel number" error={errors.number} hint="Shown by players as the channel number (tvg-chno). Leave empty for none.">
+      <Field id={ids.number} label={t('playlists.edit.number')} error={errors.number} hint={t('playlists.edit.numberHint')}>
         <input id={ids.number} inputMode="numeric" value={form.number} onChange={set('number')} className="field" />
       </Field>
-      <Field id={ids.tvgId} label="Guide id" error={errors.tvgId} hint="tvg-id: matches the channel to a programme guide.">
+      <Field id={ids.tvgId} label={t('playlists.edit.guideId')} error={errors.tvgId} hint={t('playlists.edit.guideIdHint')}>
         <input id={ids.tvgId} value={form.tvgId} onChange={set('tvgId')} spellCheck={false} className="field" />
       </Field>
-      <Field id={ids.logo} label="Logo address" error={errors.logo}>
+      <Field id={ids.logo} label={t('playlists.edit.logo')} error={errors.logo}>
         <input id={ids.logo} type="url" inputMode="url" value={form.logo} onChange={set('logo')} spellCheck={false} placeholder="https://…" className="field" />
       </Field>
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={update.isPending}>
-          Cancel
+          {t('playlists.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={update.isPending}>
-          Save
+          {t('playlists.save')}
         </Button>
       </div>
     </form>

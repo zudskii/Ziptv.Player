@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { t } from '../../i18n';
 
 export interface PlayerShortcutHandlers {
   togglePlay: () => void;
@@ -19,18 +20,25 @@ export interface PlayerShortcutHandlers {
 }
 
 /** The shortcuts the player understands (Settings → About and the "?" overlay list them). */
-export const PLAYER_SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: 'Space / K', action: 'Play / pause' },
-  { keys: '← / →', action: 'Back / forward 10 s (recordings, catch-up)' },
-  { keys: '0 … 9', action: 'Jump to 0–90 % (recordings, catch-up)' },
-  { keys: '↑ / ↓', action: 'Volume' },
-  { keys: 'M', action: 'Mute' },
-  { keys: 'F', action: 'Fullscreen' },
-  { keys: 'I', action: 'Picture in picture' },
-  { keys: 'C', action: 'Subtitles on / off' },
-  { keys: 'N / P', action: 'Next / previous channel' },
-  { keys: '?', action: 'This overview' },
-];
+const SHORTCUT_KEYS = [
+  ['Space / K', 'play'],
+  ['← / →', 'seek'],
+  ['0 … 9', 'jump'],
+  ['↑ / ↓', 'volume'],
+  ['M', 'mute'],
+  ['F', 'fullscreen'],
+  ['I', 'pip'],
+  ['C', 'subtitles'],
+  ['N / P', 'channel'],
+  ['?', 'help'],
+] as const;
+
+export const PLAYER_SHORTCUTS: { readonly keys: string; readonly action: string }[] = SHORTCUT_KEYS.map(([keys, action]) => ({
+  keys,
+  get action() {
+    return t(`player.shortcut.${action}`);
+  },
+}));
 
 /**
  * TV-remote friendly shortcuts. Ignored while typing in inputs.

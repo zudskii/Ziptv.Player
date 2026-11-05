@@ -13,6 +13,7 @@ import { SourceProblemNotice } from '../../features/sources/components/SourcePro
 import { SyncProgress } from '../../features/sources/components/SyncProgress';
 import { LiveWorkspace } from './LiveWorkspace';
 import { NoSourcesState } from '../../features/sources/components/NoSourcesState';
+import { t } from '../../i18n';
 
 /** /live[/:sourceId[/:channelKey]] — picks the source; the channel UI lives in LiveWorkspace. */
 export function LivePage() {
@@ -36,17 +37,17 @@ export function LivePage() {
     }
   }, [source, sourceId, activeSourceId, setActiveSource, navigate]);
 
-  if (sourcesQuery.isPending) return <Spinner className="py-24" label="Loading your sources…" />;
+  if (sourcesQuery.isPending) return <Spinner className="py-24" label={t('live.page.loading')} />;
   if (sourcesQuery.isError) {
-    return <FullscreenMessage tone="error" title="Couldn't load your sources" description={errorMessage(sourcesQuery.error)} action={{ label: 'Try again', onClick: () => void sourcesQuery.refetch() }} />;
+    return <FullscreenMessage tone="error" title={t('live.page.loadFailed')} description={errorMessage(sourcesQuery.error)} action={{ label: t('live.retry'), onClick: () => void sourcesQuery.refetch() }} />;
   }
   if (sources.length === 0) return <NoSourcesState area="live" />;
   if (!source) {
     return (
-      <FullscreenMessage title="No live channels yet" description="None of your sources has live channels. Add an M3U playlist or an Xtream account." icon={<Server className="h-7 w-7" />}>
+      <FullscreenMessage title={t('live.page.noLive')} description={t('live.page.noLiveHint')} icon={<Server className="h-7 w-7" />}>
         <Link to="/sources" className="mt-6">
           <Button variant="primary" icon={<Plus className="h-4 w-4" />}>
-            Add a source
+            {t('live.page.addSource')}
           </Button>
         </Link>
       </FullscreenMessage>
@@ -57,7 +58,7 @@ export function LivePage() {
     return (
       <div className="mx-auto max-w-md px-4 py-16">
         <h1 className="text-lg font-semibold text-fg">{source.name}</h1>
-        <p className="mt-1 text-sm text-fg-muted">ZIPTV is reading this source for the first time.</p>
+        <p className="mt-1 text-sm text-fg-muted">{t('live.page.firstRead')}</p>
         {source.sync.status === 'failed' ? <div className="mt-6"><SourceProblemNotice source={source} /></div> : <SyncProgress source={source} className="mt-6" />}
       </div>
     );

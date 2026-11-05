@@ -5,6 +5,7 @@ import { ApiError, errorMessage } from '../../lib/api-client';
 import { problemOf } from '../../lib/problems';
 import { loadEngine as defaultLoadEngine, type EngineLoader } from './engines';
 import { EngineError, NO_TRACKS, preferredTrack, type EngineHandle, type QualityLevel, type TrackState } from './engines/types';
+import { t } from '../../i18n';
 
 export type PlaybackStatus = 'idle' | 'resolving' | 'connecting' | 'playing' | 'buffering' | 'paused' | 'reconnecting' | 'blocked' | 'ended' | 'error';
 
@@ -306,8 +307,8 @@ export class PlaybackController {
     this.fail({
       problem: codecOnly ? 'unsupported_format' : 'stream_unavailable',
       message: codecOnly
-        ? 'This browser cannot decode this stream (unsupported format or codec). Try another browser or device.'
-        : "ZIPTV couldn't connect to this stream.",
+        ? t('player.err.cannotDecode')
+        : t('player.err.connect'),
       details,
       retryable: true,
       alternates: plan.alternates,
@@ -349,7 +350,7 @@ export class PlaybackController {
     if (this.reconnects >= this.maxReconnects) {
       this.fail({
         problem: 'stream_unavailable',
-        message: 'The stream stopped and could not be resumed.',
+        message: t('player.err.stopped'),
         details: [errorMessage(error)],
         retryable: true,
         alternates: this.snapshot.plan?.alternates ?? [],
@@ -377,7 +378,7 @@ export class PlaybackController {
         return;
       }
       if (Date.now() - this.lastProgress.at > this.stallTimeoutMs) {
-        this.onRuntimeFailure(generation, new Error('The stream stalled.'));
+        this.onRuntimeFailure(generation, new Error(t('player.err.stalled')));
       }
     }, 2_000);
   }
@@ -396,7 +397,7 @@ export class PlaybackController {
         if (!this.engine) return;
         // Live streams "end" when the upstream closes the connection: reconnect.
         if (!Number.isFinite(this.video.duration) || this.snapshot.plan?.content.mode === 'live') {
-          this.onRuntimeFailure(this.generation, new Error('The live stream ended unexpectedly.'));
+          this.onRuntimeFailure(this.generation, new Error(t('player.err.ended')));
           return;
         }
         this.stopStallWatchdog();
@@ -504,7 +505,7 @@ function planFailure(error: unknown): PlaybackFailure {
 
 function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error('Timed out waiting for the stream to start.')), ms);
+    const timer = setTimeout(() => reject(new Error(t('player.err.startTimeout'))), ms);
     promise.then(
       (value) => {
         clearTimeout(timer);

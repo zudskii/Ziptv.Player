@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import { Brand } from '../../components/layout/Brand';
+import { LanguagePicker } from '../../components/ui/LanguagePicker';
 
 /** The frame of the sign-in family of pages: brand, a card, a line of links below. */
 export function AuthShell({ title, subtitle, children, footer }: { title: string; subtitle?: string; children: ReactNode; footer?: ReactNode }) {
@@ -18,6 +19,9 @@ export function AuthShell({ title, subtitle, children, footer }: { title: string
           {children}
         </div>
         {footer && <p className="text-center text-sm text-fg-muted">{footer}</p>}
+        <div className="flex justify-center">
+          <LanguagePicker />
+        </div>
       </div>
     </div>
   );

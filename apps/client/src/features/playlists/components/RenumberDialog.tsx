@@ -6,6 +6,7 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { errorMessage } from '../../../lib/api-client';
 import { useRenumber } from '../api';
 import { numberingProblem } from '../numbering';
+import { t } from '../../../i18n';
 
 interface RenumberDialogProps {
   open: boolean;
@@ -17,7 +18,7 @@ interface RenumberDialogProps {
 /** Numbers every channel in the order of the playlist (these become `tvg-chno` in the exported file). */
 export function RenumberDialog({ open, onClose, ...rest }: RenumberDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title="Number the channels" description="Channels are numbered in the order shown: ungrouped first, then each group in turn." className="w-[min(94vw,26rem)]">
+    <Dialog open={open} onClose={onClose} title={t('playlists.renumber.title')} description={t('playlists.renumber.hint')} className="w-[min(94vw,26rem)]">
       {open && <RenumberForm onClose={onClose} {...rest} />}
     </Dialog>
   );
@@ -38,7 +39,7 @@ function RenumberForm({ onClose, playlistId, entryCount }: Omit<RenumberDialogPr
     if (problem) return;
     try {
       const result = await renumber.mutateAsync({ start: startValue, step: stepValue });
-      toast.success(`${result.renumbered.toLocaleString()} channels numbered`);
+      toast.success(t('playlists.toast.numbered', { count: result.renumbered }));
       onClose();
     } catch (reason) {
       toast.error(errorMessage(reason));
@@ -50,13 +51,13 @@ function RenumberForm({ onClose, playlistId, entryCount }: Omit<RenumberDialogPr
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
           <label htmlFor={ids.start} className="text-sm text-fg-muted">
-            Start at
+            {t('playlists.renumber.start')}
           </label>
           <input id={ids.start} type="number" inputMode="numeric" min={1} max={99999} value={start} onChange={(e) => setStart(e.target.value)} className="field" />
         </div>
         <div className="space-y-1.5">
           <label htmlFor={ids.step} className="text-sm text-fg-muted">
-            Step
+            {t('playlists.renumber.step')}
           </label>
           <input id={ids.step} type="number" inputMode="numeric" min={1} max={1000} value={step} onChange={(e) => setStep(e.target.value)} className="field" />
         </div>
@@ -67,15 +68,15 @@ function RenumberForm({ onClose, playlistId, entryCount }: Omit<RenumberDialogPr
         </p>
       ) : (
         <p className="text-sm text-fg-muted">
-          {entryCount.toLocaleString()} channels get the numbers {startValue.toLocaleString()} to {last.toLocaleString()}. Numbers you set by hand are replaced.
+          {t('playlists.renumberPreview', { count: entryCount, start: startValue, last })}
         </p>
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={renumber.isPending}>
-          Cancel
+          {t('playlists.cancel')}
         </Button>
         <Button type="submit" variant="primary" loading={renumber.isPending} disabled={Boolean(problem) || entryCount === 0}>
-          Number channels
+          {t('playlists.renumber.do')}
         </Button>
       </div>
     </form>

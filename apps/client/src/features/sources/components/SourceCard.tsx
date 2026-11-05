@@ -14,6 +14,7 @@ import { isSyncing, useConvertToXtream, useDeleteSource, useSyncSource } from '.
 import { describeLibrary, describeSync, HEALTH_LABELS, SOURCE_TYPE_LABELS } from '../source-status';
 import { SourceProblemNotice } from './SourceProblemNotice';
 import { SyncProgress } from './SyncProgress';
+import { i18n, t } from '../../../i18n';
 
 const TYPE_ICONS = { m3u_url: Globe, m3u_file: FileText, xtream: KeyRound } as const;
 
@@ -31,21 +32,21 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
     try {
       await sync.mutateAsync(source.id);
     } catch (error) {
-      toast.error('Sync failed to start', { description: errorMessage(error) });
+      toast.error(t('sources.toast.syncFailed'), { description: errorMessage(error) });
     }
   };
 
   const convertToXtream = async () => {
     try {
       await convert.mutateAsync(source.id);
-      toast.success('Switched to the Xtream API', { description: 'Your favourites and progress stay where they are. Syncing now…' });
+      toast.success(t('sources.toast.switched'), { description: t('sources.toast.switchedHint') });
     } catch (error) {
-      toast.error('Could not switch to Xtream', { description: errorMessage(error) });
+      toast.error(t('sources.toast.switchFailed'), { description: errorMessage(error) });
     }
   };
 
   const doDelete = async () => {
-    if (!window.confirm(`Remove “${source.name}”? Its channels, movies and series disappear from ZIPTV.`)) return;
+    if (!window.confirm(t('sources.card.removeConfirm', { name: source.name }))) return;
     try {
       await remove.mutateAsync(source.id);
       toast.success(`“${source.name}” removed`);
@@ -72,34 +73,34 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
           <p className="mt-2 text-sm text-fg-muted">{describeLibrary(source)}</p>
           <p className="mt-0.5 text-xs text-fg-subtle">
             {describeSync(source, now)}
-            {source.sync.autoSync && source.sync.nextSyncAt && !syncing && ` · next ${formatIn(source.sync.nextSyncAt, now)}`}
-            {source.epg.guides > 0 && ` · ${source.stats.epgMapped.toLocaleString()} channel${source.stats.epgMapped === 1 ? '' : 's'} with guide`}
+            {source.sync.autoSync && source.sync.nextSyncAt && !syncing && t('sources.card.next', { when: formatIn(source.sync.nextSyncAt, now) })}
+            {source.epg.guides > 0 && t('sources.card.withGuide', { count: source.stats.epgMapped })}
           </p>
           {source.account && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle">
               <CalendarClock className="h-3.5 w-3.5" />
-              Account {source.account.status.toLowerCase()}
-              {source.account.expiresAt && ` · expires ${new Date(source.account.expiresAt).toLocaleDateString()}`}
-              {source.account.maxConnections !== null && ` · ${source.account.maxConnections} connection${source.account.maxConnections === 1 ? '' : 's'}`}
+              {t('sources.card.account', { status: source.account.status.toLowerCase() })}
+              {source.account.expiresAt && t('sources.card.expires', { date: new Date(source.account.expiresAt).toLocaleDateString(i18n.locale) })}
+              {source.account.maxConnections !== null && t('sources.card.connections', { count: source.account.maxConnections })}
             </p>
           )}
           {(source.health.failedPlays > 0 || source.health.message) && source.health.state !== 'online' && (
             <p className="mt-0.5 flex items-center gap-1 text-xs text-amber-500">
               <TriangleAlert className="h-3.5 w-3.5" />
-              {source.health.failedPlays > 0 ? `${source.health.failedPlays} of ${source.health.plays} recent plays failed` : source.health.message}
-              {source.health.checkedAt && ` · checked ${formatAgo(source.health.checkedAt, now)}`}
+              {source.health.failedPlays > 0 ? t('sources.card.failedPlays', { failed: source.health.failedPlays, plays: source.health.plays }) : source.health.message}
+              {source.health.checkedAt && t('sources.card.checked', { when: formatAgo(source.health.checkedAt, now) })}
             </p>
           )}
         </div>
         <div className="flex shrink-0 items-center gap-1">
           {source.type !== 'm3u_file' && (
             <Button size="sm" icon={<RefreshCw className={syncing ? 'h-3.5 w-3.5 animate-spin' : 'h-3.5 w-3.5'} />} onClick={() => void syncNow()} disabled={syncing} loading={sync.isPending}>
-              <span className="hidden sm:inline">{syncing ? 'Syncing' : 'Sync now'}</span>
+              <span className="hidden sm:inline">{syncing ? t('sources.card.syncing') : t('sources.card.syncNow')}</span>
             </Button>
           )}
           <Popover
             trigger={({ toggle, open }) => (
-              <IconButton label="More actions" onClick={toggle} active={open}>
+              <IconButton label={t('sources.card.more')} onClick={toggle} active={open}>
                 <MoreHorizontal className="h-4 w-4" />
               </IconButton>
             )}
@@ -108,28 +109,28 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
               <ul className="w-52 py-1 text-sm" role="menu">
                 {source.revision > 0 && source.stats.live > 0 && (
                   <MenuLink to={`/live/${source.id}`} icon={<Tv className="h-4 w-4" />} onClick={close}>
-                    Open in Live TV
+                    {t('sources.card.openLive')}
                   </MenuLink>
                 )}
                 <MenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => {
                     close();
                     onEdit(source);
                   }}>
-                  Settings
+                  {t('sources.card.settings')}
                 </MenuItem>
                 {source.warningCount > 0 && (
                   <MenuItem icon={<TriangleAlert className="h-4 w-4" />} onClick={() => {
                       close();
                       setShowWarnings((value) => !value);
                     }}>
-                    {showWarnings ? 'Hide' : 'Show'} {source.warningCount} import warnings
+                    {t(showWarnings ? 'sources.card.warningsHide' : 'sources.card.warningsShow', { count: source.warningCount })}
                   </MenuItem>
                 )}
                 <MenuItem icon={<Trash2 className="h-4 w-4" />} danger onClick={() => {
                     close();
                     void doDelete();
                   }}>
-                  Remove source
+                  {t('sources.card.remove')}
                 </MenuItem>
               </ul>
             )}
@@ -147,10 +148,10 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
       {source.type === 'm3u_url' && source.xtreamCandidate && source.revision > 0 && source.sync.status !== 'failed' && (
         <div className="mt-3 flex flex-col gap-2 rounded-md border border-brand/20 bg-brand/5 p-3 text-sm sm:flex-row sm:items-center">
           <p className="flex-1 text-fg-muted">
-            This link comes from an Xtream Codes panel. Switch to the Xtream API for movie and series details, account status and archive.
+            {t('sources.card.xtreamHint')}
           </p>
           <Button size="sm" icon={<KeyRound className="h-3.5 w-3.5" />} onClick={() => void convertToXtream()} loading={convert.isPending} disabled={syncing}>
-            Switch to Xtream
+            {t('sources.card.switch')}
           </Button>
         </div>
       )}
@@ -159,11 +160,11 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
         <ul className="mt-3 max-h-40 space-y-0.5 overflow-y-auto rounded-md bg-sunken/60 p-2 font-mono text-xs text-amber-500/90">
           {source.warnings.map((warning) => (
             <li key={`${warning.line}-${warning.code}-${warning.message}`}>
-              {warning.line > 0 && `line ${warning.line}: `}
+              {warning.line > 0 && t('sources.card.line', { line: warning.line })}
               {warning.message}
             </li>
           ))}
-          {source.warningCount > source.warnings.length && <li className="text-fg-subtle">…and {source.warningCount - source.warnings.length} more</li>}
+          {source.warningCount > source.warnings.length && <li className="text-fg-subtle">{t('sources.card.andMore', { count: source.warningCount - source.warnings.length })}</li>}
         </ul>
       )}
     </article>

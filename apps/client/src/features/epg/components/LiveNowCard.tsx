@@ -10,6 +10,7 @@ import { useNow } from '../../../lib/use-now';
 import { useDisplayPrefs } from '../../user-state/display-prefs';
 import { ChannelLogo } from '../../live/components/ChannelLogo';
 import { minutesLeft, programmeProgress } from '../programme';
+import { t } from '../../../i18n';
 
 interface LiveNowCardProps {
   sourceId: string;
@@ -31,21 +32,21 @@ export function LiveNowCard({ sourceId, channel, entry, favorite, onToggleFavori
   const next = entry?.next ?? null;
 
   return (
-    <section className="card p-3 sm:p-4" aria-label="Now playing">
+    <section className="card p-3 sm:p-4" aria-label={t('epg.card.nowPlaying')}>
       <div className="flex items-start gap-3">
         <ChannelLogo sourceId={sourceId} channel={channel} className="h-12 w-16" />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="truncate text-lg font-semibold text-fg">{channel.name}</h1>
             <LiveBadge />
-            {channel.catchupDays && <Badge tone="brand">Archive {channel.catchupDays}d</Badge>}
+            {channel.catchupDays && <Badge tone="brand">{t('epg.card.archive')} {channel.catchupDays}d</Badge>}
           </div>
-          <p className="truncate text-xs text-fg-subtle">{channel.groups.length > 0 ? channel.groups.join(' · ') : 'Uncategorized'}</p>
+          <p className="truncate text-xs text-fg-subtle">{channel.groups.length > 0 ? channel.groups.join(' · ') : t('epg.card.uncategorized')}</p>
         </div>
-        <IconButton label="Programme guide source" onClick={onOpenMapping}>
+        <IconButton label={t('epg.card.guideSource')} onClick={onOpenMapping}>
           <CalendarCog className="h-4 w-4" />
         </IconButton>
-        <IconButton label={favorite ? 'Remove from favorites' : 'Add to favorites'} onClick={onToggleFavorite} active={favorite}>
+        <IconButton label={favorite ? t('epg.card.favRemove') : t('epg.card.favAdd')} onClick={onToggleFavorite} active={favorite}>
           <Star className={cn('h-4 w-4', favorite && 'fill-current text-amber-400')} />
         </IconButton>
       </div>
@@ -57,19 +58,19 @@ export function LiveNowCard({ sourceId, channel, entry, favorite, onToggleFavori
             <span className="shrink-0 font-mono text-xs tabular-nums text-fg-muted">{formatRange(current.start, current.end)}</span>
           </p>
           <div className="mt-2 flex items-center gap-3">
-            {showProgress && <ProgressBar value={programmeProgress(current, now)} tone="live" className="flex-1" label={`${current.title} progress`} />}
+            {showProgress && <ProgressBar value={programmeProgress(current, now)} tone="live" className="flex-1" label={t('epg.progressOf', { title: current.title })} />}
             <span className="w-24 shrink-0 text-right text-xs text-fg-subtle">
-              {Math.round(programmeProgress(current, now) * 100)}% · {minutesLeft(current, now)} min left
+              {t('epg.percentLeft', { percent: Math.round(programmeProgress(current, now) * 100), minutes: minutesLeft(current, now) })}
             </span>
           </div>
           {current.description && <p className="mt-2 line-clamp-2 text-sm text-fg-muted">{current.description}</p>}
         </button>
       ) : (
-        <p className="mt-3 px-2 text-sm text-fg-subtle">{channel.hasEpg ? 'No programme information right now.' : 'This channel has no programme guide.'}</p>
+        <p className="mt-3 px-2 text-sm text-fg-subtle">{channel.hasEpg ? t('epg.card.noInfo') : t('epg.card.noGuide')}</p>
       )}
       {next && (
         <button type="button" onClick={() => onSelectProgramme(next)} className="mt-1 flex w-full items-baseline gap-2 rounded-lg px-2 py-1 text-left text-sm hover:bg-fg/5">
-          <span className="text-fg-subtle">Next:</span>
+          <span className="text-fg-subtle">{t('epg.card.next')}</span>
           <span className="min-w-0 flex-1 truncate text-fg">{next.title}</span>
           <span className="shrink-0 font-mono text-xs tabular-nums text-fg-subtle">{formatClock(next.start)}</span>
         </button>
@@ -97,12 +98,12 @@ export function LiveInfoOverlay({ sourceId, channel, entry }: { sourceId: string
             </div>
             {entry?.next && (
               <p className="mt-1 truncate text-xs text-white/60">
-                Next: {entry.next.title} · {formatClock(entry.next.start)}
+                {t('epg.nextItem', { title: entry.next.title, time: formatClock(entry.next.start) })}
               </p>
             )}
           </>
         ) : (
-          <p className="truncate text-xs text-white/60">{channel.groups[0] ?? 'Live'}</p>
+          <p className="truncate text-xs text-white/60">{channel.groups[0] ?? t('epg.card.live')}</p>
         )}
       </div>
     </div>

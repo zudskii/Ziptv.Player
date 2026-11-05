@@ -1,6 +1,8 @@
 import { clsx } from 'clsx';
 import { Loader2, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState, type ButtonHTMLAttributes, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { errorText } from '../lib/api';
+import { t } from '../i18n';
 
 type Tone = 'primary' | 'ghost' | 'danger';
 
@@ -74,12 +76,12 @@ export function ErrorNote({ error }: { error: unknown }) {
   if (!error) return null;
   return (
     <p role="alert" className="rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-red-300">
-      {error instanceof Error ? error.message : String(error)}
+      {error instanceof Error ? errorText(error) : String(error)}
     </p>
   );
 }
 
-export function Spinner({ label = 'Loading…' }: { label?: string }) {
+export function Spinner({ label = t('common.loading') }: { label?: string }) {
   return (
     <div className="flex items-center gap-2 py-10 text-sm text-fg-muted" role="status">
       <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> {label}
@@ -93,7 +95,7 @@ export interface Column<T> {
   className?: string;
 }
 
-export function DataTable<T>({ rows, columns, rowKey, empty = 'Nothing here yet.', label }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; empty?: string; label: string }) {
+export function DataTable<T>({ rows, columns, rowKey, empty = t('common.empty'), label }: { rows: T[]; columns: Column<T>[]; rowKey: (row: T) => string; empty?: string; label: string }) {
   return (
     <div className="card overflow-x-auto">
       <table className="w-full min-w-[640px] text-left text-sm" aria-label={label}>
@@ -142,7 +144,7 @@ export function Dialog({ open, title, onClose, children }: { open: boolean; titl
     <dialog ref={ref} onClose={onClose} aria-label={title} className="w-full max-w-md rounded-xl border border-line/10 bg-surface p-0 text-fg backdrop:bg-black/60">
       <div className="flex items-center justify-between border-b border-line/[0.07] px-5 py-4">
         <h2 className="font-semibold">{title}</h2>
-        <button type="button" onClick={onClose} aria-label="Close" className="rounded p-1 text-fg-muted hover:bg-line/10">
+        <button type="button" onClick={onClose} aria-label={t('common.close')} className="rounded p-1 text-fg-muted hover:bg-line/10">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -240,13 +242,13 @@ export function Pager({ offset, limit, total, onChange }: { offset: number; limi
   return (
     <div className="mt-4 flex items-center gap-3 text-sm text-fg-muted">
       <Button disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}>
-        Previous
+        {t('common.previous')}
       </Button>
       <span>
-        {offset + 1}–{Math.min(offset + limit, total)} of {total}
+        {t('common.range', { from: offset + 1, to: Math.min(offset + limit, total), total })}
       </span>
       <Button disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>
-        Next
+        {t('common.next')}
       </Button>
     </div>
   );
@@ -281,7 +283,7 @@ function ConfirmBody({ description, confirmLabel, tone = 'primary', note, busy, 
       {note && <TextArea label={note.label} value={text} onChange={(e) => setText(e.target.value)} maxLength={1000} />}
       <ErrorNote error={error} />
       <div className="flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
         <Button tone={tone} busy={busy} disabled={Boolean(note?.required) && !text.trim()} onClick={() => onConfirm(text.trim())}>
           {confirmLabel}
         </Button>

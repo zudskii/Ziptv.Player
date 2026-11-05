@@ -10,8 +10,9 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { formatDate, money } from '../lib/format';
 import { useAction } from '../lib/mutation';
+import { statusLabel, t, tx } from '../i18n';
 
-const sentForApproval = (result: unknown, applied: string) => toast.success(typeof result === 'object' && result !== null && 'changeRequest' in result ? 'Sent for approval — a second person must approve it in Approvals' : applied);
+const sentForApproval = (result: unknown, applied: string) => toast.success(typeof result === 'object' && result !== null && 'changeRequest' in result ? t('packages.sentForApproval') : applied);
 
 /** 9.6 — packages (what is sold) and their channels. Every change is approved by a second person. */
 export function PackagesPage() {
@@ -22,12 +23,12 @@ export function PackagesPage() {
   return (
     <>
       <PageHeader
-        title="Packages & rights"
-        description="Packages viewers can buy. Price, limits, status and channels change only with a second person's approval; channel rights are on each channel's page."
+        title={t('packages.title')}
+        description={t('packages.intro')}
         actions={
           can('billing:write') ? (
             <Button tone="primary" onClick={() => setCreating(true)}>
-              <Plus className="h-4 w-4" aria-hidden /> New package
+              <Plus className="h-4 w-4" aria-hidden /> {t('packages.new')}
             </Button>
           ) : undefined
         }
@@ -36,25 +37,25 @@ export function PackagesPage() {
         <ul className="mb-4 space-y-1 text-sm">
           {pending.data.items.map((request) => (
             <li key={request.id} className="rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-amber-200">
-              Waiting for approval: {request.summary} — <Link className="underline" to="/approvals">Approvals</Link>
+              {tx('pkg.waitingApproval', { summary: request.summary, link: (chunks) => <Link className="underline" to="/approvals">{chunks}</Link> })}
             </li>
           ))}
         </ul>
       )}
       <ErrorNote error={packages.error} />
       <DataTable
-        label="Packages"
+        label={t('packages.packages')}
         rows={packages.data ?? []}
         rowKey={(row) => row.id}
-        empty={packages.isPending ? 'Loading…' : 'No packages yet.'}
+        empty={packages.isPending ? t('common.loading') : t('packages.none')}
         columns={[
-          { header: 'Package', cell: (row) => <Link to={`/packages/${row.id}`} className="font-medium text-amber-200 hover:underline">{row.name}</Link> },
-          { header: 'Status', cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : row.status === 'draft' ? 'warn' : 'neutral'}>{row.status}</Badge> },
-          { header: 'Price', cell: (row) => `${money({ currency: row.currency, amountMinor: row.priceMinor })} / ${row.billingPeriod}`, className: 'whitespace-nowrap' },
-          { header: 'Trial', cell: (row) => (row.trialDays ? `${row.trialDays} days` : '—') },
-          { header: 'Limits', cell: (row) => `${row.maxStreams} streams · ${row.maxDevices} devices` },
-          { header: 'Channels', cell: (row) => row.channels, className: 'tabular-nums' },
-          { header: 'Model', cell: (row) => row.businessModel },
+          { header: t('common.package'), cell: (row) => <Link to={`/packages/${row.id}`} className="font-medium text-amber-200 hover:underline">{row.name}</Link> },
+          { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : row.status === 'draft' ? 'warn' : 'neutral'}>{statusLabel(row.status)}</Badge> },
+          { header: t('common.price'), cell: (row) => t('pkg.pricePer', { price: money({ currency: row.currency, amountMinor: row.priceMinor }), period: t(`pkg.period.${row.billingPeriod}`) }), className: 'whitespace-nowrap' },
+          { header: t('packages.trial'), cell: (row) => (row.trialDays ? t('pkg.days', { count: row.trialDays }) : '—') },
+          { header: t('packages.limits'), cell: (row) => t('pkg.limits', { streams: row.maxStreams, devices: row.maxDevices }) },
+          { header: t('common.channels'), cell: (row) => row.channels, className: 'tabular-nums' },
+          { header: t('common.model'), cell: (row) => row.businessModel },
         ]}
       />
       <PackageDialog open={creating} onClose={() => setCreating(false)} />
@@ -78,17 +79,17 @@ export function PackageDetailPage() {
   return (
     <>
       <Link to="/packages" className="text-sm text-fg-muted hover:text-fg">
-        ← Packages
+        {t('packages.back')}
       </Link>
       <PageHeader
         title={data.name}
-        description={`/${data.slug} · created ${formatDate(data.createdAt)}`}
+        description={t('pkg.slugCreated', { slug: data.slug, date: formatDate(data.createdAt) })}
         actions={
           can('billing:write') && !open ? (
             <>
-              <Button onClick={() => setChannelEditing(true)}>Change channels</Button>
+              <Button onClick={() => setChannelEditing(true)}>{t('packages.changeChannels')}</Button>
               <Button tone="primary" onClick={() => setEditing(true)}>
-                Change terms
+                {t('packages.changeTerms')}
               </Button>
             </>
           ) : undefined
@@ -96,23 +97,23 @@ export function PackageDetailPage() {
       />
       {open && (
         <p className="mb-4 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-sm text-amber-200">
-          Waiting for approval: {open.summary} (requested by {open.requestedBy.name}). Further changes are possible once it is decided — <Link className="underline" to="/approvals">Approvals</Link>
+          {tx('pkg.waitingRequested', { summary: open.summary, name: open.requestedBy.name, link: (chunks) => <Link className="underline" to="/approvals">{chunks}</Link> })}
         </p>
       )}
-      <Section title="Terms">
+      <Section title={t('packages.terms')}>
         <KeyValues
           rows={[
-            ['Status', <Badge key="s" tone={data.status === 'active' ? 'ok' : data.status === 'draft' ? 'warn' : 'neutral'}>{data.status}</Badge>],
-            ['Price', `${money({ currency: data.currency, amountMinor: data.priceMinor })} / ${data.billingPeriod}`],
-            ['Free trial', data.trialDays ? `${data.trialDays} days` : 'none'],
-            ['Simultaneous streams', data.maxStreams],
-            ['Devices', data.maxDevices],
-            ['Business model', data.businessModel],
-            ['Description', data.description || '—'],
+            [t('common.status'), <Badge key="s" tone={data.status === 'active' ? 'ok' : data.status === 'draft' ? 'warn' : 'neutral'}>{statusLabel(data.status)}</Badge>],
+            [t('common.price'), t('pkg.pricePer', { price: money({ currency: data.currency, amountMinor: data.priceMinor }), period: t(`pkg.period.${data.billingPeriod}`) })],
+            [t('packages.freeTrial'), data.trialDays ? t('pkg.days', { count: data.trialDays }) : t('common.noneLower')],
+            [t('packages.simultaneous'), data.maxStreams],
+            [t('common.devices'), data.maxDevices],
+            [t('packages.businessModel'), data.businessModel],
+            [t('common.description'), data.description || '—'],
           ]}
         />
       </Section>
-      <Section title={`Channels (${data.channelIds.length})`}>
+      <Section title={t('pkg.channelsCount', { count: data.channelIds.length })}>
         <ul className="flex flex-wrap gap-2">
           {data.channelIds.map((id) => (
             <li key={id}>
@@ -121,20 +122,20 @@ export function PackageDetailPage() {
               </Link>
             </li>
           ))}
-          {data.channelIds.length === 0 && <li className="text-sm text-fg-muted">No channels yet.</li>}
+          {data.channelIds.length === 0 && <li className="text-sm text-fg-muted">{t('packages.noChannels')}</li>}
         </ul>
       </Section>
-      <Section title="Change history">
+      <Section title={t('packages.history')}>
         <DataTable
-          label="Package change requests"
+          label={t('packages.requests')}
           rows={requests.data?.items ?? []}
           rowKey={(row) => row.id}
-          empty="No changes requested yet."
+          empty={t('packages.noChanges')}
           columns={[
-            { header: 'Change', cell: (row) => row.summary },
-            { header: 'Status', cell: (row) => <Badge tone={row.status === 'applied' ? 'ok' : row.status === 'pending' ? 'warn' : row.status === 'withdrawn' ? 'neutral' : 'danger'}>{row.status}</Badge> },
-            { header: 'Requested', cell: (row) => `${row.requestedBy.name} · ${formatDate(row.requestedAt)}` },
-            { header: 'Decided', cell: (row) => (row.decidedBy ? `${row.decidedBy.name} · ${formatDate(row.decidedAt)}` : '—') },
+            { header: t('packages.change'), cell: (row) => row.summary },
+            { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'applied' ? 'ok' : row.status === 'pending' ? 'warn' : row.status === 'withdrawn' ? 'neutral' : 'danger'}>{statusLabel(row.status)}</Badge> },
+            { header: t('packages.requested'), cell: (row) => `${row.requestedBy.name} · ${formatDate(row.requestedAt)}` },
+            { header: t('packages.decided'), cell: (row) => (row.decidedBy ? `${row.decidedBy.name} · ${formatDate(row.decidedAt)}` : '—') },
           ]}
         />
       </Section>
@@ -150,7 +151,7 @@ function PackageDialog({ open, pkg, onClose }: { open: boolean; pkg?: PackageDet
     inlineErrors: true,
     invalidate: [['packages'], ['package'], ['change-requests']],
     onSuccess: (result) => {
-      sentForApproval(result, pkg ? 'Package updated' : 'Package created');
+      sentForApproval(result, pkg ? t('packages.updated') : t('packages.created'));
       onClose();
     },
   });
@@ -178,36 +179,36 @@ function PackageDialog({ open, pkg, onClose }: { open: boolean; pkg?: PackageDet
     save.mutate(body);
   };
   return (
-    <Dialog open={open} title={pkg ? `Change ${pkg.name}` : 'New package'} onClose={onClose}>
+    <Dialog open={open} title={pkg ? t('pkg.changeNamed', { name: pkg.name }) : t('packages.new')} onClose={onClose}>
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Name" name="name" defaultValue={pkg?.name} required maxLength={100} />
-        <TextArea label="Description" name="description" defaultValue={pkg?.description} maxLength={1000} />
+        <Field label={t('common.name')} name="name" defaultValue={pkg?.name} required maxLength={100} />
+        <TextArea label={t('common.description')} name="description" defaultValue={pkg?.description} maxLength={1000} />
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Price" name="price" type="number" step="0.01" min="0" required defaultValue={pkg ? pkg.priceMinor / 100 : ''} />
-          <Field label="Currency" name="currency" maxLength={3} required defaultValue={pkg?.currency ?? 'GEL'} />
-          <SelectField label="Per" name="period" defaultValue={pkg?.billingPeriod ?? 'month'}>
-            <option value="month">month</option>
-            <option value="year">year</option>
+          <Field label={t('common.price')} name="price" type="number" step="0.01" min="0" required defaultValue={pkg ? pkg.priceMinor / 100 : ''} />
+          <Field label={t('common.currency')} name="currency" maxLength={3} required defaultValue={pkg?.currency ?? 'GEL'} />
+          <SelectField label={t('packages.per')} name="period" defaultValue={pkg?.billingPeriod ?? t('packages.month')}>
+            <option value={t('packages.month')}>{t('packages.month')}</option>
+            <option value={t('packages.year')}>{t('packages.year')}</option>
           </SelectField>
         </div>
         <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Trial days" name="trial" type="number" min="0" max="90" defaultValue={pkg?.trialDays ?? 0} />
-          <Field label="Streams" name="streams" type="number" min="1" max="20" required defaultValue={pkg?.maxStreams ?? 1} />
-          <Field label="Devices" name="devices" type="number" min="1" max="50" required defaultValue={pkg?.maxDevices ?? 3} />
+          <Field label={t('packages.trialDays')} name="trial" type="number" min="0" max="90" defaultValue={pkg?.trialDays ?? 0} />
+          <Field label={t('common.streams')} name="streams" type="number" min="1" max="20" required defaultValue={pkg?.maxStreams ?? 1} />
+          <Field label={t('common.devices')} name="devices" type="number" min="1" max="50" required defaultValue={pkg?.maxDevices ?? 3} />
         </div>
         {pkg && (
-          <SelectField label="Status" name="status" defaultValue={pkg.status}>
-            <option value="draft">Draft (not sold)</option>
-            <option value="active">Active (on sale)</option>
-            <option value="retired">Retired (no new sales; holders keep access)</option>
+          <SelectField label={t('common.status')} name="status" defaultValue={pkg.status}>
+            <option value="draft">{t('packages.draftOption')}</option>
+            <option value="active">{t('packages.activeOption')}</option>
+            <option value="retired">{t('packages.retiredOption')}</option>
           </SelectField>
         )}
-        <p className="text-xs text-fg-subtle">Price changes apply to new checkouts; existing subscribers keep what they pay.</p>
+        <p className="text-xs text-fg-subtle">{t('packages.priceHint')}</p>
         <ErrorNote error={save.error} />
         <div className="flex justify-end gap-2">
-          <Button onClick={onClose}>Cancel</Button>
+          <Button onClick={onClose}>{t('common.cancel')}</Button>
           <Button tone="primary" type="submit" busy={save.isPending}>
-            Request approval
+            {t('packages.requestApproval')}
           </Button>
         </div>
       </form>
@@ -217,7 +218,7 @@ function PackageDialog({ open, pkg, onClose }: { open: boolean; pkg?: PackageDet
 
 function ChannelPicker({ open, pkg, onClose }: { open: boolean; pkg: PackageDetailDto; onClose: () => void }) {
   return (
-    <Dialog open={open} title={`Channels of ${pkg.name}`} onClose={onClose}>
+    <Dialog open={open} title={t('pkg.channelsOf', { name: pkg.name })} onClose={onClose}>
       {/* Mounted per opening: starts from the package's current channels. */}
       {open && <ChannelPickerBody pkg={pkg} onClose={onClose} />}
     </Dialog>
@@ -235,7 +236,7 @@ function ChannelPickerBody({ pkg, onClose }: { pkg: PackageDetailDto; onClose: (
     inlineErrors: true,
     invalidate: [['package'], ['change-requests']],
     onSuccess: (result) => {
-      sentForApproval(result, 'Channels updated');
+      sentForApproval(result, t('packages.channelsUpdated'));
       onClose();
     },
   });
@@ -247,25 +248,25 @@ function ChannelPickerBody({ pkg, onClose }: { pkg: PackageDetailDto; onClose: (
             {names.get(id) ?? id.slice(-8)} <X className="h-3 w-3" />
           </button>
         ))}
-        {selected.length === 0 && <span className="text-xs text-fg-muted">No channels selected.</span>}
+        {selected.length === 0 && <span className="text-xs text-fg-muted">{t('packages.noneSelected')}</span>}
       </div>
-      <Field label="Add channels" placeholder="Search" value={text} onChange={(e) => setText(e.target.value)} />
+      <Field label={t('packages.addChannels')} placeholder={t('common.search')} value={text} onChange={(e) => setText(e.target.value)} />
       <ul className="max-h-60 space-y-1 overflow-y-auto">
         {results.data?.items
           .filter((channel) => !selected.includes(channel.id))
           .map((channel) => (
             <li key={channel.id}>
               <button type="button" onClick={() => setSelected([...selected, channel.id])} className="w-full rounded-lg px-3 py-1.5 text-left text-sm hover:bg-line/10">
-                + {channel.name} <span className="text-xs text-fg-subtle">{channel.activeGrants ? '' : '(no rights yet)'}</span>
+                + {channel.name} <span className="text-xs text-fg-subtle">{channel.activeGrants ? '' : t('packages.noRightsYet')}</span>
               </button>
             </li>
           ))}
       </ul>
       <ErrorNote error={save.error} />
       <div className="flex justify-end gap-2">
-        <Button onClick={onClose}>Cancel</Button>
+        <Button onClick={onClose}>{t('common.cancel')}</Button>
         <Button tone="primary" busy={save.isPending} onClick={() => save.mutate(selected)}>
-          Request approval
+          {t('packages.requestApproval')}
         </Button>
       </div>
     </>

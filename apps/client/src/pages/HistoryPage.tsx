@@ -15,8 +15,9 @@ import { historyImageSources } from '../lib/images';
 import { historyPath } from '../lib/routes';
 import { formatClock, formatDay, formatDuration } from '../lib/time';
 import { LoadMore } from './vod/VodBrowsePage';
+import { t } from '../i18n';
 
-const KIND_LABELS = { channel: 'Live', operator: 'Channel', catchup: 'Catch-up', movie: 'Movie', episode: 'Episode' } as const;
+const KIND_KEYS = { channel: 'kind.live', operator: 'kind.channel', catchup: 'kind.catchup', movie: 'kind.movie', episode: 'kind.episode' } as const;
 
 /** /history — every viewing of this profile, newest first, grouped by day. */
 export function HistoryPage() {
@@ -34,19 +35,19 @@ export function HistoryPage() {
   return (
     <div className="mx-auto max-w-3xl space-y-4 p-4 sm:p-6">
       <header className="flex items-center gap-3">
-        <h1 className="flex-1 text-2xl font-bold text-fg">History</h1>
+        <h1 className="flex-1 text-2xl font-bold text-fg">{t('history.title')}</h1>
         {items.length > 0 && (
           <Button icon={<Trash2 className="h-4 w-4" />} onClick={() => setConfirm(true)}>
-            Clear history
+            {t('history.clear')}
           </Button>
         )}
       </header>
       {history.isPending ? (
-        <Spinner label="Loading…" />
+        <Spinner label={t('history.loading')} />
       ) : history.isError ? (
-        <EmptyState title="History could not be loaded" description={errorMessage(history.error)} />
+        <EmptyState title={t('history.loadFailed')} description={errorMessage(history.error)} />
       ) : items.length === 0 ? (
-        <EmptyState icon={<History className="h-8 w-8" />} title="No watch history" description="Channels, movies and episodes you watch appear here." />
+        <EmptyState icon={<History className="h-8 w-8" />} title={t('history.empty')} description={t('history.emptyHint')} />
       ) : (
         [...days.entries()].map(([day, entries]) => (
           <section key={day} aria-label={day}>
@@ -63,12 +64,12 @@ export function HistoryPage() {
       <ConfirmDialog
         open={confirm}
         onClose={() => setConfirm(false)}
-        title="Clear watch history?"
-        description="This removes the history of this profile. Continue Watching and My List stay."
-        confirmLabel="Clear history"
+        title={t('history.clearTitle')}
+        description={t('history.clearHint')}
+        confirmLabel={t('history.clear')}
         onConfirm={async () => {
           await clear.mutateAsync('history');
-          toast.success('History cleared');
+          toast.success(t('history.cleared'));
         }}
       />
     </div>
@@ -90,11 +91,11 @@ function HistoryRow({ item, onRemove }: { item: HistoryItemDto; onRemove: () => 
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium text-fg">{item.title}</span>
           <span className="block truncate text-xs text-fg-subtle">
-            {[KIND_LABELS[item.contentType], item.subtitle, formatClock(item.watchedAt), formatDuration(item.watchedSecs) ? `watched ${formatDuration(item.watchedSecs)}` : null].filter(Boolean).join(' · ')}
+            {[t(KIND_KEYS[item.contentType]), item.subtitle, formatClock(item.watchedAt), formatDuration(item.watchedSecs) ? t('history.watched', { duration: formatDuration(item.watchedSecs) }) : null].filter(Boolean).join(' · ')}
           </span>
         </span>
       </Link>
-      <IconButton label={`Remove ${item.title} from history`} onClick={onRemove}>
+      <IconButton label={t('history.remove', { title: item.title })} onClick={onRemove}>
         <X className="h-4 w-4" />
       </IconButton>
     </li>

@@ -23,6 +23,18 @@ describe('settings', () => {
     expect(settings.general.startPage).toBe('movies');
     expect(toStoredSettings(settings)).toEqual({ general: { startPage: 'movies' }, playback: { preferredSubtitles: 'off', preferredAudio: 'ka' } });
   });
+
+  it('keeps a language per profile: one of the app languages, or "" for the device’s', () => {
+    expect(DEFAULT_SETTINGS.general.language).toBe('');
+    for (const language of ['ka', 'en', 'ru', ''] as const) {
+      const { settings, invalid } = applySettingsPatch(DEFAULT_SETTINGS, { general: { language } });
+      expect(invalid).toEqual([]);
+      expect(settings.general.language).toBe(language);
+    }
+    expect(applySettingsPatch(DEFAULT_SETTINGS, { general: { language: 'de' as never } }).invalid).toEqual(['general.language']);
+    expect(resolveSettings({ general: { language: 'xx' } }).general.language).toBe('');
+    expect(toStoredSettings(applySettingsPatch(DEFAULT_SETTINGS, { general: { language: 'ka' } }).settings)).toEqual({ general: { language: 'ka' } });
+  });
 });
 
 describe('progress rules', () => {

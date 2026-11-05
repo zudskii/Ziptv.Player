@@ -7,6 +7,7 @@ import { profileKeys } from '../profiles/api';
 import { useProfileStore } from '../profiles/profile-store';
 import { askPin } from './pin-prompt';
 import { profileKey, useParentalStore } from './parental-store';
+import { t } from '../../i18n';
 
 const BASE = '/api/v1/me/parental';
 export const parentalKeys = { settings: ['parental'] as const, of: (profileId: string | null) => ['parental', profileId ?? 'current'] as const };
@@ -63,7 +64,7 @@ export async function unlockWithPin(pin: string): Promise<void> {
 
 /** Asks for the PIN and unlocks locked content of the active profile; true when unlocked. */
 export async function requestUnlock(): Promise<boolean> {
-  const done = await askPin({ title: 'Enter the PIN', description: 'This content is locked by parental controls.', verify: unlockWithPin });
+  const done = await askPin({ title: t('parental.enterPin'), description: t('parental.contentLocked'), verify: unlockWithPin });
   // Lists show "locked" per request: refetch them (keeping what is on screen meanwhile).
   if (done) void queryClient.invalidateQueries();
   return done;
@@ -79,7 +80,7 @@ export async function openProfile(profile: { id: string; isDefault: boolean }): 
     await access();
   } catch (error) {
     if (!isPinRequired(error)) throw error;
-    const done = await askPin({ title: 'Enter the PIN', description: 'This profile is protected by the parental PIN.', verify: async (pin) => void (await access(pin)) });
+    const done = await askPin({ title: t('parental.enterPin'), description: t('parental.profileLocked'), verify: async (pin) => void (await access(pin)) });
     if (!done) return false;
   }
   useProfileStore.getState().select(profile.isDefault ? null : profile.id);

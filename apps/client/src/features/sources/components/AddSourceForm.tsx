@@ -8,6 +8,7 @@ import { ApiError, errorMessage } from '../../../lib/api-client';
 import { cn } from '../../../lib/cn';
 import { useAddSource, useUploadSource } from '../api';
 import { detectXtream } from '../xtream-detect';
+import { t } from '../../../i18n';
 
 type Mode = 'url' | 'file' | 'xtream';
 
@@ -62,7 +63,7 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
   return (
     <form onSubmit={submit} className="space-y-4">
       <Segmented
-        label="Source type"
+        label={t('sources.form.type')}
         value={mode}
         onChange={(value) => {
           setMode(value);
@@ -70,16 +71,16 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
           upload.reset();
         }}
         options={[
-          { value: 'url', label: 'M3U URL', icon: <Link2 className="h-4 w-4" /> },
-          { value: 'file', label: 'M3U file', icon: <FileUp className="h-4 w-4" /> },
-          { value: 'xtream', label: 'Xtream', icon: <KeyRound className="h-4 w-4" /> },
+          { value: 'url', label: t('sources.type.m3u_url'), icon: <Link2 className="h-4 w-4" /> },
+          { value: 'file', label: t('sources.type.m3u_file'), icon: <FileUp className="h-4 w-4" /> },
+          { value: 'xtream', label: t('sources.form.xtream'), icon: <KeyRound className="h-4 w-4" /> },
         ]}
       />
 
       {mode === 'url' && (
         <div className="space-y-1.5">
           <label htmlFor={ids.url} className="text-sm text-fg-muted">
-            Playlist URL
+            {t('sources.form.url')}
           </label>
           <input
             id={ids.url}
@@ -92,13 +93,13 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
             placeholder="https://provider.example/get.php?username=…&type=m3u_plus"
             className="field"
           />
-          <p className="text-xs text-fg-subtle">ZIPTV re-reads the playlist in the background (every 6 hours by default).</p>
+          <p className="text-xs text-fg-subtle">{t('sources.form.urlHint')}</p>
           {detected && (
             <div className="mt-2 flex items-start gap-3 rounded-lg border border-brand/30 bg-brand/5 p-3 text-sm">
               <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-brand-soft" />
               <div className="min-w-0 flex-1">
-                <p className="text-fg">This is an Xtream Codes playlist.</p>
-                <p className="text-xs text-fg-muted">Add it as Xtream to get Movies and Series with details, catch-up and account info.</p>
+                <p className="text-fg">{t('sources.form.isXtream')}</p>
+                <p className="text-xs text-fg-muted">{t('sources.form.isXtreamHint')}</p>
               </div>
               <Button
                 size="sm"
@@ -109,7 +110,7 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
                   add.reset();
                 }}
               >
-                Use Xtream
+                {t('sources.form.useXtream')}
               </Button>
             </div>
           )}
@@ -135,7 +136,7 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
           )}
         >
           <FileUp className="h-8 w-8 text-fg-subtle" aria-hidden />
-          <span className="text-sm text-fg">{file ? file.name : 'Drop your playlist here or click to browse'}</span>
+          <span className="text-sm text-fg">{file ? file.name : t('sources.form.drop')}</span>
           <span className="text-xs text-fg-subtle">{file ? `${(file.size / 1024).toFixed(0)} KB` : '.m3u · .m3u8 · .pls'}</span>
           {/* Accept by extension, not MIME: browsers report .m3u8 as 4+ different types. */}
           <input type="file" accept={ACCEPT} className="sr-only" onChange={(event) => setFile(event.target.files?.[0] ?? null)} />
@@ -146,7 +147,7 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
         <div className="grid gap-3">
           <div className="space-y-1.5">
             <label htmlFor={ids.server} className="text-sm text-fg-muted">
-              Server URL
+              {t('sources.form.server')}
             </label>
             <input
               id={ids.server}
@@ -163,26 +164,26 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
               <label htmlFor={ids.username} className="text-sm text-fg-muted">
-                Username
+                {t('sources.form.username')}
               </label>
               <input id={ids.username} autoComplete="off" spellCheck={false} value={xtream.username} onChange={(event) => setXtream({ ...xtream, username: event.target.value })} className="field" />
             </div>
             <div className="space-y-1.5">
               <label htmlFor={ids.password} className="text-sm text-fg-muted">
-                Password
+                {t('sources.form.password')}
               </label>
               <input id={ids.password} type="password" autoComplete="off" value={xtream.password} onChange={(event) => setXtream({ ...xtream, password: event.target.value })} className="field" />
             </div>
           </div>
-          <p className="text-xs text-fg-subtle">Credentials are encrypted on the server and never shown again.</p>
+          <p className="text-xs text-fg-subtle">{t('sources.form.encrypted')}</p>
         </div>
       )}
 
       <div className="space-y-1.5">
         <label htmlFor={ids.name} className="text-sm text-fg-muted">
-          Name <span className="text-fg-subtle">(optional)</span>
+          {t('sources.form.name')} <span className="text-fg-subtle">{t('sources.form.optional')}</span>
         </label>
-        <input id={ids.name} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder="e.g. Home IPTV" className="field" />
+        <input id={ids.name} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder={t('sources.form.namePlaceholder')} className="field" />
       </div>
 
       {error && <ErrorBox error={error} />}
@@ -190,11 +191,11 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
       <div className="flex justify-end gap-2 pt-1">
         {onCancel && (
           <Button variant="ghost" onClick={onCancel} disabled={pending}>
-            Cancel
+            {t('sources.cancel')}
           </Button>
         )}
         <Button type="submit" variant="primary" loading={pending} disabled={!canSubmit}>
-          {submitLabel ?? (mode === 'file' ? 'Upload' : 'Add source')}
+          {submitLabel ?? (mode === 'file' ? t('sources.form.upload') : t('sources.form.add'))}
         </Button>
       </div>
     </form>
@@ -213,7 +214,8 @@ function ErrorBox({ error }: { error: unknown }) {
         <ul className="mt-2 max-h-32 space-y-0.5 overflow-y-auto font-mono text-xs opacity-80">
           {warnings.map((warning) => (
             <li key={`${warning.line}-${warning.code}`}>
-              line {warning.line}: {warning.message}
+              {t('sources.card.line', { line: warning.line })}
+              {warning.message}
             </li>
           ))}
         </ul>

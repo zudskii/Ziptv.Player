@@ -1,0 +1,21 @@
+{
+  "name": "@ziptv/i18n",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Translations runtime shared by @ziptv/client and @ziptv/admin: ICU messages (plurals, select), typed keys, lazy locale bundles, and a check for text that bypasses them. Consumed as TypeScript source by the apps' bundlers and test runners.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react.ts",
+    "./lint": "./src/lint.ts"
+  },
+  "dependencies": {
+    "intl-messageformat": "12.1.3"
+  },
+  "peerDependencies": {
+    "react": "^19.1.1"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

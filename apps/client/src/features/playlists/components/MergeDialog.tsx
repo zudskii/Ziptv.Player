@@ -7,6 +7,7 @@ import { Dialog } from '../../../components/ui/Dialog';
 import { errorMessage } from '../../../lib/api-client';
 import { toggled } from '../selection';
 import { useMergePlaylists, usePlaylists } from '../api';
+import { t } from '../../../i18n';
 
 interface MergeDialogProps {
   open: boolean;
@@ -17,7 +18,7 @@ interface MergeDialogProps {
 /** Copies the groups and channels of other playlists into this one (they stay as they are). */
 export function MergeDialog({ open, onClose, playlistId }: MergeDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title="Merge playlists into this one" description="Groups are matched by name; channels already here are skipped. The other playlists stay untouched.">
+    <Dialog open={open} onClose={onClose} title={t('playlists.merge.title')} description={t('playlists.merge.hint')}>
       {open && <MergeForm onClose={onClose} playlistId={playlistId} />}
     </Dialog>
   );
@@ -29,8 +30,8 @@ function MergeForm({ onClose, playlistId }: Omit<MergeDialogProps, 'open'>) {
   const [chosen, setChosen] = useState<ReadonlySet<string>>(new Set());
   const others: PlaylistSummaryDto[] = (playlists.data ?? []).filter((playlist) => playlist.id !== playlistId);
 
-  if (playlists.isPending) return <p className="py-6 text-center text-sm text-fg-muted">Loading…</p>;
-  if (others.length === 0) return <p className="py-6 text-center text-sm text-fg-muted">You have no other playlists to merge.</p>;
+  if (playlists.isPending) return <p className="py-6 text-center text-sm text-fg-muted">{t('playlists.loading')}</p>;
+  if (others.length === 0) return <p className="py-6 text-center text-sm text-fg-muted">{t('playlists.merge.none')}</p>;
 
   return (
     <div className="space-y-4">
@@ -42,7 +43,7 @@ function MergeForm({ onClose, playlistId }: Omit<MergeDialogProps, 'open'>) {
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm text-fg">{playlist.name}</span>
                 <span className="block text-xs text-fg-muted">
-                  {playlist.entryCount.toLocaleString()} channels · {playlist.groupCount} groups
+                  {t('playlists.mergeCounts', { channels: playlist.entryCount, groups: playlist.groupCount })}
                 </span>
               </span>
             </label>
@@ -56,7 +57,7 @@ function MergeForm({ onClose, playlistId }: Omit<MergeDialogProps, 'open'>) {
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={merge.isPending}>
-          Cancel
+          {t('playlists.cancel')}
         </Button>
         <Button
           variant="primary"
@@ -65,14 +66,14 @@ function MergeForm({ onClose, playlistId }: Omit<MergeDialogProps, 'open'>) {
           onClick={async () => {
             try {
               const result = await merge.mutateAsync([...chosen]);
-              toast.success(`${result.transferred.toLocaleString()} channels added`, { description: result.skipped > 0 ? `${result.skipped.toLocaleString()} were already here.` : undefined });
+              toast.success(t('playlists.toast.added', { count: result.transferred }), { description: result.skipped > 0 ? t('playlists.toast.skippedHere', { count: result.skipped }) : undefined });
               onClose();
             } catch {
               /* shown above */
             }
           }}
         >
-          Merge {chosen.size > 0 ? `(${chosen.size})` : ''}
+          {t('playlists.merge.merge')} {chosen.size > 0 ? `(${chosen.size})` : ''}
         </Button>
       </div>
     </div>

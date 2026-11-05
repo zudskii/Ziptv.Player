@@ -6,6 +6,7 @@ import { Spinner } from '../../components/ui/Spinner';
 import { errorMessage } from '../../lib/api-client';
 import { ensureSession, hasLegacyGuest, useSessionStore } from './session';
 import { gateDecision } from './session-policy';
+import { t } from '../../i18n';
 
 /**
  * Renders children only once a session exists. Where everyone else goes is decided in one place
@@ -53,10 +54,10 @@ export function SessionGate({ children }: { children: ReactNode }) {
     return (
       <FullscreenMessage
         tone="error"
-        title="Can't connect to ZIPTV"
+        title={t('session.cantConnect')}
         description={error}
         action={{
-          label: 'Try again',
+          label: t('session.retry'),
           onClick: () => {
             setError(null);
             setAttempt((value) => value + 1);
@@ -67,7 +68,7 @@ export function SessionGate({ children }: { children: ReactNode }) {
   }
   return (
     <div className="flex min-h-dvh items-center justify-center">
-      <Spinner label="Preparing your player…" />
+      <Spinner label={t('session.preparing')} />
     </div>
   );
 }

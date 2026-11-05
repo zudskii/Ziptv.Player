@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { relative } from '../lib/format';
 import { formatTime } from '../lib/nav';
+import { t } from '../i18n';
 
 /** 9.9 — staff security: 2FA, locks, sessions, failed sign-ins. */
 export function SecurityPanel() {
@@ -24,27 +25,27 @@ export function SecurityPanel() {
       {data && (
         <>
           <div className="mb-6 grid gap-4 sm:grid-cols-3">
-            <Stat label="Failed sign-ins (24 h)" value={data.failedLogins24h} tone={data.failedLogins24h > 10 ? 'danger' : data.failedLogins24h > 0 ? 'warn' : undefined} />
+            <Stat label={t('security.failed24')} value={data.failedLogins24h} tone={data.failedLogins24h > 10 ? 'danger' : data.failedLogins24h > 0 ? 'warn' : undefined} />
             {roster && (
               <>
                 <Stat
-                  label="Without 2FA"
+                  label={t('security.no2fa')}
                   value={data.staff.filter((row) => !row.mfaEnabled && !row.disabled).length}
                   tone={data.staff.some((row) => !row.mfaEnabled && !row.disabled) ? 'warn' : undefined}
                 />
-                <Stat label="Locked now" value={data.staff.filter((row) => row.lockedUntil).length} />
+                <Stat label={t('security.lockedNow')} value={data.staff.filter((row) => row.lockedUntil).length} />
               </>
             )}
           </div>
           {roster && (
-            <Section title="Staff accounts">
+            <Section title={t('security.staffAccounts')}>
               <DataTable
-                label="Staff security"
+                label={t('security.staffSecurity')}
                 rows={data.staff}
                 rowKey={(row) => row.id}
                 columns={[
                   {
-                    header: 'Staff',
+                    header: t('security.staff'),
                     cell: (row) => (
                       <div>
                         <p className="font-medium">{row.name}</p>
@@ -53,52 +54,52 @@ export function SecurityPanel() {
                     ),
                   },
                   {
-                    header: 'Role',
+                    header: t('security.role'),
                     cell: (row) => <Badge>{row.role.replace('_', ' ')}</Badge>,
                   },
                   {
                     header: '2FA',
-                    cell: (row) => (row.mfaEnabled ? <Badge tone="ok">on</Badge> : <Badge tone="warn">not set up</Badge>),
+                    cell: (row) => (row.mfaEnabled ? <Badge tone="ok">{t('security.on')}</Badge> : <Badge tone="warn">{t('security.notSetUp')}</Badge>),
                   },
                   {
-                    header: 'State',
+                    header: t('security.state'),
                     cell: (row) =>
                       row.disabled ? (
-                        <Badge tone="danger">disabled</Badge>
+                        <Badge tone="danger">{t('security.disabled')}</Badge>
                       ) : row.lockedUntil ? (
-                        <Badge tone="danger">locked until {formatTime(row.lockedUntil)}</Badge>
+                        <Badge tone="danger">{t('security.lockedUntil', { time: formatTime(row.lockedUntil) })}</Badge>
                       ) : (
-                        <Badge tone="ok">active</Badge>
+                        <Badge tone="ok">{t('security.active')}</Badge>
                       ),
                   },
                   {
-                    header: 'Sessions',
+                    header: t('security.sessions'),
                     cell: (row) => row.activeSessions,
                     className: 'tabular-nums',
                   },
                   {
-                    header: 'Last sign-in',
+                    header: t('security.lastSignIn'),
                     cell: (row) => relative(row.lastLoginAt),
                   },
                 ]}
               />
             </Section>
           )}
-          <Section title="Recent failed sign-ins">
+          <Section title={t('security.recentFailed')}>
             <DataTable
-              label="Failed sign-ins"
+              label={t('security.failed')}
               rows={data.recentFailures}
               rowKey={(row) => String(row.seq)}
-              empty="None."
+              empty={t('security.none')}
               columns={[
                 {
-                  header: 'When',
+                  header: t('security.when'),
                   cell: (row) => formatTime(row.occurredAt),
                   className: 'whitespace-nowrap',
                 },
-                { header: 'Account', cell: (row) => row.actorEmail ?? '—' },
+                { header: t('security.account'), cell: (row) => row.actorEmail ?? '—' },
                 {
-                  header: 'Reason',
+                  header: t('security.reason'),
                   cell: (row) => String(row.details.reason ?? '—'),
                 },
                 {

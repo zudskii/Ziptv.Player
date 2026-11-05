@@ -8,6 +8,7 @@ import { errorMessage } from '../../../lib/api-client';
 import { useCreateGroup, useMoveEntries } from '../api';
 import { isChoiceReady, NO_GROUP, type GroupChoice } from '../group-choice';
 import { GroupPicker } from './GroupPicker';
+import { t } from '../../../i18n';
 
 interface MoveToDialogProps {
   open: boolean;
@@ -21,7 +22,7 @@ interface MoveToDialogProps {
 /** "Move to…": the touch- and keyboard-friendly way to regroup, next to drag and drop. */
 export function MoveToDialog({ open, onClose, ...rest }: MoveToDialogProps) {
   return (
-    <Dialog open={open} onClose={onClose} title={`Move ${rest.entryIds.length.toLocaleString()} ${rest.entryIds.length === 1 ? 'channel' : 'channels'} to…`} description="They go to the end of the group, in the order they have now.">
+    <Dialog open={open} onClose={onClose} title={t('playlists.moveTitle', { count: rest.entryIds.length })} description={t('playlists.move.hint')}>
       {open && <MoveForm onClose={onClose} {...rest} />}
     </Dialog>
   );
@@ -57,10 +58,10 @@ function MoveForm({ onClose, playlistId, groups, entryIds, onMoved }: Omit<MoveT
       )}
       <div className="flex justify-end gap-2">
         <Button variant="ghost" onClick={onClose} disabled={pending}>
-          Cancel
+          {t('playlists.cancel')}
         </Button>
         <Button variant="primary" loading={pending} disabled={!isChoiceReady(choice)} onClick={submit}>
-          Move
+          {t('playlists.move.move')}
         </Button>
       </div>
     </div>

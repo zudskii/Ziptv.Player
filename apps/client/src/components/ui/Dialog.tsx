@@ -3,6 +3,7 @@ import { useEffect, useId, useRef, type ReactNode } from 'react';
 
 import { cn } from '../../lib/cn';
 import { IconButton } from './Button';
+import { useT } from '../../i18n';
 
 interface DialogProps {
   open: boolean;
@@ -18,6 +19,7 @@ interface DialogProps {
  * come from the browser instead of hand-rolled JS.
  */
 export function Dialog({ open, onClose, title, description, children, className }: DialogProps) {
+  const { t } = useT();
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
 
@@ -61,7 +63,7 @@ export function Dialog({ open, onClose, title, description, children, className 
               </h2>
               {description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
             </div>
-            <IconButton label="Close" onClick={onClose}>
+            <IconButton label={t('common.close')} onClick={onClose}>
               <X className="h-4 w-4" />
             </IconButton>
           </header>

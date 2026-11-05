@@ -2,6 +2,7 @@ import type { PlaybackPlanDto } from '@ziptv/contracts';
 import { useEffect, useRef } from 'react';
 
 import { resolveApiUrl } from '../../config';
+import { t } from '../../i18n';
 
 /**
  * Media Session API: the OS media controls (lock screen, headset buttons, the picture-in-picture
@@ -25,7 +26,7 @@ export function useMediaSession(plan: PlaybackPlanDto | null, video: HTMLVideoEl
       session.metadata = new MediaMetadata({
         title: content.title,
         artist: content.subtitle ?? content.channel?.name ?? 'ZIPTV',
-        album: content.mode === 'live' ? 'Live' : content.mode === 'catchup' ? 'Catch-up' : '',
+        album: content.mode === 'live' ? t('player.ctl.live') : content.mode === 'catchup' ? t('player.catchup') : '',
         artwork: content.image ? [{ src: resolveApiUrl(content.image) }] : [],
       });
     } catch {

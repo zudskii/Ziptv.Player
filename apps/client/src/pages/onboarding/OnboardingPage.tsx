@@ -10,6 +10,7 @@ import { AddSourceForm } from '../../features/sources/components/AddSourceForm';
 import { SourceProblemNotice } from '../../features/sources/components/SourceProblemNotice';
 import { SyncProgress } from '../../features/sources/components/SyncProgress';
 import { describeLibrary } from '../../features/sources/source-status';
+import { t } from '../../i18n';
 
 type Step = 'add' | 'building';
 
@@ -34,30 +35,30 @@ export function OnboardingPage() {
       <div className="card w-full max-w-lg p-6 shadow-2xl sm:p-8">
         {step === 'add' && (
           <div>
-            <h1 className="text-xl font-semibold text-fg">Add your source</h1>
-            <p className="mt-1 mb-5 text-sm text-fg-muted">An M3U playlist (link or file) or your Xtream Codes account.</p>
+            <h1 className="text-xl font-semibold text-fg">{t('setup.title')}</h1>
+            <p className="mt-1 mb-5 text-sm text-fg-muted">{t('setup.subtitle')}</p>
             <AddSourceForm
-              submitLabel="Continue"
+              submitLabel={t('setup.continue')}
               onAdded={(added: SourceDto) => {
                 setSourceId(added.id);
                 setStep('building');
               }}
             />
             <Link to="/" className="mt-4 inline-flex items-center gap-1.5 text-sm text-fg-muted hover:text-fg">
-              <ArrowLeft className="h-4 w-4" /> Back to ZIPTV
+              <ArrowLeft className="h-4 w-4" /> {t('setup.back')}
             </Link>
           </div>
         )}
 
         {step === 'building' && (
           <div>
-            <h1 className="text-xl font-semibold text-fg">{ready ? 'Your library is ready' : 'Setting things up…'}</h1>
-            <p className="mt-1 text-sm text-fg-muted">{source ? (ready ? describeLibrary(source) : source.name) : 'Connecting…'}</p>
+            <h1 className="text-xl font-semibold text-fg">{ready ? t('setup.ready') : t('setup.settingUp')}</h1>
+            <p className="mt-1 text-sm text-fg-muted">{source ? (ready ? describeLibrary(source) : source.name) : t('setup.connecting')}</p>
             {source?.sync.status === 'failed' && source.revision === 0 ? (
               <div className="mt-6 space-y-4">
                 <SourceProblemNotice source={source} onEdit={() => setStep('add')} />
                 <Button variant="ghost" onClick={() => setStep('add')}>
-                  Try another source
+                  {t('setup.tryAnother')}
                 </Button>
               </div>
             ) : (
@@ -65,7 +66,7 @@ export function OnboardingPage() {
             )}
             {ready && (
               <Button variant="primary" size="lg" className="mt-8 w-full" icon={<ArrowRight className="h-5 w-5" />} onClick={() => navigate('/', { replace: true })}>
-                Go to Home
+                {t('setup.goHome')}
               </Button>
             )}
           </div>

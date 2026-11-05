@@ -1,3 +1,5 @@
+import { t } from '../../i18n';
+
 /**
  * Client-side checks for the sign-in forms. They only save a round trip: the server applies the
  * same rules (and is the one that enforces them), so the wording and limits mirror its policy.
@@ -12,19 +14,19 @@ export function normalizeEmail(email: string): string {
 
 export function emailProblem(email: string): string | null {
   const value = email.trim();
-  if (value.length === 0) return 'Enter your email address.';
-  if (value.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return 'Enter a valid email address.';
+  if (value.length === 0) return t('auth.validation.emailRequired');
+  if (value.length > MAX_EMAIL_LENGTH || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return t('auth.validation.emailInvalid');
   return null;
 }
 
 export function passwordProblem(password: string, email = ''): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters.`;
-  if (password.length > MAX_PASSWORD_LENGTH) return `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
-  if (password.trim().length === 0) return 'The password cannot be only spaces.';
+  if (password.length < MIN_PASSWORD_LENGTH) return t('auth.validation.minChars', { count: MIN_PASSWORD_LENGTH });
+  if (password.length > MAX_PASSWORD_LENGTH) return t('auth.validation.maxChars', { count: MAX_PASSWORD_LENGTH });
+  if (password.trim().length === 0) return t('auth.validation.onlySpaces');
   const normalized = normalizeEmail(email);
   if (normalized) {
     const local = normalized.split('@')[0] ?? '';
-    if (password.toLowerCase() === normalized || (local.length >= 4 && password.toLowerCase() === local)) return 'The password must not be the same as your email.';
+    if (password.toLowerCase() === normalized || (local.length >= 4 && password.toLowerCase() === local)) return t('auth.validation.sameAsEmail');
   }
   return null;
 }
@@ -41,7 +43,7 @@ export function validateRegistration(input: { email: string; password: string; c
   if (email) issues.email = email;
   const password = passwordProblem(input.password, input.email);
   if (password) issues.password = password;
-  else if (input.confirm !== input.password) issues.confirm = 'The passwords do not match.';
+  else if (input.confirm !== input.password) issues.confirm = t('auth.validation.mismatch');
   return issues;
 }
 
@@ -50,7 +52,7 @@ export function validateLogin(input: { email: string; password: string }): FormI
   const issues: FormIssues = {};
   const email = emailProblem(input.email);
   if (email) issues.email = email;
-  if (input.password.length === 0) issues.password = 'Enter your password.';
+  if (input.password.length === 0) issues.password = t('auth.validation.passwordRequired');
   return issues;
 }
 
@@ -69,7 +71,7 @@ export function safeRedirect(from: unknown, fallback = '/'): string {
 
 /** "Chrome on Windows" from a User-Agent string, for the list of signed-in devices. */
 export function describeDevice(userAgent: string | null): string {
-  if (!userAgent) return 'Unknown device';
+  if (!userAgent) return t('auth.unknownDevice');
   const browser = /Edg\//.test(userAgent)
     ? 'Edge'
     : /OPR\/|Opera/.test(userAgent)
@@ -92,6 +94,6 @@ export function describeDevice(userAgent: string | null): string {
           : /Linux|X11/.test(userAgent)
             ? 'Linux'
             : null;
-  if (browser && os) return `${browser} on ${os}`;
-  return browser ?? os ?? 'Unknown device';
+  if (browser && os) return t('auth.deviceOn', { browser, os });
+  return browser ?? os ?? t('auth.unknownDevice');
 }

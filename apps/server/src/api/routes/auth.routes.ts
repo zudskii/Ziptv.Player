@@ -8,6 +8,7 @@ import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentUser, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 import { EntityId } from './schemas.js';
+import { mailLocale } from '../../application/identity/mail-templates.js';
 
 const Email = z.string().trim().max(MAX_EMAIL_LENGTH).pipe(z.email('must be a valid email address'));
 /** Shape only; the password policy (length, etc.) is a domain rule applied by the service. */
@@ -49,7 +50,7 @@ export function createAuthRouter(deps: { accounts: AccountService; emailFlow: Em
   const linkLimiter = deps.limit({ name: 'auth:link', windowMs: 60 * 60 * 1000, limit: 30 });
   const resendLimiter = deps.limit({ name: 'auth:resend', windowMs: 60 * 60 * 1000, limit: 3, perUser: true });
 
-  const context = (req: Parameters<RequestHandler>[0]) => ({ current: req.user ?? null, userAgent: req.get('user-agent') ?? null });
+  const context = (req: Parameters<RequestHandler>[0]) => ({ current: req.user ?? null, userAgent: req.get('user-agent') ?? null, locale: mailLocale(req.get('accept-language')) });
 
   router.post('/register', registerLimiter, optionalAuth, async (req, res) => {
     const body = parseInput(RegisterBody, req.body, 'Registration');
@@ -98,7 +99,7 @@ export function createAuthRouter(deps: { accounts: AccountService; emailFlow: Em
 
   router.post('/forgot-password', forgotIpLimiter, forgotEmailLimiter, async (req, res) => {
     const { email } = parseInput(ForgotBody, req.body, 'Request');
-    await emailFlow.requestPasswordReset(email);
+    await emailFlow.requestPasswordReset(email, mailLocale(req.get('accept-language')));
     res.status(202).json({}); // the same, whether or not the address is registered
   });
 
@@ -114,7 +115,7 @@ export function createAuthRouter(deps: { accounts: AccountService; emailFlow: Em
   });
 
   router.post('/send-verification', auth, resendLimiter, async (req, res) => {
-    await emailFlow.sendVerification(currentUser(req));
+    await emailFlow.sendVerification(currentUser(req), mailLocale(req.get('accept-language')));
     res.status(202).json({});
   });
 

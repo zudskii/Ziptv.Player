@@ -7,6 +7,7 @@ import { queryClient } from '../../lib/query-client';
 import { resetProfileSelection } from '../profiles/profile-store';
 import { persistentStorage, readRawStorage, removeRawStorage } from '../../lib/storage';
 import { needsSignIn, onUnauthorized, type SessionSnapshot } from './session-policy';
+import { t } from '../../i18n';
 
 const SESSION_STORAGE_KEY = 'ziptv:session';
 
@@ -142,11 +143,11 @@ export function installSessionSync(target: Pick<Window, 'addEventListener' | 're
 export const hasLegacyGuest = (): boolean => readLegacySecretId() !== null;
 
 function noSession(): ApiError {
-  return new ApiError(401, 'UNAUTHORIZED', 'Sign in or continue as a guest to use ZIPTV.');
+  return new ApiError(401, 'UNAUTHORIZED', t('session.noSession'));
 }
 
 function signInRequired(): ApiError {
-  return new ApiError(401, 'UNAUTHORIZED', 'Your session has ended. Sign in again to continue.');
+  return new ApiError(401, 'UNAUTHORIZED', t('session.ended'));
 }
 
 /** Reads `persist:root` → `user` → `userSecretId.secretId` written by the 1.x Redux store. */

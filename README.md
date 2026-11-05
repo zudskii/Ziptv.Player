@@ -372,6 +372,13 @@ lives in the playlist and survives re-syncs.
   minutes), and the export cuts a batch of entries *before* joining the catalog. After restoring a
   database dump, run `ANALYZE;` once.
 
+## Languages
+
+The web client and the operator console speak Georgian, English and Russian. A device starts in its
+browser's language (else English) and can switch on the welcome / sign-in pages; each profile can
+keep its own language (Settings → General → Language). Emails follow the language of the screen
+that requested them. How to add or change text: `docs/architecture/I18N.md`.
+
 ## Web client: accounts and playlists
 
 - **Sign in / register** (`/login`, `/register`, and Settings → Account, plus the account button in

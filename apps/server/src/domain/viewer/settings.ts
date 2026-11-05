@@ -8,9 +8,11 @@
 export type ThemeSetting = 'dark' | 'light' | 'system';
 export type QualitySetting = 'auto' | 'highest' | 'lowest' | '1080' | '720' | '480';
 export type StartPageSetting = 'home' | 'live' | 'guide' | 'movies' | 'series';
+/** The app's language; '' = whatever the device uses (its browser / last choice). */
+export type LanguageSetting = '' | 'ka' | 'en' | 'ru';
 
 export interface ProfileSettings {
-  general: { startPage: StartPageSetting; use24hClock: boolean };
+  general: { startPage: StartPageSetting; use24hClock: boolean; language: LanguageSetting };
   playback: {
     autoplay: boolean;
     autoplayNextEpisode: boolean;
@@ -29,7 +31,7 @@ export type SettingsPatch = { [S in keyof ProfileSettings]?: Partial<ProfileSett
 export type StoredProfileSettings = SettingsPatch;
 
 export const DEFAULT_SETTINGS: ProfileSettings = {
-  general: { startPage: 'home', use24hClock: true },
+  general: { startPage: 'home', use24hClock: true, language: '' },
   playback: {
     autoplay: true,
     autoplayNextEpisode: true,
@@ -50,6 +52,7 @@ export const HISTORY_RETENTION_CHOICES = [0, 30, 90, 180, 365] as const;
 const THEMES: readonly ThemeSetting[] = ['dark', 'light', 'system'];
 const QUALITIES: readonly QualitySetting[] = ['auto', 'highest', 'lowest', '1080', '720', '480'];
 const START_PAGES: readonly StartPageSetting[] = ['home', 'live', 'guide', 'movies', 'series'];
+export const APP_LANGUAGES: readonly LanguageSetting[] = ['', 'ka', 'en', 'ru'];
 const LANGUAGE = /^(?:|off|[a-z]{2,3}(?:-[A-Za-z0-9]{2,8})?)$/;
 
 type Validators = { [S in keyof ProfileSettings]: { [K in keyof ProfileSettings[S]]: (value: unknown) => boolean } };
@@ -58,7 +61,7 @@ const isBool = (value: unknown) => typeof value === 'boolean';
 const oneOf = (choices: readonly unknown[]) => (value: unknown) => choices.includes(value);
 
 const VALIDATORS: Validators = {
-  general: { startPage: oneOf(START_PAGES), use24hClock: isBool },
+  general: { startPage: oneOf(START_PAGES), use24hClock: isBool, language: oneOf(APP_LANGUAGES) },
   playback: {
     autoplay: isBool,
     autoplayNextEpisode: isBool,

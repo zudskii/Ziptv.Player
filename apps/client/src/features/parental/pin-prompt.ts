@@ -1,5 +1,6 @@
 import { ApiError, errorMessage } from '../../lib/api-client';
 import { create } from 'zustand';
+import { i18n, t } from '../../i18n';
 
 export interface PinRequest {
   title: string;
@@ -36,10 +37,10 @@ export function askPin(options: Omit<PinRequest, 'resolve'>): Promise<boolean> {
 /** Human message for a failed PIN check (wrong, locked for a while, …). */
 export function pinErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
-    if (error.code === 'PIN_INVALID') return 'Wrong PIN. Try again.';
+    if (error.code === 'PIN_INVALID') return t('parental.wrongPin');
     if (error.code === 'RATE_LIMITED') {
       const until = (error.details as { lockedUntil?: string } | undefined)?.lockedUntil;
-      return until ? `Too many wrong PINs. Try again after ${new Date(until).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : 'Too many wrong PINs. Try again later.';
+      return until ? t('parental.tooManyUntil', { time: new Date(until).toLocaleTimeString(i18n.locale, { hour: '2-digit', minute: '2-digit' }) }) : t('parental.tooMany');
     }
   }
   return errorMessage(error);

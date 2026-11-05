@@ -10,15 +10,12 @@ import { useDisplayPrefs } from '../../user-state/display-prefs';
 import { programmeProgress } from '../../epg/programme';
 import type { BrowsableChannel } from '../browse';
 import { ChannelLogo } from './ChannelLogo';
+import { t } from '../../../i18n';
 
 const ROW_HEIGHT = 56;
 const ROW_HEIGHT_EPG = 84;
 
-const UNPLAYABLE_LABELS: Record<UnplayableReason, string> = {
-  unsupported_protocol: 'RTMP/UDP — not playable in browsers',
-  drm: 'DRM protected',
-  web_page: 'Web page link',
-};
+const unplayableLabel = (reason: UnplayableReason) => t(`live.unplayable.${reason}`);
 
 interface ChannelListProps {
   sourceId: string;
@@ -64,7 +61,7 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
   }, [activeKey, channels, virtualizer]);
 
   return (
-    <div ref={scrollRef} data-channel-list className="scrollbar-thin h-full overflow-y-auto overscroll-contain" role="listbox" aria-label="Channels">
+    <div ref={scrollRef} data-channel-list className="scrollbar-thin h-full overflow-y-auto overscroll-contain" role="listbox" aria-label={t('live.list.label')}>
       <div className="relative w-full" style={{ height: virtualizer.getTotalSize() }}>
         {virtualizer.getVirtualItems().map((item) => {
           const channel = channels[item.index];
@@ -94,15 +91,15 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5">
                     <span className={cn('truncate text-sm', active ? 'font-semibold text-fg' : 'text-fg', channel.unplayableReason && 'text-fg-muted')}>{channel.name}</span>
-                    {channel.locked && <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label="Locked" />}
-                    {(channel.catchupDays ?? 0) > 0 && <History className="h-3 w-3 shrink-0 text-fg-subtle" aria-label={`Archive ${channel.catchupDays} days`} />}
+                    {channel.locked && <Lock className="h-3 w-3 shrink-0 text-amber-500" aria-label={t('live.list.locked')} />}
+                    {(channel.catchupDays ?? 0) > 0 && <History className="h-3 w-3 shrink-0 text-fg-subtle" aria-label={t('live.archiveDays', { count: channel.catchupDays ?? 0 })} />}
                   </span>
                   {channel.unplayableReason ? (
-                    <span className="block truncate text-xs text-amber-500/90">{UNPLAYABLE_LABELS[channel.unplayableReason]}</span>
+                    <span className="block truncate text-xs text-amber-500/90">{unplayableLabel(channel.unplayableReason)}</span>
                   ) : current ? (
                     <>
                       <span className="flex items-baseline gap-1.5 text-xs">
-                        <span className="shrink-0 font-semibold uppercase tracking-wide text-live">Live</span>
+                        <span className="shrink-0 font-semibold uppercase tracking-wide text-live">{t('live.list.live')}</span>
                         <span className="truncate text-fg-muted">{current.title}</span>
                         <span className="ml-auto shrink-0 font-mono tabular-nums text-fg-subtle">{formatRange(current.start, current.end)}</span>
                       </span>
@@ -113,7 +110,7 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
                       )}
                       {entry?.next && (
                         <span className="mt-0.5 block truncate text-[11px] text-fg-subtle">
-                          Next: {entry.next.title} · {formatClock(entry.next.start)}
+                          {t('epg.nextItem', { title: entry.next.title, time: formatClock(entry.next.start) })}
                         </span>
                       )}
                     </>
@@ -125,7 +122,7 @@ export function ChannelList({ sourceId, channels, activeKey, favorites, showGrou
               <button
                 type="button"
                 onClick={() => onToggleFavorite(channel)}
-                aria-label={favorite ? `Remove ${channel.name} from favorites` : `Add ${channel.name} to favorites`}
+                aria-label={t(favorite ? 'live.favRemove' : 'live.favAdd', { name: channel.name })}
                 aria-pressed={favorite}
                 className={cn(
                   'flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors hover:bg-fg/10',

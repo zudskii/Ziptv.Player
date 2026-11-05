@@ -13,6 +13,7 @@ import { ChannelLogo } from '../../live/components/ChannelLogo';
 import { guideGridQuery } from '../api';
 import { blockGeometry, offsetFor, pagesFor, timeSlots, windowWidth, type DayWindow } from '../guide-layout';
 import { programmeState } from '../programme';
+import { t } from '../../../i18n';
 
 const ROW_HEIGHT = 64;
 const RULER_HEIGHT = 36;
@@ -78,14 +79,14 @@ export function GuideGrid({ source, window, group, onOpenProgramme, onPlayChanne
     // eslint-disable-next-line react-hooks/exhaustive-deps -- only on day/source/zoom changes (and first data), not every clock tick
   }, [window.start, source.id, pxPerMinute, scrollToNowSignal, first.isSuccess]);
 
-  if (first.isPending) return <Spinner className="py-24" label="Loading the guide…" />;
-  if (first.isError) return <p className="py-16 text-center text-sm text-fg-muted">The guide could not be loaded.</p>;
-  if (total === 0) return <p className="py-16 text-center text-sm text-fg-muted">No channels in this group.</p>;
+  if (first.isPending) return <Spinner className="py-24" label={t('epg.grid.loading')} />;
+  if (first.isError) return <p className="py-16 text-center text-sm text-fg-muted">{t('epg.grid.failed')}</p>;
+  if (total === 0) return <p className="py-16 text-center text-sm text-fg-muted">{t('epg.grid.emptyGroup')}</p>;
 
   const nowOffset = now >= window.start && now < window.end ? offsetFor(now, window, pxPerMinute) : null;
 
   return (
-    <div ref={scrollRef} className="scrollbar-thin relative h-full overflow-auto overscroll-contain rounded-xl border border-line/5 bg-surface/60" role="grid" aria-label="TV guide" aria-rowcount={total}>
+    <div ref={scrollRef} className="scrollbar-thin relative h-full overflow-auto overscroll-contain rounded-xl border border-line/5 bg-surface/60" role="grid" aria-label={t('epg.grid.label')} aria-rowcount={total}>
       <div className="relative" style={{ width: channelColumn + width, height: virtualizer.getTotalSize() }}>
         {/* Time ruler */}
         <div className="sticky top-0 z-30 flex" style={{ height: RULER_HEIGHT, width: channelColumn + width }}>
@@ -147,7 +148,7 @@ export function GuideGrid({ source, window, group, onOpenProgramme, onPlayChanne
                       {/* Sticky label: a programme that started off-screen keeps its title readable. */}
                       <span className="sticky inline-block w-max max-w-full overflow-hidden px-2 py-1 align-top" style={{ left: channelColumn }}>
                         <span className={cn('flex items-center gap-1 truncate text-xs sm:text-sm', state === 'live' ? 'font-semibold text-fg' : '')}>
-                          {state === 'past' && programme.catchup && <History className="h-3 w-3 shrink-0 text-brand-soft" aria-label="Watch from archive" />}
+                          {state === 'past' && programme.catchup && <History className="h-3 w-3 shrink-0 text-brand-soft" aria-label={t('epg.grid.watchArchive')} />}
                           {state === 'live' && <Play className="h-3 w-3 shrink-0 fill-current text-live" aria-hidden />}
                           <span className="truncate">{programme.title}</span>
                         </span>
@@ -159,7 +160,7 @@ export function GuideGrid({ source, window, group, onOpenProgramme, onPlayChanne
                 {row && row.programmes.length === 0 && (
                   // Sticky next to the channel column so the hint stays visible while scrolling in time.
                   <span className="sticky inline-flex h-full w-max items-center px-3 text-xs text-fg-subtle" style={{ left: channelColumn }}>
-                    {row.channel.hasEpg ? 'No programmes' : 'No guide for this channel'}
+                    {row.channel.hasEpg ? t('epg.grid.noProgrammes') : t('epg.grid.noGuide')}
                   </span>
                 )}
               </div>

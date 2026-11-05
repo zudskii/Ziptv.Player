@@ -10,6 +10,7 @@ import { useAuth } from '../lib/auth';
 import { relative } from '../lib/format';
 import { useAction } from '../lib/mutation';
 import { formatTime } from '../lib/nav';
+import { statusLabel, t } from '../i18n';
 
 const STATES: FeedHealthState[] = ['HEALTHY', 'UNHEALTHY', 'PROVIDER_OUTAGE', 'GEO_BLOCKED', 'NOT_ENTITLED', 'MAINTENANCE', 'UNKNOWN'];
 const PAGE = 50;
@@ -25,14 +26,14 @@ export function MonitoringPage() {
   const [tab, setTab] = useState<'feeds' | 'incidents'>(params.get('tab') === 'incidents' ? 'incidents' : 'feeds');
   return (
     <>
-      <PageHeader title="Live monitoring" description="Feeds are probed from every region; a feed fails only when all regions agree. Failover keeps each channel on a working feed." />
+      <PageHeader title={t('monitoring.title')} description={t('monitoring.intro')} />
       <Tabs
-        label="Monitoring"
+        label={t('monitoring.monitoring')}
         value={tab}
         onChange={setTab}
         items={[
-          { value: 'feeds', label: 'Feeds' },
-          { value: 'incidents', label: 'Incidents' },
+          { value: 'feeds', label: t('common.feeds') },
+          { value: 'incidents', label: t('common.incidents') },
         ]}
       />
       {tab === 'feeds' ? <Feeds channelId={params.get('channelId')} /> : <Incidents />}
@@ -53,10 +54,10 @@ function Feeds({ channelId }: { channelId: string | null }) {
     placeholderData: keepPreviousData,
     refetchInterval: 15_000,
   });
-  const probeNow = useAction((id: string) => api(`/monitoring/feeds/${id}/probe`, { method: 'POST' }), { success: 'Probe queued', invalidate: [['feeds']] });
+  const probeNow = useAction((id: string) => api(`/monitoring/feeds/${id}/probe`, { method: 'POST' }), { success: t('monitoring.probeQueued'), invalidate: [['feeds']] });
   const setMaint = useAction(({ id, on, note }: { id: string; on: boolean; note: string }) => api(`/monitoring/feeds/${id}/maintenance`, { method: 'POST', body: { on, ...(note ? { note } : {}) } }), {
     inlineErrors: true,
-    success: 'Maintenance updated',
+    success: t('monitoring.maintenanceUpdated'),
     invalidate: [['feeds']],
     onSuccess: () => setMaintenance(null),
   });
@@ -65,7 +66,7 @@ function Feeds({ channelId }: { channelId: string | null }) {
     <>
       <div className="mb-4 flex flex-wrap items-center gap-3">
         <select
-          aria-label="Health"
+          aria-label={t('common.health')}
           className="field w-auto"
           value={status}
           onChange={(e) => {
@@ -73,49 +74,49 @@ function Feeds({ channelId }: { channelId: string | null }) {
             setOffset(0);
           }}
         >
-          <option value="">All states</option>
+          <option value="">{t('monitoring.allStates')}</option>
           {STATES.map((state) => (
             <option key={state} value={state}>
               {state.replace('_', ' ').toLowerCase()}
             </option>
           ))}
         </select>
-        {feeds.data && <span className="text-xs text-fg-muted">Regions: {feeds.data.regions.join(', ')}</span>}
+        {feeds.data && <span className="text-xs text-fg-muted">{t('mon.regions', { list: feeds.data.regions.join(', ') })}</span>}
       </div>
       <ErrorNote error={feeds.error} />
       <DataTable
-        label="Feeds"
+        label={t('common.feeds')}
         rows={feeds.data?.items ?? []}
         rowKey={(row) => row.feedId}
-        empty={feeds.isPending ? 'Loading…' : 'No feeds.'}
+        empty={feeds.isPending ? t('common.loading') : t('monitoring.noFeeds')}
         columns={[
           {
-            header: 'Channel / provider',
+            header: t('monitoring.channelProvider'),
             cell: (row) => (
               <div>
                 <button type="button" className="font-medium text-amber-200 hover:underline" onClick={() => setFailover(row.channelId)}>
                   {row.channelName}
                 </button>
                 <p className="text-xs text-fg-muted">
-                  {row.providerName} · priority {row.priority}
-                  {row.feedStatus === 'disabled' ? ' · disabled' : ''}
+                  {t('mon.providerPriority', { provider: row.providerName, priority: row.priority })}
+                  {row.feedStatus === 'disabled' ? t('mon.disabledSuffix') : ''}
                 </p>
               </div>
             ),
           },
-          { header: 'Health', cell: (row) => <div><StateBadge state={row.status} /><p className="mt-1 text-xs text-fg-muted">since {relative(row.since)}</p></div> },
+          { header: t('common.health'), cell: (row) => <div><StateBadge state={row.status} /><p className="mt-1 text-xs text-fg-muted">{t('mon.since', { when: relative(row.since) })}</p></div> },
           {
-            header: 'Regions',
+            header: t('monitoring.regions'),
             cell: (row) => (
               <ul className="space-y-0.5 text-xs">
                 {row.regions.map((region) => (
                   <li key={region.region} title={region.lastError ?? undefined}>
-                    <span className="font-mono">{region.region}</span> {region.state.toLowerCase()} · {region.lastOutcome ?? '—'} · {relative(region.lastProbeAt)}
+                    <span className="font-mono">{region.region}</span> {statusLabel(region.state)} · {region.lastOutcome ?? '—'} · {relative(region.lastProbeAt)}
                   </li>
                 ))}
                 {row.missingRegions.map((region) => (
                   <li key={region} className="text-amber-300">
-                    <span className="font-mono">{region}</span> no probes yet
+                    <span className="font-mono">{region}</span> {t('mon.noProbesYet')}
                   </li>
                 ))}
               </ul>
@@ -125,15 +126,15 @@ function Feeds({ channelId }: { channelId: string | null }) {
             header: '',
             cell: (row) => (
               <div className="flex flex-wrap justify-end gap-1">
-                <Button aria-label={`Probe history of ${row.channelName} via ${row.providerName}`} onClick={() => setProbes(row)}>
+                <Button aria-label={t('mon.historyOf', { channel: row.channelName, provider: row.providerName })} onClick={() => setProbes(row)}>
                   <History className="h-4 w-4" />
                 </Button>
                 {operate && (
                   <>
-                    <Button aria-label={`Probe ${row.channelName} via ${row.providerName} now`} onClick={() => probeNow.mutate(row.feedId)}>
+                    <Button aria-label={t('mon.probeNow', { channel: row.channelName, provider: row.providerName })} onClick={() => probeNow.mutate(row.feedId)}>
                       <Radar className="h-4 w-4" />
                     </Button>
-                    <Button aria-label={`Maintenance for ${row.channelName} via ${row.providerName}`} onClick={() => setMaintenance(row)}>
+                    <Button aria-label={t('mon.maintenanceFor', { channel: row.channelName, provider: row.providerName })} onClick={() => setMaintenance(row)}>
                       <Wrench className="h-4 w-4" />
                     </Button>
                   </>
@@ -148,10 +149,10 @@ function Feeds({ channelId }: { channelId: string | null }) {
       {failover && <FailoverDialog channelId={failover} onClose={() => setFailover(null)} />}
       <ConfirmDialog
         open={maintenance !== null}
-        title={maintenance?.maintenance ? 'End maintenance?' : 'Put the feed in maintenance?'}
-        description={<p>{maintenance?.maintenance ? 'The feed is probed and used again.' : 'The feed is skipped by failover and its incidents are muted until maintenance ends.'}</p>}
-        confirmLabel={maintenance?.maintenance ? 'End maintenance' : 'Start maintenance'}
-        note={maintenance?.maintenance ? undefined : { label: 'Note (optional)' }}
+        title={maintenance?.maintenance ? t('monitoring.endTitle') : t('monitoring.startTitle')}
+        description={<p>{maintenance?.maintenance ? t('monitoring.endHint') : t('monitoring.startHint')}</p>}
+        confirmLabel={maintenance?.maintenance ? t('monitoring.end') : t('monitoring.start')}
+        note={maintenance?.maintenance ? undefined : { label: t('monitoring.noteOptional') }}
         busy={setMaint.isPending}
         error={setMaint.error}
         onConfirm={(note) => maintenance && setMaint.mutate({ id: maintenance.feedId, on: !maintenance.maintenance, note })}
@@ -164,7 +165,7 @@ function Feeds({ channelId }: { channelId: string | null }) {
 function ProbeHistory({ feed, onClose }: { feed: FeedHealthDto | null; onClose: () => void }) {
   const probes = useQuery({ queryKey: ['probes', feed?.feedId], queryFn: () => api<ProbeResultDto[]>(`/monitoring/feeds/${feed!.feedId}/probes?limit=50`), enabled: feed !== null });
   return (
-    <Dialog open={feed !== null} title={feed ? `Probes — ${feed.channelName} via ${feed.providerName}` : 'Probes'} onClose={onClose}>
+    <Dialog open={feed !== null} title={feed ? t('mon.probesOf', { channel: feed.channelName, provider: feed.providerName }) : t('monitoring.probes')} onClose={onClose}>
       {probes.isPending ? (
         <Spinner />
       ) : (
@@ -175,11 +176,11 @@ function ProbeHistory({ feed, onClose }: { feed: FeedHealthDto | null; onClose: 
               <span>{probe.region}</span>
               <span>{probe.kind}</span>
               <span className={probe.outcome === 'ok' || probe.outcome === 'degraded' ? 'text-green-300' : 'text-red-300'}>{probe.outcome}</span>
-              {probe.ttfbMs !== null && <span>{probe.ttfbMs} ms</span>}
+              {probe.ttfbMs !== null && <span>{t('mon.ms', { ms: probe.ttfbMs })}</span>}
               {probe.error && <span className="w-full text-fg-muted">{probe.error}</span>}
             </li>
           ))}
-          {probes.data?.length === 0 && <li className="text-fg-muted">No probes yet.</li>}
+          {probes.data?.length === 0 && <li className="text-fg-muted">{t('monitoring.noProbes')}</li>}
         </ul>
       )}
     </Dialog>
@@ -189,48 +190,48 @@ function ProbeHistory({ feed, onClose }: { feed: FeedHealthDto | null; onClose: 
 function FailoverDialog({ channelId, onClose }: { channelId: string; onClose: () => void }) {
   const { can } = useAuth();
   const failover = useQuery({ queryKey: ['failover', channelId], queryFn: () => api<ChannelFailoverDto>(`/monitoring/channels/${channelId}/failover`), refetchInterval: 15_000 });
-  const pin = useAction((feedId: string) => api(`/monitoring/channels/${channelId}/failover/pin`, { method: 'POST', body: { feedId } }), { success: 'Feed pinned: automatic failover is off for this channel', invalidate: [['failover', channelId], ['feeds']] });
-  const unpin = useAction(() => api(`/monitoring/channels/${channelId}/failover/pin`, { method: 'DELETE' }), { success: 'Back to automatic failover', invalidate: [['failover', channelId], ['feeds']] });
+  const pin = useAction((feedId: string) => api(`/monitoring/channels/${channelId}/failover/pin`, { method: 'POST', body: { feedId } }), { success: t('monitoring.pinned'), invalidate: [['failover', channelId], ['feeds']] });
+  const unpin = useAction(() => api(`/monitoring/channels/${channelId}/failover/pin`, { method: 'DELETE' }), { success: t('monitoring.backToAuto'), invalidate: [['failover', channelId], ['feeds']] });
   const data = failover.data;
   return (
-    <Dialog open title={data ? `Failover — ${data.channelName}` : 'Failover'} onClose={onClose}>
+    <Dialog open title={data ? t('mon.failoverOf', { channel: data.channelName }) : t('monitoring.failover')} onClose={onClose}>
       {!data ? (
         <Spinner />
       ) : (
         <div className="space-y-4">
           <p className="text-sm">
-            Mode: <Badge tone={data.mode === 'pinned' ? 'warn' : 'ok'}>{data.mode}</Badge>
-            {data.pin && <span className="ml-2 text-xs text-fg-muted">pinned by {data.pin.by ?? '—'}{data.pin.until ? ` until ${formatTime(data.pin.until)}` : ''}</span>}
+            {t('monitoring.mode')} <Badge tone={data.mode === 'pinned' ? 'warn' : 'ok'}>{t(`mon.mode.${data.mode}`)}</Badge>
+            {data.pin && <span className="ml-2 text-xs text-fg-muted">{data.pin.until ? t('mon.pinnedByUntil', { by: data.pin.by ?? '—', until: formatTime(data.pin.until) }) : t('mon.pinnedBy', { by: data.pin.by ?? '—' })}</span>}
             {data.mode === 'pinned' && can('monitoring:operate') && (
               <Button className="ml-3" onClick={() => unpin.mutate(undefined)}>
-                <PinOff className="h-4 w-4" aria-hidden /> Unpin
+                <PinOff className="h-4 w-4" aria-hidden /> {t('monitoring.unpin')}
               </Button>
             )}
           </p>
-          <ul className="space-y-1 text-sm" aria-label="Feeds of the channel">
+          <ul className="space-y-1 text-sm" aria-label={t('monitoring.channelFeeds')}>
             {data.feeds.map((feed) => (
               <li key={feed.id} className="flex items-center gap-2 rounded bg-sunken px-2 py-1">
                 <span className="w-6 text-xs text-fg-subtle">#{feed.priority}</span>
                 <StateBadge state={feed.health} />
-                {feed.active && <Badge tone="accent">on air</Badge>}
+                {feed.active && <Badge tone="accent">{t('monitoring.onAir')}</Badge>}
                 <span className="flex-1 truncate font-mono text-xs">{feed.id.slice(-8)}</span>
                 {can('monitoring:operate') && !feed.active && (
                   <Button onClick={() => pin.mutate(feed.id)}>
-                    <Pin className="h-4 w-4" aria-hidden /> Switch &amp; pin
+                    <Pin className="h-4 w-4" aria-hidden /> {t('monitoring.switchPin')}
                   </Button>
                 )}
               </li>
             ))}
           </ul>
           <div>
-            <p className="mb-1 text-xs uppercase tracking-wide text-fg-subtle">Journal</p>
+            <p className="mb-1 text-xs uppercase tracking-wide text-fg-subtle">{t('monitoring.journal')}</p>
             <ul className="max-h-56 space-y-1 overflow-y-auto text-xs">
               {data.events.map((event, index) => (
                 <li key={index} className="rounded bg-sunken px-2 py-1">
                   <span className="font-mono">{formatTime(event.occurredAt)}</span> · {event.reason} · {event.fromFeedId?.slice(-8) ?? '—'} → {event.toFeedId?.slice(-8) ?? '—'} · {event.actorEmail ?? 'automatic'}
                 </li>
               ))}
-              {data.events.length === 0 && <li className="text-fg-muted">No switches yet.</li>}
+              {data.events.length === 0 && <li className="text-fg-muted">{t('monitoring.noSwitches')}</li>}
             </ul>
           </div>
         </div>
@@ -249,12 +250,12 @@ export function Incidents({ compact = false }: { compact?: boolean }) {
     placeholderData: keepPreviousData,
     refetchInterval: 15_000,
   });
-  const act = useAction(({ incident, action }: { incident: IncidentDto; action: 'acknowledge' | 'resolve' }) => api(`/monitoring/incidents/${incident.id}/${action}`, { method: 'POST' }), { success: 'Incident updated', invalidate: [['incidents'], ['overview']] });
+  const act = useAction(({ incident, action }: { incident: IncidentDto; action: 'acknowledge' | 'resolve' }) => api(`/monitoring/incidents/${incident.id}/${action}`, { method: 'POST' }), { success: t('monitoring.incidentUpdated'), invalidate: [['incidents'], ['overview']] });
   return (
     <>
       {!compact && (
         <select
-          aria-label="Incident status"
+          aria-label={t('monitoring.incidentStatus')}
           className="field mb-4 w-auto"
           value={status}
           onChange={(e) => {
@@ -262,29 +263,29 @@ export function Incidents({ compact = false }: { compact?: boolean }) {
             setOffset(0);
           }}
         >
-          <option value="live">Open and acknowledged</option>
-          <option value="resolved">Resolved</option>
-          <option value="">All</option>
+          <option value="live">{t('monitoring.openAck')}</option>
+          <option value="resolved">{t('monitoring.resolved')}</option>
+          <option value="">{t('monitoring.all')}</option>
         </select>
       )}
       <ErrorNote error={incidents.error} />
       <DataTable
-        label="Incidents"
+        label={t('common.incidents')}
         rows={incidents.data?.items ?? []}
         rowKey={(row) => row.id}
-        empty={incidents.isPending ? 'Loading…' : 'No incidents.'}
+        empty={incidents.isPending ? t('common.loading') : t('monitoring.noIncidents')}
         columns={[
-          { header: 'Incident', cell: (row) => <div><p className="font-medium">{row.title}</p><p className="text-xs text-fg-muted">{row.kind.replace('_', ' ')} · {row.targetType}</p></div> },
-          { header: 'Severity', cell: (row) => <Badge tone={row.severity === 'critical' ? 'danger' : 'warn'}>{row.severity}</Badge> },
-          { header: 'Status', cell: (row) => <Badge tone={row.status === 'resolved' ? 'ok' : row.status === 'acknowledged' ? 'neutral' : 'danger'}>{row.status}</Badge> },
-          { header: 'Opened', cell: (row) => <span title={formatTime(row.openedAt)}>{relative(row.openedAt)}</span>, className: 'whitespace-nowrap' },
+          { header: t('monitoring.incident'), cell: (row) => <div><p className="font-medium">{row.title}</p><p className="text-xs text-fg-muted">{row.kind.replace('_', ' ')} · {row.targetType}</p></div> },
+          { header: t('monitoring.severity'), cell: (row) => <Badge tone={row.severity === 'critical' ? 'danger' : 'warn'}>{row.severity}</Badge> },
+          { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'resolved' ? 'ok' : row.status === 'acknowledged' ? 'neutral' : 'danger'}>{statusLabel(row.status)}</Badge> },
+          { header: t('monitoring.opened'), cell: (row) => <span title={formatTime(row.openedAt)}>{relative(row.openedAt)}</span>, className: 'whitespace-nowrap' },
           {
             header: '',
             cell: (row) =>
               can('monitoring:operate') && row.status !== 'resolved' ? (
                 <div className="flex justify-end gap-1">
-                  {row.status === 'open' && <Button onClick={() => act.mutate({ incident: row, action: 'acknowledge' })}>Acknowledge</Button>}
-                  <Button onClick={() => act.mutate({ incident: row, action: 'resolve' })}>Resolve</Button>
+                  {row.status === 'open' && <Button onClick={() => act.mutate({ incident: row, action: 'acknowledge' })}>{t('monitoring.acknowledge')}</Button>}
+                  <Button onClick={() => act.mutate({ incident: row, action: 'resolve' })}>{t('monitoring.resolve')}</Button>
                 </div>
               ) : null,
           },

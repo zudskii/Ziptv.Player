@@ -3,6 +3,7 @@ import { useRef, type ReactNode } from 'react';
 import { Link } from 'react-router';
 
 import { IconButton } from '../ui/Button';
+import { t } from '../../i18n';
 
 interface RailProps {
   title: string;
@@ -23,14 +24,14 @@ export function Rail({ title, to, action, children }: RailProps) {
         {action}
         {to && (
           <Link to={to} className="shrink-0 text-sm text-brand-soft hover:underline">
-            See all
+            {t('media.seeAll')}
           </Link>
         )}
         <div className="hidden shrink-0 gap-1 md:flex">
-          <IconButton label={`Scroll ${title} left`} onClick={() => scroll(-1)}>
+          <IconButton label={t('media.scrollLeft', { title })} onClick={() => scroll(-1)}>
             <ChevronLeft className="h-4 w-4" />
           </IconButton>
-          <IconButton label={`Scroll ${title} right`} onClick={() => scroll(1)}>
+          <IconButton label={t('media.scrollRight', { title })} onClick={() => scroll(1)}>
             <ChevronRight className="h-4 w-4" />
           </IconButton>
         </div>

@@ -16,14 +16,15 @@ import { imageSources } from '../../lib/images';
 import { paths } from '../../lib/routes';
 import { formatDuration } from '../../lib/time';
 import { DetailsHeader } from './DetailsHeader';
+import { t } from '../../i18n';
 
 /** /series/:sourceId/:key — seasons and episodes (Xtream episodes load on first open). */
 export function SeriesDetailsPage() {
   const { sourceId, key } = useParams();
   const series = useSeriesDetails(sourceId, key);
   const [season, setSeason] = useState<number | null>(null);
-  if (series.isPending) return <Spinner className="justify-center py-24" label="Loading episodes…" />;
-  if (series.isError) return <div className="p-6"><EmptyState title="Series not available" description={errorMessage(series.error)} /></div>;
+  if (series.isPending) return <Spinner className="justify-center py-24" label={t('vod.loadingEpisodes')} />;
+  if (series.isError) return <div className="p-6"><EmptyState title={t('vod.seriesUnavailable')} description={errorMessage(series.error)} /></div>;
   const data = series.data;
   const first = data.seasons[0]?.episodes[0];
   const resume = data.resume;
@@ -47,7 +48,7 @@ export function SeriesDetailsPage() {
           {playTarget && (
             <Link to={paths.playEpisode(data.sourceId, data.key, playTarget)}>
               <Button variant="primary" icon={resume ? <RotateCcw className="h-4 w-4" /> : <Play className="h-4 w-4 fill-current" />}>
-                {resume ? `${resume.position > 0 ? 'Resume' : 'Play'} S${resume.season} E${resume.episode}` : 'Play'}
+                {resume ? `${resume.position > 0 ? 'Resume' : t('vod.play')} S${resume.season} E${resume.episode}` : t('vod.play')}
               </Button>
             </Link>
           )}
@@ -56,11 +57,11 @@ export function SeriesDetailsPage() {
       }
     >
       {data.seasons.length === 0 ? (
-        <EmptyState className="mt-6" title="No episodes yet" description="The provider did not list any episodes for this series." />
+        <EmptyState className="mt-6" title={t('vod.noEpisodes')} description={t('vod.noEpisodesHint')} />
       ) : (
         <div className="mt-6">
           {data.seasons.length > 1 && (
-            <div role="tablist" aria-label="Seasons" className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
+            <div role="tablist" aria-label={t('vod.seasons')} className="no-scrollbar mb-3 flex gap-2 overflow-x-auto">
               {data.seasons.map((item) => (
                 <button
                   key={item.number}
@@ -96,7 +97,7 @@ function EpisodeRow({ series, episode, current }: { series: SeriesDetailsDto; ep
       <Link
         to={paths.playEpisode(series.sourceId, series.key, episode.key)}
         className={cn('card flex items-center gap-3 p-2.5 hover:bg-fg/5', current && 'ring-1 ring-brand/50')}
-        aria-label={`Play episode ${episode.episode}: ${episode.title}`}
+        aria-label={t('vod.playEpisode', { episode: episode.episode, title: episode.title })}
       >
         <div className="relative aspect-video w-28 shrink-0 overflow-hidden rounded-md bg-fg/5 sm:w-36">
           <Img sources={imageSources(episode.still)} className="h-full w-full" fallback={<span className="flex h-full items-center justify-center text-lg font-semibold text-fg-subtle">E{episode.episode}</span>} />
@@ -109,7 +110,7 @@ function EpisodeRow({ series, episode, current }: { series: SeriesDetailsDto; ep
           <p className="text-xs text-fg-subtle">{[formatDuration(episode.durationSecs), episode.airDate].filter(Boolean).join(' · ')}</p>
           {episode.plot && <p className="mt-0.5 line-clamp-2 text-xs text-fg-muted">{episode.plot}</p>}
         </div>
-        {progress?.completed ? <Check className="h-4 w-4 shrink-0 text-emerald-500" aria-label="Watched" /> : <Play className="h-4 w-4 shrink-0 text-fg-subtle" />}
+        {progress?.completed ? <Check className="h-4 w-4 shrink-0 text-emerald-500" aria-label={t('vod.watched')} /> : <Play className="h-4 w-4 shrink-0 text-fg-subtle" />}
       </Link>
     </li>
   );

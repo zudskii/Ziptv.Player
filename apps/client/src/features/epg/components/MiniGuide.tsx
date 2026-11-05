@@ -8,6 +8,7 @@ import { formatClock, formatDay } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
 import { useChannelSchedule } from '../api';
 import { currentIndex, programmeProgress, programmeState } from '../programme';
+import { t } from '../../../i18n';
 
 interface MiniGuideProps {
   source: SourceDto;
@@ -38,13 +39,13 @@ export function MiniGuide({ source, channel, onSelect, onWatchArchive, className
     return (
       <div className={cn('flex flex-col items-center justify-center gap-2 p-6 text-center text-sm text-fg-muted', className)}>
         <CalendarX className="h-6 w-6 text-fg-subtle" />
-        No programme guide for this channel.
+        {t('epg.mini.noGuide')}
       </div>
     );
   }
-  if (schedule.isPending) return <Spinner className={cn('py-10', className)} label="Loading schedule…" />;
+  if (schedule.isPending) return <Spinner className={cn('py-10', className)} label={t('epg.mini.loading')} />;
   if (programmes.length === 0) {
-    return <p className={cn('p-6 text-center text-sm text-fg-muted', className)}>The guide has no programmes for this channel right now.</p>;
+    return <p className={cn('p-6 text-center text-sm text-fg-muted', className)}>{t('epg.mini.empty')}</p>;
   }
 
   const days = programmes.map((programme) => formatDay(programme.start, now));
@@ -80,12 +81,12 @@ export function MiniGuide({ source, channel, onSelect, onWatchArchive, className
                   type="button"
                   onClick={() => onWatchArchive(programme)}
                   className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-brand/10 px-2 text-xs font-medium text-brand-soft hover:bg-brand/20"
-                  aria-label={`Watch ${programme.title} from the archive`}
+                  aria-label={t('epg.watchArchive', { title: programme.title })}
                 >
-                  <Play className="h-3 w-3 fill-current" /> Watch
+                  <Play className="h-3 w-3 fill-current" /> {t('epg.mini.watch')}
                 </button>
               )}
-              {state === 'past' && programme.catchup && !onWatchArchive && <History className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-label="In archive" />}
+              {state === 'past' && programme.catchup && !onWatchArchive && <History className="h-3.5 w-3.5 shrink-0 text-fg-subtle" aria-label={t('epg.mini.inArchive')} />}
             </div>
           </li>
         );

@@ -3,12 +3,14 @@ import { useId, useState } from 'react';
 
 import { cn } from '../../../lib/cn';
 import { NO_GROUP, type GroupChoice } from '../group-choice';
+import { t } from '../../../i18n';
 
 /**
  * Radio list: no group, one of the groups, or a new group named on the spot. Controlled; the
  * parent turns the choice into a request (and creates the new group if asked to).
  */
-export function GroupPicker({ groups, value, onChange, noneLabel = 'No group' }: { groups: readonly PlaylistGroupDto[]; value: GroupChoice; onChange: (choice: GroupChoice) => void; noneLabel?: string }) {
+export function GroupPicker({ groups, value, onChange, noneLabel }: { groups: readonly PlaylistGroupDto[]; value: GroupChoice; onChange: (choice: GroupChoice) => void; noneLabel?: string }) {
+  noneLabel ??= t('playlists.noGroup');
   const name = useId();
   const [draft, setDraft] = useState('');
   const option = 'flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2 text-sm hover:bg-fg/5';
@@ -28,14 +30,14 @@ export function GroupPicker({ groups, value, onChange, noneLabel = 'No group' }:
       ))}
       <label className={cn(option, 'flex-wrap')}>
         <input type="radio" name={name} checked={value.type === 'new'} onChange={() => onChange({ type: 'new', name: draft })} className="accent-brand" />
-        <span className="text-fg">New group…</span>
+        <span className="text-fg">{t('playlists.group.newEllipsis')}</span>
         {value.type === 'new' && (
           <input
             autoFocus
             value={draft}
             maxLength={120}
-            placeholder="Group name"
-            aria-label="New group name"
+            placeholder={t('playlists.group.name')}
+            aria-label={t('playlists.group.newName')}
             onChange={(event) => {
               setDraft(event.target.value);
               onChange({ type: 'new', name: event.target.value });

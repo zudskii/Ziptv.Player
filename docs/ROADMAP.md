@@ -5,7 +5,7 @@
 
 ## წესები ყველა ფაზისთვის
 
-- ჯერ ფუნქციონალი; ინტეგრაციები (გადახდა, CDN, DRM, vendor-ები) პორტის უკან, fake/in-memory ადაპტერით. რეალური ინტეგრაციები — ფაზა 11.
+- ჯერ ფუნქციონალი; ინტეგრაციები (გადახდა, CDN, DRM, vendor-ები) პორტის უკან, fake/in-memory ადაპტერით. რეალური ინტეგრაციები — ფაზები 16–20.
 - ფაზა მთავრდება მხოლოდ თუ მწვანეა: `eslint`, `typecheck`, `build`, server + client ტესტები PostgreSQL-ზე, ბრაუზერში გავლა.
 - მიწოდება: მხოლოდ შეცვლილი ფაილები (+ წაშლილების სია).
 - **მოდელი**: **Opus** = Claude Opus 5.5 (არქიტექტურა, უსაფრთხოება, state machine, მიგრაციები); **Sonnet** = Sonnet 5.5 (ეკრანები, CRUD, ტესტები, დოკუმენტები); **Haiku** = Haiku 4.5 (მექანიკური ცვლილებები). არჩევანი რისკის მიხედვითაა და ბენჩმარკით არ დამიმტკიცებია.
@@ -25,9 +25,18 @@
 | 8 | Commerce და Playback Authorization ✅ | Opus |
 | 9 | Admin Console ✅ | Sonnet |
 | 10 | Catch-up, Multi-view, Parental ✅ | Sonnet + Opus |
-| 11 | რეალური ინტეგრაციები | Opus + Sonnet |
-| 12 | Pilot Hardening | Opus + დამოუკიდებელი review |
-| 13 | Scale | — |
+| 11 | ნავიგაცია და ავტორიზაციის flow ✅ | Opus + Sonnet |
+| 12 | მრავალენოვნება (ka / en / ru) ✅ | Sonnet + Opus |
+| 13 | UX დახმარება: tooltip-ები, ტუტორიალები | Sonnet |
+| 14 | პროფილები: საკუთარი ბიბლიოთეკა | Opus + Sonnet |
+| 15 | ფილმების/სერიალების ფილტრები | Sonnet + Opus |
+| 16 | კონტენტის პროვაიდერის საფუძველი | Opus |
+| 17 | გეგმები, პაკეტები, entitlement-ები | Opus |
+| 18 | მრავალი გადახდის სისტემა | Opus |
+| 19 | CDN მიწოდება | Opus + Sonnet |
+| 20 | DRM, playback რეჟიმები, attestation | Opus |
+| 21 | Pilot Hardening | Opus + დამოუკიდებელი review |
+| 22 | Scale | — |
 
 ---
 
@@ -46,7 +55,7 @@
 ## ფაზა 1 — უსაფრთხოება P0 (ZP-ENT-02) · **Opus** · ✅ დასრულდა
 
 > **სტატუსი:** 1.1–1.11 გაკეთებულია. დეტალები და დარჩენილი ხარვეზები: `docs/architecture/THREAT_MODEL.md`.
-> გადატანილია: playback session/heartbeat-ზე მიბმა (ფაზა 8, `LeaseStore` უკვე მზადაა), DASH-ის proxy (ფაზა 11),
+> გადატანილია: playback session/heartbeat-ზე მიბმა (ფაზა 8, `LeaseStore` უკვე მზადაა), DASH-ის proxy (ფაზა 19),
 > catch-up `proxied` export-ში (ფაზა 10 ✅), dev-dependency-ების major განახლება (vitest 5, tailwind 4).
 
 მიზანი: არცერთ კლიენტთან არ მიდის provider-ის URL, პაროლი ან header.
@@ -153,7 +162,7 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 
 ## ფაზა 7 — Stream Health და Failover (ZP-ENT-06) · ✅ დასრულდა
 
-> **სტატუსი:** 7.1–7.9 გაკეთებულია (`0009-stream-health`). Probe fleet რეგიონებით (`PROBE_REGION`), lease-ით და provider-ზე fleet-wide ლიმიტით; probe: playlist → ყველაზე იაფი variant → ბოლო სეგმენტი (+ init) → `ffprobe` (მხოლოდ stdin), TTFB; გაყინული live playlist (sequence არ მოძრაობს) = failure, თუნდაც 200 იყოს. რეგიონის state machine hysteresis-ით (fail/recover N ზედიზედ), საერთო სტატუსი რეგიონების კონსენსუსით (HEALTHY / UNHEALTHY / GEO_BLOCKED / NOT_ENTITLED / MAINTENANCE / PROVIDER_OUTAGE / UNKNOWN). Failover მხოლოდ იმავე master არხის feed-ებზე: გაფუჭებისას მაშინვე, fail-back cooldown-ის შემდეგ, ოპერატორის pin (override), ყველაფერი `failover_events` ჟურნალში და console-ის აუდიტში. Incidents (feed / channel_down / provider_outage) + alert-ები outbox-ით (HMAC-ხელმოწერილი webhook, Slack, email), acknowledge/resolve. კლიენტის telemetry (session-ზე მიბმული ტოკენით) feed-ს მხოლოდ ხელახლა ამოწმებინებს, თავად არასდროს რთავს. BYO წყაროები: Online / Slow / Unstable / Offline (ნაკადს არ ხსნის). Prometheus `/metrics` (token). Gate შემოწმებულია e2e-ით და lab-ში რეალური ffprobe-ით (primary down → backup 8 წამში, მაყურებელი აგრძელებს ყურებას, ხელით pin/unpin ჟურნალით). სტრატეგია: `docs/architecture/STREAM_HEALTH.md`. ღია: probe ცხრილის partitioning — ფაზა 13; console ეკრანები — ფაზა 9; provider-ზე probe slot-ის დიდ კატალოგზე capacity planning (დოკუმენტში).
+> **სტატუსი:** 7.1–7.9 გაკეთებულია (`0009-stream-health`). Probe fleet რეგიონებით (`PROBE_REGION`), lease-ით და provider-ზე fleet-wide ლიმიტით; probe: playlist → ყველაზე იაფი variant → ბოლო სეგმენტი (+ init) → `ffprobe` (მხოლოდ stdin), TTFB; გაყინული live playlist (sequence არ მოძრაობს) = failure, თუნდაც 200 იყოს. რეგიონის state machine hysteresis-ით (fail/recover N ზედიზედ), საერთო სტატუსი რეგიონების კონსენსუსით (HEALTHY / UNHEALTHY / GEO_BLOCKED / NOT_ENTITLED / MAINTENANCE / PROVIDER_OUTAGE / UNKNOWN). Failover მხოლოდ იმავე master არხის feed-ებზე: გაფუჭებისას მაშინვე, fail-back cooldown-ის შემდეგ, ოპერატორის pin (override), ყველაფერი `failover_events` ჟურნალში და console-ის აუდიტში. Incidents (feed / channel_down / provider_outage) + alert-ები outbox-ით (HMAC-ხელმოწერილი webhook, Slack, email), acknowledge/resolve. კლიენტის telemetry (session-ზე მიბმული ტოკენით) feed-ს მხოლოდ ხელახლა ამოწმებინებს, თავად არასდროს რთავს. BYO წყაროები: Online / Slow / Unstable / Offline (ნაკადს არ ხსნის). Prometheus `/metrics` (token). Gate შემოწმებულია e2e-ით და lab-ში რეალური ffprobe-ით (primary down → backup 8 წამში, მაყურებელი აგრძელებს ყურებას, ხელით pin/unpin ჟურნალით). სტრატეგია: `docs/architecture/STREAM_HEALTH.md`. ღია: probe ცხრილის partitioning — ფაზა 22; console ეკრანები — ფაზა 9; provider-ზე probe slot-ის დიდ კატალოგზე capacity planning (დოკუმენტში).
 
 - 7.1 `stream_probe_results` (დროითი სერია, retention/partition). *(Opus)*
 - 7.2 **Probe ტიპები:** manifest (ასაკი, `EXT-X-MEDIA-SEQUENCE` პროგრესი), სეგმენტის ჩამოტვირთვა, `ffprobe` დეკოდის ნიმუში (იშვიათად), TTFB. HTTP 200 საკმარისი არაა. *(Opus)*
@@ -168,7 +177,7 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 
 ## ფაზა 8 — Commerce და Playback Authorization (ZP-ENT-07/08/09) · ✅ დასრულდა
 
-> **სტატუსი:** 8.1–8.11 გაკეთებულია (`0010-commerce`). `OPERATOR_ACCESS=subscription` (ნაგულისხმევი): ოპერატორის არხი = დაუბლოკავი ანგარიში ∧ rights (ქვეყანა, მოწყობილობა, დრო) ∧ (FAST ან აქტიური entitlement პაკეტზე, რომელშიც არხია და რომლის business model-ს grant ფარავს); `rights` რეჟიმი = ფაზა 6-ის ქცევა. Subscription state machine სუფთა დომენში (`tick`-ით, out-of-order/დუბლირებული webhook უვნებელია, გადაუხდელ ტრიალს grace არ აქვს). ყოველი ყურება = playback session (Blueprint §8-ის 7 ნაბიჯი): დარეგისტრირებული მოწყობილობა (გასაღების SHA-256, ლიმიტი, გაუქმება), ატომური lease (Redis Lua / PG advisory lock, TTL 120 წმ), heartbeat 30 წმ-ში მიმდინარე ქვეყნით ხელახალი ავტორიზაციით, proxy ბმულები სესიაზე მიბმული (`playback` grant) — სესია მთავრდება = ბმული კვდება. Rights/პაკეტის/comp-ის გაუქმება, ბლოკი, refund ყურებას მაშინვე წყვეტს (heartbeat-ს არ ელოდება). გადახდის პორტი + fake processor (hosted გვერდი, ასინქრონული HMAC webhook): webhook ერთხელ მუშავდება იმავე ტრანზაქციაში, success-გვერდი მხოლოდ პროცესორს ეკითხება, reconciliation საათში ერთხელ; ორჯერ გადახდა / ტრიალის განმეორება / დასრულებულზე ჩამოჭრა ავტომატურად ბრუნდება (outbox), dunning-ით ვადაგასულს პროცესორთანაც აუქმებს. კლიენტი: `/plans`, `/billing/return`, `/account`, player-ის "Subscription required" / "Too many streams → Stop & watch here". Gate შემოწმებულია e2e-ით (bypass ტესტები) და lab-ში ორი ბრაუზერით. სტრატეგია: `docs/architecture/COMMERCE.md`. ღია: რეალური პროცესორი და CDN/DRM ბმულები — ფაზა 11; console ეკრანები პაკეტებისთვის — ფაზა 9; კლიენტის მიერ გამოცხადებული device class (attestation) — ფაზა 11.
+> **სტატუსი:** 8.1–8.11 გაკეთებულია (`0010-commerce`). `OPERATOR_ACCESS=subscription` (ნაგულისხმევი): ოპერატორის არხი = დაუბლოკავი ანგარიში ∧ rights (ქვეყანა, მოწყობილობა, დრო) ∧ (FAST ან აქტიური entitlement პაკეტზე, რომელშიც არხია და რომლის business model-ს grant ფარავს); `rights` რეჟიმი = ფაზა 6-ის ქცევა. Subscription state machine სუფთა დომენში (`tick`-ით, out-of-order/დუბლირებული webhook უვნებელია, გადაუხდელ ტრიალს grace არ აქვს). ყოველი ყურება = playback session (Blueprint §8-ის 7 ნაბიჯი): დარეგისტრირებული მოწყობილობა (გასაღების SHA-256, ლიმიტი, გაუქმება), ატომური lease (Redis Lua / PG advisory lock, TTL 120 წმ), heartbeat 30 წმ-ში მიმდინარე ქვეყნით ხელახალი ავტორიზაციით, proxy ბმულები სესიაზე მიბმული (`playback` grant) — სესია მთავრდება = ბმული კვდება. Rights/პაკეტის/comp-ის გაუქმება, ბლოკი, refund ყურებას მაშინვე წყვეტს (heartbeat-ს არ ელოდება). გადახდის პორტი + fake processor (hosted გვერდი, ასინქრონული HMAC webhook): webhook ერთხელ მუშავდება იმავე ტრანზაქციაში, success-გვერდი მხოლოდ პროცესორს ეკითხება, reconciliation საათში ერთხელ; ორჯერ გადახდა / ტრიალის განმეორება / დასრულებულზე ჩამოჭრა ავტომატურად ბრუნდება (outbox), dunning-ით ვადაგასულს პროცესორთანაც აუქმებს. კლიენტი: `/plans`, `/billing/return`, `/account`, player-ის "Subscription required" / "Too many streams → Stop & watch here". Gate შემოწმებულია e2e-ით (bypass ტესტები) და lab-ში ორი ბრაუზერით. სტრატეგია: `docs/architecture/COMMERCE.md`. ღია: რეალური პროცესორი და CDN/DRM ბმულები — ფაზები 18–20; console ეკრანები პაკეტებისთვის — ფაზა 9; კლიენტის მიერ გამოცხადებული device class (attestation) — ფაზა 20.
 
 - 8.1 **სქემა:** `packages`, `package_channels`, `subscriptions`, `entitlements`, `devices`, `playback_sessions`, `payment_events`, `invoices`. *(Opus)*
 - 8.2 **Subscription state machine** (trialing → active → past_due → grace → canceled/expired), სუფთა დომენი + სრული ტესტები. *(Opus)*
@@ -185,7 +194,7 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 
 ## ფაზა 9 — Admin Console · ✅ დასრულდა
 
-> **სტატუსი:** 9.1–9.10 გაკეთებულია (`0011-console`). 12 სექცია როლების მიხედვით (Overview, Approvals, Live monitoring, Channels, Providers, EPG, Packages & rights, Subscribers, Support, Finance, Audit & security, Staff); ყოველი route-ის უფლებას API ამოწმებს, UI მხოლოდ მალავს. **Four-eyes:** პაკეტის შექმნა/ცვლილება (ფასი, ლიმიტები, სტატუსი, არხები) და rights grant ცვლილების მოთხოვნაა (`202 {changeRequest}`) — მეორე ადამიანი იმავე write-უფლებით ამტკიცებს, საკუთარ მოთხოვნაზე გადაწყვეტილება შეუძლებელია (დომენი + DB `CHECK`); დამტკიცებისას ცვლილება approver-ის ტრანზაქციაში ხელახლა იწერება stale-შემოწმების შემდეგ (შეცვლილი ობიექტი / 30 დღეზე ძველი → `failed`, არაფერი იცვლება); პაკეტზე ერთი pending ცვლილება; revoke მაშინვე მოქმედებს და შემდეგ review-ს გადის; ვისაც TOTP მოთხოვნის შემდეგ ჩაეწერა, ვერ დაამტკიცებს; merge უარყოფილია, სანამ არხს აქტიური rights/პაკეტი აქვს. `CONSOLE_FOUR_EYES=false` production-ში აკრძალულია. Read models: MRR ბოლო გადახდილი ინვოისიდან, churn მხოლოდ გადახდილ გამოწერებზე, 12-თვიანი სერია; პარტნიორის შემოსავალი **ყურების წუთების წილით** (`playback_sessions.provider_id`, სესიები 400 დღე ინახება), CSV formula-injection დაცვით; provider-ის SLA probe-ებიდან; support notes აუდიტში ტექსტის გარეშე. **ოპერატორის EPG:** ლიცენზირებული XMLTV გზამკვლევები generation-ებით, ავტო-mapping alias-ებით (tvg-id ▶ სახელი, priority), ხელით mapping იმარჯვებს, დაფარვა (unmapped / no_data / gaps / ends_soon / ok), მაყურებლისთვის now/next. Gate შემოწმებულია e2e-ით, ბრაუზერის ტესტით თითო როლზე (`roles.ui.test.tsx`, 401/403 გამოძახების გარეშე) და lab-ში (ორი finance/content თანამშრომელი რეალურ UI-ში). სტრატეგია: `docs/architecture/CONSOLE.md`. ღია: SUPER_ADMIN-ს ახალი staff ანგარიშით მაინც შეუძლია მეორე ხელმოწერა — ფაზა 12 (staff შექმნა four-eyes-ით ან IdP); საკონტრაქტო განაკვეთები/მინიმალური გარანტიები — ფაზა 11; ფინანსური მოთხოვნები replica-ზე — ფაზა 13.
+> **სტატუსი:** 9.1–9.10 გაკეთებულია (`0011-console`). 12 სექცია როლების მიხედვით (Overview, Approvals, Live monitoring, Channels, Providers, EPG, Packages & rights, Subscribers, Support, Finance, Audit & security, Staff); ყოველი route-ის უფლებას API ამოწმებს, UI მხოლოდ მალავს. **Four-eyes:** პაკეტის შექმნა/ცვლილება (ფასი, ლიმიტები, სტატუსი, არხები) და rights grant ცვლილების მოთხოვნაა (`202 {changeRequest}`) — მეორე ადამიანი იმავე write-უფლებით ამტკიცებს, საკუთარ მოთხოვნაზე გადაწყვეტილება შეუძლებელია (დომენი + DB `CHECK`); დამტკიცებისას ცვლილება approver-ის ტრანზაქციაში ხელახლა იწერება stale-შემოწმების შემდეგ (შეცვლილი ობიექტი / 30 დღეზე ძველი → `failed`, არაფერი იცვლება); პაკეტზე ერთი pending ცვლილება; revoke მაშინვე მოქმედებს და შემდეგ review-ს გადის; ვისაც TOTP მოთხოვნის შემდეგ ჩაეწერა, ვერ დაამტკიცებს; merge უარყოფილია, სანამ არხს აქტიური rights/პაკეტი აქვს. `CONSOLE_FOUR_EYES=false` production-ში აკრძალულია. Read models: MRR ბოლო გადახდილი ინვოისიდან, churn მხოლოდ გადახდილ გამოწერებზე, 12-თვიანი სერია; პარტნიორის შემოსავალი **ყურების წუთების წილით** (`playback_sessions.provider_id`, სესიები 400 დღე ინახება), CSV formula-injection დაცვით; provider-ის SLA probe-ებიდან; support notes აუდიტში ტექსტის გარეშე. **ოპერატორის EPG:** ლიცენზირებული XMLTV გზამკვლევები generation-ებით, ავტო-mapping alias-ებით (tvg-id ▶ სახელი, priority), ხელით mapping იმარჯვებს, დაფარვა (unmapped / no_data / gaps / ends_soon / ok), მაყურებლისთვის now/next. Gate შემოწმებულია e2e-ით, ბრაუზერის ტესტით თითო როლზე (`roles.ui.test.tsx`, 401/403 გამოძახების გარეშე) და lab-ში (ორი finance/content თანამშრომელი რეალურ UI-ში). სტრატეგია: `docs/architecture/CONSOLE.md`. ღია: SUPER_ADMIN-ს ახალი staff ანგარიშით მაინც შეუძლია მეორე ხელმოწერა — ფაზა 21 (staff შექმნა four-eyes-ით ან IdP); საკონტრაქტო განაკვეთები/მინიმალური გარანტიები — ფაზა 17; ფინანსური მოთხოვნები replica-ზე — ფაზა 22.
 
 ყველა ეკრანი ეყრდნობა ფაზა 2-ის RBAC-ს; ბრაუზერის ტესტი თითო როლზე.
 
@@ -203,7 +212,7 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 
 ## ფაზა 10 — Catch-up, Multi-view, Parental · ✅ დასრულდა
 
-> **სტატუსი:** 10.1–10.7 გაკეთებულია (`0012-viewer-controls`). **Catch-up:** არქივის მისამართს სერვერი აგებს — M3U `default/append/shift/flussonic` (Kodi/TiviMate placeholder-ები, უცნობი placeholder → უარი და არა გამოცნობა) და Xtream `timeshift` პანელის დროის სარტყელში (`server_info.timezone`); პროგრამა უნდა იყოს დასრულებული, არქივის ფანჯარაში და ≤12 სთ. ▶ Watch მინი-გიდში, TV Guide-ში და ძიებაში, deep link `?at=&until=`. `proxied` export-ში catch-up ახლა მუშაობს export-ზე მიბმული დაშიფრული archive token-ით (`/media/archive/…`). **ოპერატორის catch-up:** ცალკე უფლება grant-ზე (`catchup_days`, four-eyes-ით), feed-ის არქივი provider sync-იდან; ყურება playback session-ით (lease, entitlement), არქივი ვერ სცდება grant-ის დაწყებას, revoke-ისას სესია მაშინვე წყდება. **Multi-view 2×2:** აუდიო მხოლოდ ფოკუსირებულ ფილაზე, `1`–`4`; ოპერატორის ფილა = playback session, BYO Xtream ფილები `max_connections`-ით სერვერზე (lease, `replaces`). **Parental:** ერთი PIN ანგარიშზე (scrypt, 5 შეცდომა → 15 წთ ბლოკი, ატომურად), წესები პროფილზე (BYO და ოპერატორის ჯგუფები/არხები), unlock token HMAC-ით (device + profile + PIN version, 15 წთ), აღსრულება სერვერზე სიებში, VOD-ში, ძიებაში, Home-ში, EPG-ში, My List-ში და ყველა playback გზაზე; kids პროფილი მკაცრია (დაბლოკილი/adult საერთოდ არ ჩანს, PIN არ ხსნის, წესების/წყაროების/ყიდვის ცვლილება აკრძალულია), PIN-ით დაცული პროფილი და kids lock device session-ზე ინახება სერვერზე. **Notifications:** დღეების მიხედვით, unread ფილტრი, dismiss, clear read, უსაფრთხოების შეტყობინებები (kids-ს არ უჩანს). **Player:** `I` PiP, `C` სუბტიტრები, `0–9`, `?`, Media Session, Auto-ს ფაქტობრივი ხარისხი. Gate შემოწმებულია e2e-ით (`parental.e2e`, `catchup.e2e`), UI ტესტით და lab-ში (11 ნაბიჯი რეალურ ბრაუზერში). სტრატეგია: `docs/architecture/VIEWER_CONTROLS.md`. ღია: დაბლოკილი არხის სახელი/გიდი ზრდასრულ პროფილს ჩანს (locked ნიშნით); PIN-მდე შექმნილი export ბმულები არ უქმდება ავტომატურად; catch-up წუთები პარტნიორის რეპორტში live-ის ტოლფასია — ფაზა 11.
+> **სტატუსი:** 10.1–10.7 გაკეთებულია (`0012-viewer-controls`). **Catch-up:** არქივის მისამართს სერვერი აგებს — M3U `default/append/shift/flussonic` (Kodi/TiviMate placeholder-ები, უცნობი placeholder → უარი და არა გამოცნობა) და Xtream `timeshift` პანელის დროის სარტყელში (`server_info.timezone`); პროგრამა უნდა იყოს დასრულებული, არქივის ფანჯარაში და ≤12 სთ. ▶ Watch მინი-გიდში, TV Guide-ში და ძიებაში, deep link `?at=&until=`. `proxied` export-ში catch-up ახლა მუშაობს export-ზე მიბმული დაშიფრული archive token-ით (`/media/archive/…`). **ოპერატორის catch-up:** ცალკე უფლება grant-ზე (`catchup_days`, four-eyes-ით), feed-ის არქივი provider sync-იდან; ყურება playback session-ით (lease, entitlement), არქივი ვერ სცდება grant-ის დაწყებას, revoke-ისას სესია მაშინვე წყდება. **Multi-view 2×2:** აუდიო მხოლოდ ფოკუსირებულ ფილაზე, `1`–`4`; ოპერატორის ფილა = playback session, BYO Xtream ფილები `max_connections`-ით სერვერზე (lease, `replaces`). **Parental:** ერთი PIN ანგარიშზე (scrypt, 5 შეცდომა → 15 წთ ბლოკი, ატომურად), წესები პროფილზე (BYO და ოპერატორის ჯგუფები/არხები), unlock token HMAC-ით (device + profile + PIN version, 15 წთ), აღსრულება სერვერზე სიებში, VOD-ში, ძიებაში, Home-ში, EPG-ში, My List-ში და ყველა playback გზაზე; kids პროფილი მკაცრია (დაბლოკილი/adult საერთოდ არ ჩანს, PIN არ ხსნის, წესების/წყაროების/ყიდვის ცვლილება აკრძალულია), PIN-ით დაცული პროფილი და kids lock device session-ზე ინახება სერვერზე. **Notifications:** დღეების მიხედვით, unread ფილტრი, dismiss, clear read, უსაფრთხოების შეტყობინებები (kids-ს არ უჩანს). **Player:** `I` PiP, `C` სუბტიტრები, `0–9`, `?`, Media Session, Auto-ს ფაქტობრივი ხარისხი. Gate შემოწმებულია e2e-ით (`parental.e2e`, `catchup.e2e`), UI ტესტით და lab-ში (11 ნაბიჯი რეალურ ბრაუზერში). სტრატეგია: `docs/architecture/VIEWER_CONTROLS.md`. ღია: დაბლოკილი არხის სახელი/გიდი ზრდასრულ პროფილს ჩანს (locked ნიშნით); PIN-მდე შექმნილი export ბმულები არ უქმდება ავტომატურად; catch-up წუთები პარტნიორის რეპორტში live-ის ტოლფასია — ფაზა 17.
 
 - 10.1 **Catch-up ტემპლეიტები:** `catchup`, `catchup-source`, Xtream timeshift; `{utc}`, `{start}`, `{duration}` და ა.შ. *(Opus)*
 - 10.2 **▶ Watch** მინი-გიდში, TV Guide-ში, ძიებაში; ხელმისაწვდომობა `catchupDays`-ით. *(Sonnet)*
@@ -214,37 +223,130 @@ Mongo ხაზიდან გადმოდის ბაზისგან �
 - 10.7 Player UX: PiP, კლავიატურა, ხარისხის არჩევა. *(Sonnet)*
 - **Gate:** დაბლოკილი კონტენტი არცერთი endpoint-იდან არ გაიცემა PIN-ის გარეშე.
 
-## ფაზა 11 — რეალური ინტეგრაციები
+## ფაზა 11 — ნავიგაცია და ავტორიზაციის flow · ✅ დასრულდა
 
-ყველა ინტეგრაცია წინა ფაზების პორტებს ავსებს; გადამოწმება sandbox-ით.
+> **სტატუსი:** 11.1–11.6 გაკეთებულია. სად მიდის მოწყობილობა, ერთ ადგილას წყდება: `gateDecision` (სუფთა ფუნქცია) + `SessionGate`. გვერდებს საკუთარი redirect აღარ აქვთ. Guest რეჟიმი რჩება, მაგრამ მხოლოდ არჩევით. პირველ ვიზიტზე → `/welcome` (Create account / Sign in / Continue as guest), შემდეგ უკან იმავე გვერდზე. Sign out → `/login` („You signed out“), ახალი guest ჩუმად აღარ იქმნება, წინა ადამიანის გვერდი არ ახსოვს. ყველა ღია ტაბი გამოდის (`storage` event). ქეში, აქტიური პროფილი და parental unlock-ები იშლება. ვადაგასული ანგარიში → `/login` email-ით, შემდეგ უკან. 1.x guest-ის მონაცემები უკითხავად აღდგება. სესიის გარეშე გაგზავნილი შემთხვევითი მოთხოვნა identity-ს აღარ ქმნის (`onUnauthorized` → `none`). წყაროს გარეშე Home / Live / Guide / Movies / Series ადგილზე რჩება: `NoSourcesState` + „Add a source“ → `/setup` (ყოფილი onboarding, welcome ნაბიჯის გარეშე). ოპერატორის არხებით Home კვლავ `/channels`-ია. ანგარიშის წაშლის შემდეგ → `/welcome`. Gate შემოწმებულია: 9 policy unit ტესტით, 6 ახალი UI ტესტით რეალურ სერვერზე (სხვა ტაბში sign out / sign in-ის ჩათვლით) და ბრაუზერში 15 ნაბიჯით, console შეცდომების გარეშე.
 
-- 11.1 **TBC E-Commerce** (checkout + recurring; recurring ბანკთან შესათანხმებელია). *(Opus)*
-- 11.2 **Bank of Georgia** Payment Manager. *(Opus)*
-- 11.3 **CDN signed URL** ადაპტერი (მაგ. token auth / signed cookies), origin დაცვა. *(Opus)*
-- 11.4 **DRM:** Widevine / FairPlay ლიცენზიის გაცემა და EME ინტეგრაცია კლიენტში, თუ კონტრაქტი მოითხოვს. *(Opus)*
-- 11.5 **Vendor feed ადაპტერები** ხელმოწერილი კონტრაქტის ფორმატით (SoFast და სხვ.). *(Opus)*
-- 11.6 **QoE telemetry:** კლიენტის ივენთები + OpenTelemetry + Grafana დაფები. *(Sonnet)*
-- 11.7 Email/SMS პროვაიდერები. *(Sonnet)*
-- 11.8 Secrets manager. *(Opus)*
-- **Gate:** sandbox გადახდა ქმნის entitlement-ს; დაკვრა მხოლოდ CDN-ის ხელმოწერილი მისამართით.
+- 11.1 ერთი route guard მდგომარეობების მატრიცით (anonymous / guest / account / ვადაგასული / signed out). *(Opus)*
+- 11.2 საჯარო `/welcome` landing; onboarding → `/setup`. *(Sonnet)*
+- 11.3 Sign out → `/login`, ქეშის/პროფილის/unlock-ების გასუფთავება, ყველა ტაბი. *(Opus)*
+- 11.4 წყაროს გარეშე empty state redirect-ის ნაცვლად. *(Sonnet)*
+- 11.5 `returnTo` მხოლოდ same-origin path-ია (`/welcome`, `/login`, `/register` loop-ის გარეშე). *(Opus)*
+- 11.6 Stray 401 identity-ს არ ქმნის. *(Opus)*
+- **Gate:** მატრიცის ყველა უჯრა ტესტითაა დაფარული; ორ ტაბში sign out ორივეს გამოიყვანს.
 
-## ფაზა 12 — Pilot Hardening (ZP-ENT-11)
+## ფაზა 12 — მრავალენოვნება: ქართული / ინგლისური / რუსული · ✅ დასრულდა
 
-- 12.1 დატვირთვის ტესტები (k6): API, playback start, heartbeat.
-- 12.2 Failover game-day.
-- 12.3 Backup / PITR აღდგენის რეპეტიცია.
-- 12.4 Blue/green, migration rollback staging-ზე.
-- 12.5 `infra/terraform`.
-- 12.6 Runbook-ები (`docs/runbooks`).
-- 12.7 უსაფრთხოების review: დამოუკიდებელი გავლა, SAST, dependency CVE.
-- 12.8 Pilot KPI დაფა: ხელმისაწვდომობა ≥ 99.5%, play start ≥ 99%, p95 პირველი კადრი < 5 წმ, rebuffer < 1% — ესენი სამიზნეებია და არა მიღწეული შედეგები.
-- 12.9 პერსონალური მონაცემების შენახვის ვადები.
-- 12.10 Support პროცედურები და on-call.
+> **სტატუსი:** 12.1–12.6 გაკეთებულია. საერთო პაკეტი `@ziptv/i18n` (intl-messageformat, ICU): ტიპიზებული key-ები, ინგლისური bundle-შია, ka/ru lazy-load-ით, `Catalog<M>` ტიპი key-ების დამთხვევას compiler-ით ამოწმებს. კლიენტი ~1150 შეტყობინება, კონსოლი ~790, სამივე ენაზე. ენა: მოწყობილობის (ბრაუზერის `navigator.languages` ან ბოლო არჩევანი) → **პროფილის** `general.language` ჭარბობს მას (`''` = მოწყობილობის). იცვლება Settings-იდან, welcome/login გვერდიდანაც, გადატვირთვის გარეშე; `<html lang>` მიჰყვება. თარიღი, დრო, რიცხვი, ფასი და სია `Intl`-ით, მიმდინარე ენით; რიცხვითი placeholder-ები `{n, number}`. API-ის შეცდომები: ინგლისურად სერვერის ტექსტი, ka/ru-ზე error code-ის თარგმანი. Email-ები (პაროლის აღდგენა, დადასტურება) იწერება იმ ეკრანის ენაზე, საიდანაც მოთხოვნა მოვიდა (კლიენტი `Accept-Language`-ს აგზავნის). კონსოლის ენა მოწყობილობაზე ინახება. Gate: ტესტები ამოწმებს key-ების დამთხვევას, ICU სინტაქსს სამივე ენაზე, placeholder-ების შესაბამისობას, ქართულში თარგმანის გამოტოვებას და JSX-ში hardcoded ტექსტს (`@ziptv/i18n/lint`, კლიენტსა და კონსოლში); რუსული plural-ების unit ტესტი (1/2/5/11/21/22/25); ბრაუზერში 13 შემოწმება (ka ბრაუზერი → ka, ენის გადართვა, პროფილის ენა reload-ის შემდეგ, 12 გვერდი × 3 ენა „ნედლი“ key-ის გარეშე), console შეცდომების გარეშე. ღია: შიდა შეტყობინებების ტექსტი (notifications) სერვერზე ინგლისურად ინახება — params-ით ლოკალიზაცია ფაზა 13-ში; ავტომატური პროფილის სახელი „Me“ სერვერზე; კონსოლის ენა staff ანგარიშზე (ახლა მოწყობილობაზე); pseudo-locale არ გაკეთებულა.
+
+- 12.1 i18n ICU message format-ით (მაგ. react-i18next + ICU ან FormatJS). რუსულს 4 plural ფორმა აქვს, ქართულს 2: ხელით `count === 1` არ იწერება. *(Opus)*
+- 12.2 ენა **პროფილზეა** (ანგარიშის ენა default-ია, პირველ ვიზიტზე `Accept-Language`). Settings-ში იცვლება გადატვირთვის გარეშე; ადმინ კონსოლში თითო staff-ზე. *(Sonnet)*
+- 12.3 თარიღი, დრო, რიცხვი, ფასი `Intl`-ით, EPG-ის ჩათვლით. *(Sonnet)*
+- 12.4 API აბრუნებს სტაბილურ error code-ებს, თარგმნა კლიენტზე ხდება (zod-ის ვალიდაციის ჩათვლით). *(Opus)*
+- 12.5 სერვერზე ლოკალიზდება email, push და security შეტყობინებები. *(Sonnet)*
+- 12.6 CI: key parity (ka/ru-ში key აკლია → build ჩავარდება), pseudo-locale UI-ის გადატეხვის შესამოწმებლად, lint hardcoded სტრიქონებზე. ფონტი ფარავს ქართულსა და კირილიცას. *(Sonnet)*
+- **ფარგლებს გარეთ:** კატალოგის მეტამონაცემების თარგმნა (ფაზები 15/16).
+- **Gate:** კლიენტსა და ადმინში hardcoded სტრიქონი აღარ არის; სამივე ენა სრულია.
+
+## ფაზა 13 — UX დახმარება: tooltip-ები, ტუტორიალები, empty state-ები
+
+- 13.1 Tooltip ყველა არაცხად კონტროლზე: ჩნდება focus-ზეც (ტელეფონსა და TV-ზე hover არ არსებობს), `aria-describedby`, ~500 ms დაყოვნება, ტექსტი i18n key-ით. *(Sonnet)*
+- 13.2 „?“ inline help რთულ პარამეტრებზე (Time shift, Hardware acceleration, catch-up). *(Sonnet)*
+- 13.3 პირველი გაშვების checklist: წყარო → პროფილი → პირველი ყურება. *(Sonnet)*
+- 13.4 Contextual tour-ები (TV Guide, Multi-view, Parental). მდგომარეობა სერვერზე ინახება თითო პროფილზე; Settings-ში არის „ტუტორიალების თავიდან ჩვენება“. *(Sonnet)*
+- 13.5 ერთიანი empty state ყველა სიისთვის (ფაზა 11-ის `NoSourcesState`-ის გაგრძელება). *(Haiku)*
+- **Gate:** ყველა icon-only ღილაკს აქვს tooltip და aria-label; tour ერთხელ ჩნდება თითო პროფილზე.
+
+## ფაზა 14 — პროფილები: საკუთარი ბიბლიოთეკა
+
+წყარო რჩება **ანგარიშის** საკუთრებაში, პროფილს **ენიჭება** ის წყაროები, რომლებსაც ხედავს. დუბლირება არ ხდება: credentials ერთ ადგილას ინახება, Xtream `max_connections` ითვლება წყაროზე და არა ასლებზე.
+
+- 14.1 `profile_sources`, `profile_epg_sources`. კატალოგის, ძიების, Home-ისა და EPG-ის query-ები პროფილის მიბმაზე იფილტრება. *(Opus)*
+- 14.2 პროფილიდან დამატებული წყარო default-ად მხოლოდ ამ პროფილს ენიჭება, ოფციით „ყველა პროფილისთვის“. *(Sonnet)*
+- 14.3 პროფილის რედაქტირებაში „ბიბლიოთეკა“ ჩანართი. *(Sonnet)*
+- 14.4 Kids პროფილი ხედავს მხოლოდ მიბმულ წყაროებს, ზედ ედება მკაცრი ფილტრები. *(Opus)*
+- 14.5 მიგრაცია: არსებული წყაროები ყველა არსებულ პროფილს ენიჭება, ქცევა არ იცვლება. Cache key-ები ბიბლიოთეკის ვერსიას შეიცავს. *(Opus)*
+- **Gate:** პროფილი A-ს წყაროს კონტენტი პროფილ B-ში არსად ჩანს (ძიება, Continue Watching, შეტყობინებები) — სერვერის ტესტით.
+
+## ფაზა 15 — ფილმების და სერიალების ფილტრები
+
+- 15.1 ფილტრები: ჟანრი, წელი, რეიტინგი, ენა/აუდიო, ქვეყანა, ხანგრძლივობა, დამატების თარიღი, წყარო, ნანახი/არნანახი. სორტირება. *(Sonnet)*
+- 15.2 Server-side faceted query count-ებით, keyset pagination, GIN ჟანრებზე, `pg_trgm`; ყოველი query `EXPLAIN ANALYZE`-ით. *(Opus)*
+- 15.3 ფილტრის მდგომარეობა URL-შია. *(Sonnet)*
+- 15.4 ჟანრების ნორმალიზაციის რუკა; სურვილისამებრ enrichment (TMDB-ის კომერციული პირობები შესამოწმებელია). *(Sonnet)*
+- **Gate:** 10k+ ფილმიან კატალოგზე p95 < 200 ms.
+
+## ფაზა 16 — კონტენტის პროვაიდერის საფუძველი
+
+წინაპირობა: პროვაიდერის შერჩევა (ფაზა 0). კოდის საფუძველი მანამდეც მზადდება.
+
+- 16.1 პროვაიდერ-აგნოსტიკური პორტი: არხები, VOD, სერიალები, EPG, პაკეტები. ინკრემენტული sync, health, შეცდომების ჟურნალი. *(Opus)*
+- 16.2 უფლებები: ტერიტორია, ფანჯრები, მოწყობილობის კლასი, catch-up, ხარისხის ლიმიტი. *(Opus)*
+- 16.3 Vendor feed ადაპტერები ხელმოწერილი კონტრაქტის ფორმატით (SoFast და სხვ.); reference adapter ტესტებისთვის. *(Opus)*
+- 16.4 ადმინში პროვაიდერის onboarding, sync სტატუსი, კონფლიქტები. *(Sonnet)*
+- **ღია:** Mode A (vendor-managed) თუ Mode B (ingest) — კონტრაქტზეა დამოკიდებული.
+
+## ფაზა 17 — კომერციული კატალოგი: გეგმები, პაკეტები, entitlement-ები
+
+ბიზნეს-მოდელი (ფილმები ულიმიტოდ, პაკეტით თუ გამოწერის გარეთ) **კონფიგურაციაა** და არა კოდი: ადმინიდან იცვლება დეპლოის გარეშე.
+
+- 17.1 გეგმა = entitlement-ების ნაკრები: live პაკეტები; VOD რეჟიმი `included` / `package` / `none` (მოგვიანებით `tvod`); ნაკადები, მოწყობილობები, ხარისხი (HD/4K), catch-up დღეები. *(Opus)*
+- 17.2 გეგმის ვერსიები და grandfathering. *(Opus)*
+- 17.3 ფასები რეგიონისა და ვალუტის მიხედვით (GEL / EUR / USD), ტრიალი, პრომო კოდები, proration. *(Opus)*
+- 17.4 ერთი entitlement engine: playback, კატალოგი, UI („შედის შენს გეგმაში“ / „განაახლე“). *(Opus)*
+- 17.5 კონტრაქტის პირობები პარტნიორის რეპორტში: minimum guarantee, ცალკე catch-up ტარიფები. *(Sonnet)*
+- **ღია (შენი):** VOD-ის საბოლოო მოდელი. Engine სამივე ვარიანტს უჭერს მხარს.
+
+## ფაზა 18 — მრავალი გადახდის სისტემა (ლოკალური + გლობალური)
+
+ყველა ადაპტერი ფაზა 8-ის პორტს ავსებს; გადამოწმება sandbox-ით.
+
+- 18.1 Processor registry + routing ქვეყნის/ვალუტის მიხედვით (GE → TBC / BOG, სხვაგან → Stripe / PayPal), checkout-ზე ხელმისაწვდომი მეთოდები. *(Opus)*
+- 18.2 **TBC E-Commerce** (checkout + recurring; recurring ბანკთან შესათანხმებელია). *(Opus)*
+- 18.3 **Bank of Georgia** Payment Manager. *(Opus)*
+- 18.4 **Stripe / PayPal** — თუ იურიდიული პირი ამის საშუალებას იძლევა. *(Opus)*
+- 18.5 ორი recurring მოდელი: processor-managed (Stripe/PayPal subscriptions) და merchant-initiated (TBC/BOG შენახულ ბარათზე, retry/dunning ჩვენთან). *(Opus)*
+- 18.6 ყოველდღიური reconciliation, ინვოისები, billing ეკრანები ადმინში. *(Sonnet)*
+- **გადასამოწმებელი:** Stripe/PayPal-ის ხელმისაწვდომობა GE კომპანიისთვის; EU-ის დღგ (OSS) — ბუღალტერთან.
+- **Gate:** sandbox გადახდა თითო პროცესორზე ქმნის entitlement-ს; webhook-ის განმეორება უვნებელია.
+
+## ფაზა 19 — ვიდეოს მიწოდება CDN-ით
+
+- 19.1 **CDN signed URL / signed cookie** ადაპტერი, origin დაცვა; token მიბმულია სესიაზე, ახლდება, revoke-ით უქმდება. Proxy რჩება BYO წყაროებისთვის. *(Opus)*
+- 19.2 DASH manifest rewriting ან CDN მიწოდება. *(Opus)*
+- 19.3 **QoE telemetry:** კლიენტის ივენთები + OpenTelemetry + Grafana. *(Sonnet)*
+- **Gate:** ოპერატორის დაკვრა მხოლოდ CDN-ის ხელმოწერილი მისამართით.
+
+## ფაზა 20 — DRM, პროვაიდერის playback რეჟიმები, device attestation
+
+- 20.1 **DRM:** Widevine / PlayReady / FairPlay ლიცენზია playback სესიაზე, license proxy entitlement-ის შემოწმებით, EME კლიენტში — თუ კონტრაქტი მოითხოვს. *(Opus)*
+- 20.2 Mode A / B-ის სრული რეალიზაცია. *(Opus)*
+- 20.3 Native TV / Android TV აპი + attestation: device class აღარ არის თვითგამოცხადებული. *(Opus)*
+- **ღია:** DRM vendor და პროვაიდერის მოთხოვნები.
+
+## ფაზა 21 — Pilot Hardening (ZP-ENT-11)
+
+- 21.1 დატვირთვის ტესტები (k6): API, playback start, heartbeat.
+- 21.2 Failover game-day.
+- 21.3 Backup / PITR აღდგენის რეპეტიცია.
+- 21.4 Blue/green, migration rollback staging-ზე.
+- 21.5 `infra/terraform`.
+- 21.6 Runbook-ები (`docs/runbooks`).
+- 21.7 უსაფრთხოების review: დამოუკიდებელი გავლა, SAST, dependency CVE.
+- 21.8 Pilot KPI დაფა: ხელმისაწვდომობა ≥ 99.5%, play start ≥ 99%, p95 პირველი კადრი < 5 წმ, rebuffer < 1% — ესენი სამიზნეებია და არა მიღწეული შედეგები.
+- 21.9 პერსონალური მონაცემების შენახვის ვადები.
+- 21.10 Support პროცედურები და on-call.
+- 21.11 Email/SMS პროვაიდერები; secrets manager.
+- 21.12 Staff-ის შექმნა four-eyes-ით ან გარე IdP (ფაზა 9-ის ღია საკითხი).
 - **მოდელი:** Opus; უსაფრთხოებისა და ბილინგის review სხვა მოდელის/სესიის მიერ, რომ ავტორი თავის თავს არ ამოწმებდეს.
 
-## ფაზა 13 — Scale
+## ფაზა 22 — Scale
 
-Smart TV / Android TV / მობილური, დამატებითი ტერიტორიები, პრემიუმისთვის DRM, 1 000+ არხის შეთანხმებული კატალოგი. იწყება მხოლოდ მაშინ, როცა 0–12 დადასტურებულია.
+Smart TV / Android TV / მობილური, დამატებითი ტერიტორიები, პრემიუმისთვის DRM, 1 000+ არხის შეთანხმებული კატალოგი, ფინანსური მოთხოვნები replica-ზე, probe ცხრილის partitioning. იწყება მხოლოდ მაშინ, როცა 0–21 დადასტურებულია.
+
+## Backlog (ეტაპობრივად ნაწილდება ფაზებში)
+
+- …
 
 ---
 

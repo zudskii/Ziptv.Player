@@ -1,4 +1,4 @@
-import { Play, Search } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { Link, useSearchParams } from 'react-router';
 
 import { Rail } from '../components/media/Rail';
@@ -10,6 +10,7 @@ import { errorMessage } from '../lib/api-client';
 import { paths } from '../lib/routes';
 import { formatDay, formatRange } from '../lib/time';
 import { VodCard } from './vod/VodBrowsePage';
+import { t } from '../i18n';
 
 /** /search?q= — channels, movies, series and programmes across every source. */
 export function SearchPage() {
@@ -22,27 +23,27 @@ export function SearchPage() {
   return (
     <div className="space-y-6 py-4 sm:py-6">
       <header className="px-4 sm:px-6">
-        <h1 className="text-2xl font-bold text-fg">Search</h1>
-        {q.trim().length >= 2 && <p className="text-sm text-fg-muted">Results for “{q.trim()}”</p>}
+        <h1 className="text-2xl font-bold text-fg">{t('search.title')}</h1>
+        {q.trim().length >= 2 && <p className="text-sm text-fg-muted">{t('search.resultsFor', { query: q.trim() })}</p>}
       </header>
       {q.trim().length < 2 ? (
         <div className="px-4 sm:px-6">
-          <EmptyState icon={<Search className="h-8 w-8" />} title="Search everything" description="Type at least two letters in the search box: channels, movies, series and programmes from all your sources." />
+          <EmptyState icon={<Search className="h-8 w-8" />} title={t('search.everything')} description={t('search.hint')} />
         </div>
       ) : search.isPending ? (
-        <Spinner className="px-6" label="Searching…" />
+        <Spinner className="px-6" label={t('search.searching')} />
       ) : search.isError ? (
         <div className="px-4 sm:px-6">
-          <EmptyState title="Search failed" description={errorMessage(search.error)} />
+          <EmptyState title={t('search.failed')} description={errorMessage(search.error)} />
         </div>
       ) : total === 0 ? (
         <div className="px-4 sm:px-6">
-          <EmptyState icon={<Search className="h-8 w-8" />} title="No results" description="Try fewer or different words — names are matched by the start of each word." />
+          <EmptyState icon={<Search className="h-8 w-8" />} title={t('search.noResults')} description={t('search.noResultsHint')} />
         </div>
       ) : (
         <>
           {data!.channels.length > 0 && (
-            <Rail title={`Channels · ${data!.channels.length}`}>
+            <Rail title={t('search.channelsCount', { count: data!.channels.length })}>
               {data!.channels.map(({ sourceId, sourceName, channel }) => (
                 <Link role="listitem" key={`${sourceId}:${channel.key}`} to={paths.channel(sourceId, channel.key)} className="card flex w-56 shrink-0 snap-start items-center gap-3 p-3 hover:bg-fg/5">
                   <ChannelLogo sourceId={sourceId} channel={channel} className="h-10 w-14" />
@@ -55,27 +56,26 @@ export function SearchPage() {
             </Rail>
           )}
           {data!.movies.length > 0 && (
-            <Rail title={`Movies · ${data!.movies.length}`}>
+            <Rail title={t('search.moviesCount', { count: data!.movies.length })}>
               {data!.movies.map((movie) => (
                 <VodCard key={`${movie.sourceId}:${movie.key}`} item={movie} />
               ))}
             </Rail>
           )}
           {data!.series.length > 0 && (
-            <Rail title={`Series · ${data!.series.length}`}>
+            <Rail title={t('search.seriesCount', { count: data!.series.length })}>
               {data!.series.map((series) => (
                 <VodCard key={`${series.sourceId}:${series.key}`} item={series} />
               ))}
             </Rail>
           )}
           {data!.programmes.length > 0 && (
-            <section className="px-4 sm:px-6" aria-label="Programmes">
-              <h2 className="mb-2 text-base font-semibold text-fg sm:text-lg">Programmes · {data!.programmes.length}</h2>
+            <section className="px-4 sm:px-6" aria-label={t('search.programmes')}>
+              <h2 className="mb-2 text-base font-semibold text-fg sm:text-lg">{t('search.programmesCount', { count: data!.programmes.length })}</h2>
               <ul className="space-y-2">
                 {data!.programmes.map(({ sourceId, channel, programme }) => (
                   <li key={`${sourceId}:${channel.key}:${programme.id}`}>
-                    {/* A past programme in the archive (decided by the server) opens the replay; anything else the channel. */}
-                    <Link to={programme.catchup ? paths.archive(sourceId, channel.key, programme) : paths.channel(sourceId, channel.key)} className="card flex items-center gap-3 p-2.5 hover:bg-fg/5">
+                    <Link to={paths.channel(sourceId, channel.key)} className="card flex items-center gap-3 p-2.5 hover:bg-fg/5">
                       <ChannelLogo sourceId={sourceId} channel={channel} className="h-9 w-12" />
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-sm font-medium text-fg">{programme.title}</span>
@@ -83,11 +83,6 @@ export function SearchPage() {
                           {channel.name} · {formatDay(programme.start)} {formatRange(programme.start, programme.end)}
                         </span>
                       </span>
-                      {programme.catchup && (
-                        <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-brand/10 px-2 py-0.5 text-xs font-medium text-brand-soft">
-                          <Play className="h-3 w-3 fill-current" /> Watch
-                        </span>
-                      )}
                     </Link>
                   </li>
                 ))}

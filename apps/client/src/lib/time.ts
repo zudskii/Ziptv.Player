@@ -1,4 +1,6 @@
-/** Time/duration formatting shared by the guide, history and player. */
+/** Time/duration formatting shared by the guide, history and player, in the current UI language. */
+
+import { i18n, t } from '../i18n';
 
 let use24h = true;
 
@@ -8,7 +10,7 @@ export function setClockFormat(twentyFourHours: boolean): void {
 
 export function formatClock(value: Date | string | number): string {
   const date = new Date(value);
-  return date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: !use24h });
+  return date.toLocaleTimeString(i18n.locale, { hour: '2-digit', minute: '2-digit', hour12: !use24h });
 }
 
 export function formatRange(start: string | Date, end: string | Date): string {
@@ -25,48 +27,56 @@ function startOfDay(date: Date): number {
 export function formatDay(value: Date | string | number, now = Date.now()): string {
   const date = new Date(value);
   const diff = Math.round((startOfDay(date) - startOfDay(new Date(now))) / DAY_MS);
-  if (diff === 0) return 'Today';
-  if (diff === -1) return 'Yesterday';
-  if (diff === 1) return 'Tomorrow';
-  return date.toLocaleDateString(undefined, Math.abs(diff) < 7 ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' });
+  if (diff === 0) return t('time.today');
+  if (diff === -1) return t('time.yesterday');
+  if (diff === 1) return t('time.tomorrow');
+  return date.toLocaleDateString(i18n.locale, Math.abs(diff) < 7 ? { weekday: 'short', month: 'short', day: 'numeric' } : { month: 'short', day: 'numeric' });
 }
 
 /** "Today 09:42", "Yesterday", "Sep 28" — Watch history style. */
 export function formatWhen(value: Date | string | number, now = Date.now()): string {
-  const day = formatDay(value, now);
-  return day === 'Today' ? `Today ${formatClock(value)}` : day;
+  const date = new Date(value);
+  const sameDay = new Date(now).toDateString() === date.toDateString();
+  return sameDay ? t('time.todayAt', { time: formatClock(value) }) : formatDay(value, now);
 }
 
 /** "just now", "4 min ago", "3 h ago", "2 d ago". */
 export function formatAgo(value: Date | string | number | null | undefined, now = Date.now()): string {
-  if (value === null || value === undefined) return 'never';
+  if (value === null || value === undefined) return t('time.never');
   const seconds = Math.max(0, Math.round((now - new Date(value).getTime()) / 1000));
-  if (seconds < 45) return 'just now';
+  if (seconds < 45) return t('time.justNow');
   const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min ago`;
+  if (minutes < 60) return t('time.minAgo', { n: minutes });
   const hours = Math.round(minutes / 60);
-  if (hours < 36) return `${hours} h ago`;
-  return `${Math.round(hours / 24)} d ago`;
+  if (hours < 36) return t('time.hAgo', { n: hours });
+  return t('time.dAgo', { n: Math.round(hours / 24) });
 }
 
 /** "in 5 h", "in 12 min". */
 export function formatIn(value: Date | string | number | null | undefined, now = Date.now()): string {
   if (value === null || value === undefined) return '—';
   const minutes = Math.round((new Date(value).getTime() - now) / 60_000);
-  if (minutes <= 0) return 'now';
-  if (minutes < 60) return `in ${minutes} min`;
+  if (minutes <= 0) return t('time.now');
+  if (minutes < 60) return t('time.inMin', { n: minutes });
   const hours = Math.round(minutes / 60);
-  return hours < 36 ? `in ${hours} h` : `in ${Math.round(hours / 24)} d`;
+  return hours < 36 ? t('time.inH', { n: hours }) : t('time.inD', { n: Math.round(hours / 24) });
 }
 
 /** 5400 → "1 h 30 min", 1380 → "23 min". */
 export function formatDuration(seconds: number | null | undefined): string {
   if (!seconds || seconds <= 0) return '';
   const minutes = Math.max(1, Math.round(seconds / 60));
-  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60) return t('time.min', { n: minutes });
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
-  return rest ? `${hours} h ${rest} min` : `${hours} h`;
+  return rest ? t('time.hMin', { h: hours, m: rest }) : t('time.h', { n: hours });
+}
+
+/** +30 → "+30 min", −120 → "−2 h" (a guide's time shift). */
+export function formatShift(minutes: number): string {
+  const sign = minutes > 0 ? '+' : '−';
+  const size = Math.abs(minutes);
+  return `${sign}${size >= 60 ? t('time.h', { n: size / 60 }) : t('time.min', { n: size })}`;
 }
 
 /** 3725 → "1:02:05", 65 → "1:05". */

@@ -11,6 +11,7 @@ import { useSessionStore } from '../../session/session';
 import { useAuthFeatures, useMe, useSendVerification } from '../api';
 import { signOut } from '../sign-out';
 import { ChangePasswordDialog, DeleteAccountDialog, DevicesDialog } from './AccountDialogs';
+import { t, tx } from '../../../i18n';
 
 type Dialog = 'devices' | 'password' | 'delete' | null;
 
@@ -27,19 +28,19 @@ export function AccountSection() {
     return (
       <section className="card space-y-3 p-4" aria-labelledby="account">
         <h2 id="account" className="font-semibold text-fg">
-          Account
+          {t('auth.account')}
         </h2>
         <p className="text-sm text-fg-muted">
-          You are using ZIPTV as a guest: your sources and playlists live on this device only. Create an account to use them on every device and keep them safe.
+          {t('auth.guestNotice')}
         </p>
         <div className="flex flex-wrap gap-2">
           <Link to="/register" state={{ from: '/settings' }}>
             <Button variant="primary" icon={<UserPlus className="h-4 w-4" />}>
-              Create account
+              {t('auth.createAccount')}
             </Button>
           </Link>
           <Link to="/login" state={{ from: '/settings' }}>
-            <Button icon={<LogIn className="h-4 w-4" />}>Sign in</Button>
+            <Button icon={<LogIn className="h-4 w-4" />}>{t('auth.signIn')}</Button>
           </Link>
         </div>
       </section>
@@ -50,30 +51,30 @@ export function AccountSection() {
     <section className="card space-y-4 p-4" aria-labelledby="account">
       <div>
         <h2 id="account" className="font-semibold text-fg">
-          Account
+          {t('auth.account')}
         </h2>
         <p className="mt-1 text-sm text-fg-muted">
-          Signed in as <span className="font-medium text-fg">{account.email}</span>
+          {tx('auth.signedInAs', { email: account.email, b: (chunks) => <span className="font-medium text-fg">{chunks}</span> })}
         </p>
         {features.data?.emailVerification && me.data && (
           <div className="mt-2 flex flex-wrap items-center gap-2 text-sm">
             {me.data.emailVerified ? (
-              <Badge tone="success">Email confirmed</Badge>
+              <Badge tone="success">{t('auth.emailConfirmed')}</Badge>
             ) : (
               <>
-                <Badge tone="warning">Email not confirmed</Badge>
+                <Badge tone="warning">{t('auth.emailNotConfirmed')}</Badge>
                 <button
                   type="button"
                   disabled={sendVerification.isPending}
                   className="text-brand-soft hover:underline disabled:opacity-60"
                   onClick={() =>
                     sendVerification.mutate(undefined, {
-                      onSuccess: () => toast.success('Link sent', { description: `Check ${account.email}.` }),
+                      onSuccess: () => toast.success(t('auth.linkSent'), { description: `Check ${account.email}.` }),
                       onError: (reason) => toast.error(errorMessage(reason)),
                     })
                   }
                 >
-                  Send me the link
+                  {t('auth.sendMeLink')}
                 </button>
               </>
             )}
@@ -82,10 +83,10 @@ export function AccountSection() {
       </div>
       <div className="flex flex-wrap gap-2">
         <Button icon={<Monitor className="h-4 w-4" />} onClick={() => setDialog('devices')}>
-          Devices
+          {t('auth.devices')}
         </Button>
         <Button icon={<KeyRound className="h-4 w-4" />} onClick={() => setDialog('password')}>
-          Change password
+          {t('auth.changePassword')}
         </Button>
         <Button
           icon={<LogOut className="h-4 w-4" />}
@@ -96,10 +97,10 @@ export function AccountSection() {
             // The session gate takes every screen (and every tab) to the sign-in page.
           }}
         >
-          Sign out
+          {t('auth.signOut')}
         </Button>
         <Button variant="danger" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDialog('delete')}>
-          Delete account
+          {t('auth.deleteAccount')}
         </Button>
       </div>
       <DevicesDialog open={dialog === 'devices'} onClose={() => setDialog(null)} />

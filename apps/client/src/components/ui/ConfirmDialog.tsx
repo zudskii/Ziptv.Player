@@ -3,6 +3,7 @@ import { useState, type ReactNode } from 'react';
 import { errorMessage } from '../../lib/api-client';
 import { Button } from './Button';
 import { Dialog } from './Dialog';
+import { useT } from '../../i18n';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -17,6 +18,7 @@ interface ConfirmDialogProps {
 
 /** "Are you sure?" with a pending state and the server's reason when it fails. */
 export function ConfirmDialog({ open, onClose, title, description, confirmLabel, tone = 'danger', onConfirm }: ConfirmDialogProps) {
+  const { t } = useT();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -37,7 +39,7 @@ export function ConfirmDialog({ open, onClose, title, description, confirmLabel,
         )}
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={close} disabled={pending}>
-            Cancel
+            {t('common.cancel')}
           </Button>
           <Button
             variant={tone === 'danger' ? 'danger' : 'primary'}

@@ -9,10 +9,10 @@ describe('notification groups', () => {
   it('splits newest-first items into Today / Yesterday / Earlier', () => {
     const now = new Date(2026, 9, 29, 15, 0);
     const groups = groupByDay([note('a', new Date(2026, 9, 29, 9).toISOString()), note('b', new Date(2026, 9, 28, 23).toISOString()), note('c', new Date(2026, 9, 20).toISOString())], now);
-    expect(groups.map((group) => [group.label, group.items.map((item) => item.id)])).toEqual([
-      ['Today', ['a']],
-      ['Yesterday', ['b']],
-      ['Earlier', ['c']],
+    expect(groups.map((group) => [group.day, group.label, group.items.map((item) => item.id)])).toEqual([
+      ['today', 'Today', ['a']],
+      ['yesterday', 'Yesterday', ['b']],
+      ['earlier', 'Earlier', ['c']],
     ]);
     expect(groupByDay([], now)).toEqual([]);
   });

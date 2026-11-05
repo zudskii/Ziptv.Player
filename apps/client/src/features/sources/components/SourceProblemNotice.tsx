@@ -3,6 +3,7 @@ import { KeyRound, Link2, RefreshCw, TriangleAlert, Upload } from 'lucide-react'
 
 import { Button } from '../../../components/ui/Button';
 import { SOURCE_PROBLEMS } from '../../../lib/problems';
+import { t } from '../../../i18n';
 
 interface SourceProblemNoticeProps {
   source: SourceDto;
@@ -29,17 +30,17 @@ export function SourceProblemNotice({ source, onRetry, onEdit, retrying }: Sourc
           <div className="mt-3 flex flex-wrap gap-2">
             {credentialProblem && onEdit && source.type !== 'm3u_file' && (
               <Button size="sm" variant="primary" icon={source.type === 'xtream' ? <KeyRound className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />} onClick={onEdit}>
-                {source.type === 'xtream' ? 'Update credentials' : 'Update playlist link'}
+                {source.type === 'xtream' ? t('sources.problem.updateCredentials') : t('sources.problem.updateLink')}
               </Button>
             )}
             {source.type === 'm3u_file' && onEdit && (
               <Button size="sm" variant="primary" icon={<Upload className="h-3.5 w-3.5" />} onClick={onEdit}>
-                Upload a new file
+                {t('sources.problem.uploadNew')}
               </Button>
             )}
             {onRetry && source.type !== 'm3u_file' && (
               <Button size="sm" icon={<RefreshCw className="h-3.5 w-3.5" />} onClick={onRetry} loading={retrying}>
-                Retry now
+                {t('sources.problem.retry')}
               </Button>
             )}
           </div>

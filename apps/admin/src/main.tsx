@@ -8,6 +8,7 @@ import { App } from './App';
 import { ApiError } from './lib/api';
 import { AuthProvider } from './lib/auth';
 import './styles.css';
+import { installI18n } from './i18n';
 
 const client = new QueryClient({
   defaultOptions: {
@@ -15,15 +16,18 @@ const client = new QueryClient({
   },
 });
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <QueryClientProvider client={client}>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-          <Toaster theme="dark" position="bottom-right" />
-        </AuthProvider>
-      </BrowserRouter>
-    </QueryClientProvider>
-  </StrictMode>,
-);
+// The device's language first, so a Georgian or Russian console never flashes English.
+void installI18n().finally(() => {
+  createRoot(document.getElementById('root')!).render(
+    <StrictMode>
+      <QueryClientProvider client={client}>
+        <BrowserRouter>
+          <AuthProvider>
+            <App />
+            <Toaster theme="dark" position="bottom-right" />
+          </AuthProvider>
+        </BrowserRouter>
+      </QueryClientProvider>
+    </StrictMode>,
+  );
+});

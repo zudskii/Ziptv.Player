@@ -1,12 +1,8 @@
 import type { ContentRefDto, ProgrammeDto, SourceDto } from '@ziptv/contracts';
-import { CalendarDays, History, List, Radio, Server } from 'lucide-react';
+import { CalendarDays, List, Server } from 'lucide-react';
 import { useCallback, useDeferredValue, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { toast } from 'sonner';
-import { useNavigate, useSearchParams } from 'react-router';
-
-import { Button } from '../../components/ui/Button';
-import { archiveRange, paths } from '../../lib/routes';
-import { formatDay, formatRange } from '../../lib/time';
+import { useNavigate } from 'react-router';
 
 import { Segmented } from '../../components/ui/Segmented';
 import { errorMessage } from '../../lib/api-client';
@@ -23,6 +19,7 @@ import { useListKeys, useToggleListItem } from '../../features/user-state/api';
 import { VideoPlayer } from '../../features/player/components/VideoPlayer';
 import { usePlayerPrefs } from '../../features/player/player-prefs';
 import { useChannelList } from '../../features/sources/api';
+import { t, tx } from '../../i18n';
 
 interface LiveWorkspaceProps {
   source: SourceDto;
@@ -45,7 +42,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
     (key: string) =>
       toggleList.mutate(
         { item: { type: 'channel', sourceId: source.id, key }, add: !favorites.has(key) },
-        { onError: (error) => toast.error('My List was not updated', { description: errorMessage(error) }) },
+        { onError: (error) => toast.error(t('live.ws.listFailed'), { description: errorMessage(error) }) },
       ),
     [toggleList, source.id, favorites],
   );
@@ -76,23 +73,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
   );
 
   const current = channelKey ? byKey.get(channelKey) : undefined;
-  // Catch-up: `?at=&until=` replays a past programme of the channel from its archive.
-  const [params] = useSearchParams();
-  const at = params.get('at');
-  const until = params.get('until');
-  const archive = useMemo(() => archiveRange(new URLSearchParams({ ...(at ? { at } : {}), ...(until ? { until } : {}) })), [at, until]);
-  const content: ContentRefDto | undefined = useMemo(() => {
-    if (!current) return undefined;
-    return archive ? { type: 'catchup', sourceId: source.id, key: current.key, start: archive.start, end: archive.end } : { type: 'channel', sourceId: source.id, key: current.key };
-  }, [current, source.id, archive]);
-  const watchArchive = useCallback(
-    (programme: ProgrammeDto) => {
-      setProgramme(null);
-      if (current) navigate(paths.archive(source.id, current.key, programme));
-    },
-    [current, navigate, source.id],
-  );
-  const backToLive = useCallback(() => current && navigate(paths.channel(source.id, current.key)), [current, navigate, source.id]);
+  const content: ContentRefDto | undefined = useMemo(() => (current ? { type: 'channel', sourceId: source.id, key: current.key } : undefined), [current, source.id]);
 
   // History: remember what was watched (for "Recent" and resume).
   useEffect(() => {
@@ -116,7 +97,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
 
   return (
     <div className="mx-auto grid w-full max-w-[1600px] gap-4 p-3 sm:p-5 lg:h-[calc(100dvh-3.5rem)] lg:grid-cols-[minmax(0,1fr)_380px] lg:grid-rows-[minmax(0,1fr)] lg:overflow-hidden">
-      <section className="flex min-w-0 flex-col gap-3 lg:overflow-y-auto" aria-label="Player">
+      <section className="flex min-w-0 flex-col gap-3 lg:overflow-y-auto" aria-label={t('live.ws.player')}>
         <div className="sticky top-14 z-20 lg:static">
           <VideoPlayer
             content={content}
@@ -127,20 +108,9 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
               if (ref.type === 'channel') navigate(`/live/${ref.sourceId}/${ref.key}`);
             }}
             onBack={() => navigate(`/live/${source.id}`)}
-            infoOverlay={current && !archive ? <LiveInfoOverlay sourceId={source.id} channel={current} entry={nowNext?.[current.key]} /> : undefined}
+            infoOverlay={current ? <LiveInfoOverlay sourceId={source.id} channel={current} entry={nowNext?.[current.key]} /> : undefined}
           />
         </div>
-        {archive && current && (
-          <div className="flex items-center gap-3 rounded-xl border border-brand/20 bg-brand/5 px-3 py-2 text-sm">
-            <History className="h-4 w-4 shrink-0 text-brand-soft" aria-hidden />
-            <span className="min-w-0 flex-1 truncate text-fg">
-              From the archive · {current.name} · {formatDay(archive.start)} {formatRange(archive.start, archive.end)}
-            </span>
-            <Button size="sm" icon={<Radio className="h-4 w-4" />} onClick={backToLive}>
-              Back to live
-            </Button>
-          </div>
-        )}
 
         {current ? (
           <>
@@ -154,29 +124,29 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
               onSelectProgramme={setProgramme}
             />
             {isDesktop && (
-              <section className="card flex min-h-[16rem] flex-col p-2" aria-label="Mini guide">
+              <section className="card flex min-h-[16rem] flex-col p-2" aria-label={t('live.ws.miniGuide')}>
                 <h2 className="flex items-center gap-2 px-2 pb-2 pt-1 text-sm font-semibold text-fg">
-                  <CalendarDays className="h-4 w-4 text-brand-soft" /> Schedule
+                  <CalendarDays className="h-4 w-4 text-brand-soft" /> {t('live.ws.schedule')}
                 </h2>
-                <MiniGuide source={source} channel={current} onSelect={setProgramme} onWatchArchive={watchArchive} className="max-h-[28rem] min-h-0 flex-1" />
+                <MiniGuide source={source} channel={current} onSelect={setProgramme} className="max-h-[28rem] min-h-0 flex-1" />
               </section>
             )}
           </>
         ) : missingChannel ? (
           <p className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-sm text-amber-600">
-            This channel is no longer in “{source.name}” (the source may have been re-synced). Pick another one.
+            {t('live.missing', { source: source.name })}
           </p>
         ) : null}
 
         <p className="hidden text-xs text-fg-subtle lg:block">
-          Shortcuts: <Kbd>Space</Kbd> play/pause · <Kbd>M</Kbd> mute · <Kbd>F</Kbd> fullscreen · <Kbd>↑</Kbd>/<Kbd>↓</Kbd> volume · <Kbd>N</Kbd>/<Kbd>P</Kbd> next/previous channel · <Kbd>I</Kbd> picture in picture · <Kbd>?</Kbd> all shortcuts
+          {tx('live.shortcuts', { k: (chunks) => <Kbd>{chunks}</Kbd> })}
         </p>
       </section>
 
       <div className="flex h-[70vh] min-h-0 flex-col gap-3 lg:h-auto">
         {sources.length > 1 && (
           <label className="relative block">
-            <span className="sr-only">Source</span>
+            <span className="sr-only">{t('live.ws.source')}</span>
             <Server className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-subtle" aria-hidden />
             <select value={source.id} onChange={(event) => onSelectSource(event.target.value)} className="field appearance-none pl-9">
               {sources.map((item) => (
@@ -189,18 +159,18 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
         )}
         {!isDesktop && current && (
           <Segmented
-            label="Panel"
+            label={t('live.ws.panel')}
             value={panel}
             onChange={setPanel}
             options={[
-              { value: 'channels', label: 'Channels', icon: <List className="h-4 w-4" /> },
-              { value: 'guide', label: 'Guide', icon: <CalendarDays className="h-4 w-4" /> },
+              { value: 'channels', label: t('live.ws.channels'), icon: <List className="h-4 w-4" /> },
+              { value: 'guide', label: t('live.ws.guide'), icon: <CalendarDays className="h-4 w-4" /> },
             ]}
           />
         )}
         {!isDesktop && current && panel === 'guide' ? (
           <div className="card min-h-0 flex-1 p-2">
-            <MiniGuide source={source} channel={current} onSelect={setProgramme} onWatchArchive={watchArchive} className="h-full" />
+            <MiniGuide source={source} channel={current} onSelect={setProgramme} className="h-full" />
           </div>
         ) : (
         <div className="min-h-0 flex-1">
@@ -229,11 +199,7 @@ export function LiveWorkspace({ source, sources, channelKey, onSelectSource }: L
         programme={programme}
         channel={current ?? null}
         onClose={() => setProgramme(null)}
-        onWatchLive={() => {
-          setProgramme(null);
-          if (archive) backToLive();
-        }}
-        onWatchArchive={watchArchive}
+        onWatchLive={() => setProgramme(null)}
       />
       <EpgMappingDialog key={current?.key ?? 'none'} sourceId={source.id} channel={mappingOpen && current ? current : null} onClose={() => setMappingOpen(false)} />
     </div>

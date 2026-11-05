@@ -12,6 +12,7 @@ import { useAccountBilling, useCancelSubscription, useResumeSubscription, useRev
 import { useOperatorChannels } from '../../features/operator/api';
 import { errorMessage } from '../../lib/api-client';
 import { formatDate, formatPrice, STATUS_LABEL } from './format';
+import { i18n, t } from '../../i18n';
 
 /** /account — subscription, devices and what is playing on them. */
 export function AccountPage() {
@@ -23,9 +24,9 @@ export function AccountPage() {
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
-      <h1 className="text-2xl font-bold text-fg">Subscription &amp; devices</h1>
+      <h1 className="text-2xl font-bold text-fg">{t('billing.account.title')}</h1>
       {billing.isPending ? (
-        <Spinner label="Loading your account…" />
+        <Spinner label={t('billing.account.loading')} />
       ) : billing.isError ? (
         <p className="text-sm text-red-500">{errorMessage(billing.error)}</p>
       ) : (
@@ -50,54 +51,54 @@ function SubscriptionSection({ data }: { data: AccountBillingDto }) {
   return (
     <section className="card space-y-3 p-4" aria-labelledby="subscription">
       <h2 id="subscription" className="flex items-center gap-2 font-semibold text-fg">
-        <CreditCard className="h-4 w-4 text-fg-subtle" aria-hidden /> Subscription
+        <CreditCard className="h-4 w-4 text-fg-subtle" aria-hidden /> {t('billing.account.subscription')}
       </h2>
       {subscription ? (
         <>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-lg font-semibold text-fg">{subscription.package.name}</span>
-            {subscription.cancelAtPeriodEnd ? <Badge tone="warning">Ending</Badge> : <Badge tone={STATUS_LABEL[subscription.status].tone}>{STATUS_LABEL[subscription.status].label}</Badge>}
+            {subscription.cancelAtPeriodEnd ? <Badge tone="warning">{t('billing.account.ending')}</Badge> : <Badge tone={STATUS_LABEL[subscription.status].tone}>{STATUS_LABEL[subscription.status].label}</Badge>}
           </div>
           <p className="text-sm text-fg-muted">
             {subscription.cancelAtPeriodEnd
-              ? `Canceled — you can watch until ${formatDate(subscription.accessUntil)}.`
+              ? t('billing.canceledUntil', { date: formatDate(subscription.accessUntil) })
               : subscription.status === 'trialing'
-                ? `Free trial until ${formatDate(subscription.trialEndsAt)}, then it renews automatically.`
+                ? t('billing.trialUntil', { date: formatDate(subscription.trialEndsAt) })
                 : subscription.status === 'past_due' || subscription.status === 'grace'
-                  ? `The last renewal failed. Access continues until ${formatDate(subscription.accessUntil)} while the payment is retried.`
-                  : `Renews on ${formatDate(subscription.currentPeriodEnd)}.`}
+                  ? t('billing.renewalFailed', { date: formatDate(subscription.accessUntil) })
+                  : t('billing.renewsOn', { date: formatDate(subscription.currentPeriodEnd) })}
           </p>
           <p className="text-sm text-fg-muted">
-            Up to {data.limits.maxStreams} {data.limits.maxStreams === 1 ? 'stream' : 'streams'} at once on {data.limits.maxDevices} devices.
+            {t('billing.limits', { streams: data.limits.maxStreams, devices: data.limits.maxDevices })}
           </p>
           <div className="flex flex-wrap gap-2">
             {subscription.cancelAtPeriodEnd ? (
-              <Button variant="primary" loading={resume.isPending} onClick={() => resume.mutate(undefined, { onSuccess: () => toast.success('Your subscription continues'), onError: (error) => toast.error('Not resumed', { description: errorMessage(error) }) })}>
-                Resume subscription
+              <Button variant="primary" loading={resume.isPending} onClick={() => resume.mutate(undefined, { onSuccess: () => toast.success(t('billing.account.resumed')), onError: (error) => toast.error(t('billing.account.notResumed'), { description: errorMessage(error) }) })}>
+                {t('billing.account.resume')}
               </Button>
             ) : (
               <Button variant="danger" onClick={() => setConfirm(true)}>
-                Cancel subscription
+                {t('billing.account.cancel')}
               </Button>
             )}
             <Link to="/plans">
-              <Button>See plans</Button>
+              <Button>{t('billing.seePlans')}</Button>
             </Link>
           </div>
           <ConfirmDialog
             open={confirm}
             onClose={() => setConfirm(false)}
-            title="Cancel your subscription?"
-            description={`You keep watching until ${formatDate(subscription.accessUntil)}. Nothing renews after that, and you can resume before then.`}
-            confirmLabel="Cancel subscription"
-            onConfirm={() => cancel.mutateAsync().then(() => toast.success('Subscription canceled'))}
+            title={t('billing.account.cancelTitle')}
+            description={t('billing.cancelHint', { date: formatDate(subscription.accessUntil) })}
+            confirmLabel={t('billing.account.cancel')}
+            onConfirm={() => cancel.mutateAsync().then(() => toast.success(t('billing.account.canceled')))}
           />
         </>
       ) : (
         <div className="flex flex-wrap items-center gap-3">
-          <p className="min-w-0 flex-1 text-sm text-fg-muted">{comps.length > 0 ? `Your access is provided by ${comps.map((c) => c.package.name).join(', ')}.` : 'No subscription. Free channels play without one.'}</p>
+          <p className="min-w-0 flex-1 text-sm text-fg-muted">{comps.length > 0 ? t('billing.compsBy', { names: i18n.formatList(comps.map((c) => c.package.name)) }) : t('billing.account.none')}</p>
           <Link to="/plans">
-            <Button variant="primary">See plans</Button>
+            <Button variant="primary">{t('billing.seePlans')}</Button>
           </Link>
         </div>
       )}
@@ -108,12 +109,12 @@ function SubscriptionSection({ data }: { data: AccountBillingDto }) {
 function PlayingSection({ data }: { data: AccountBillingDto }) {
   const stop = useStopPlayback();
   const channels = useOperatorChannels();
-  const name = (id: string) => channels.data?.channels.find((channel) => channel.id === id)?.name ?? 'A channel';
+  const name = (id: string) => channels.data?.channels.find((channel) => channel.id === id)?.name ?? t('billing.account.aChannel');
   if (data.playing.length === 0) return null;
   return (
     <section className="card space-y-3 p-4" aria-labelledby="playing">
       <h2 id="playing" className="flex items-center gap-2 font-semibold text-fg">
-        <Tv className="h-4 w-4 text-fg-subtle" aria-hidden /> Playing now
+        <Tv className="h-4 w-4 text-fg-subtle" aria-hidden /> {t('billing.account.playing')}
       </h2>
       <ul className="divide-y divide-line/5">
         {data.playing.map((item) => (
@@ -121,11 +122,11 @@ function PlayingSection({ data }: { data: AccountBillingDto }) {
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-fg">{name(item.channelId)}</p>
               <p className="truncate text-xs text-fg-subtle">
-                {item.deviceName} · since {new Date(item.startedAt).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}
+                {t('billing.since', { device: item.deviceName, time: new Date(item.startedAt).toLocaleTimeString(i18n.locale, { hour: '2-digit', minute: '2-digit' }) })}
               </p>
             </div>
-            <Button size="sm" icon={<Square className="h-3 w-3 fill-current" />} loading={stop.isPending && stop.variables === item.playbackSessionId} onClick={() => stop.mutate(item.playbackSessionId, { onError: (error) => toast.error('Not stopped', { description: errorMessage(error) }) })}>
-              Stop
+            <Button size="sm" icon={<Square className="h-3 w-3 fill-current" />} loading={stop.isPending && stop.variables === item.playbackSessionId} onClick={() => stop.mutate(item.playbackSessionId, { onError: (error) => toast.error(t('billing.account.notStopped'), { description: errorMessage(error) }) })}>
+              {t('billing.account.stop')}
             </Button>
           </li>
         ))}
@@ -141,14 +142,14 @@ function DevicesSection({ data }: { data: AccountBillingDto }) {
     <section className="card space-y-3 p-4" aria-labelledby="devices">
       <div>
         <h2 id="devices" className="flex items-center gap-2 font-semibold text-fg">
-          <MonitorSmartphone className="h-4 w-4 text-fg-subtle" aria-hidden /> Devices
+          <MonitorSmartphone className="h-4 w-4 text-fg-subtle" aria-hidden /> {t('billing.account.devices')}
         </h2>
         <p className="mt-1 text-sm text-fg-muted">
-          {data.devices.length} of {data.limits.maxDevices} devices. Remove one you no longer use to free its place.
+          {t('billing.devicesUsed', { used: data.devices.length, max: data.limits.maxDevices })}
         </p>
       </div>
       {data.devices.length === 0 ? (
-        <p className="text-sm text-fg-subtle">A device is added when it first plays a channel.</p>
+        <p className="text-sm text-fg-subtle">{t('billing.account.devicesHint')}</p>
       ) : (
         <ul className="divide-y divide-line/5">
           {data.devices.map((device) => (
@@ -156,12 +157,12 @@ function DevicesSection({ data }: { data: AccountBillingDto }) {
               <div className="min-w-0 flex-1">
                 <p className="flex items-center gap-2 truncate text-sm font-medium text-fg">
                   {device.name}
-                  {device.current && <Badge tone="brand">This device</Badge>}
+                  {device.current && <Badge tone="brand">{t('billing.account.thisDevice')}</Badge>}
                 </p>
-                <p className="truncate text-xs text-fg-subtle">Last used {formatDate(device.lastSeenAt)}</p>
+                <p className="truncate text-xs text-fg-subtle">{t('billing.lastUsed', { date: formatDate(device.lastSeenAt) })}</p>
               </div>
               <Button size="sm" variant="ghost" icon={<Trash2 className="h-3.5 w-3.5" />} onClick={() => setTarget(device)} aria-label={`Remove ${device.name}`}>
-                Remove
+                {t('billing.account.remove')}
               </Button>
             </li>
           ))}
@@ -170,9 +171,9 @@ function DevicesSection({ data }: { data: AccountBillingDto }) {
       <ConfirmDialog
         open={target !== null}
         onClose={() => setTarget(null)}
-        title={`Remove ${target?.name ?? 'device'}?`}
-        description="Anything playing on it stops now. It is added again (if a place is free) the next time it plays a channel."
-        confirmLabel="Remove device"
+        title={t('billing.removeDeviceTitle', { name: target?.name ?? t('billing.device') })}
+        description={t('billing.account.removeHint')}
+        confirmLabel={t('billing.account.removeDevice')}
         onConfirm={() => (target ? revoke.mutateAsync(target.id) : undefined)}
       />
     </section>
@@ -183,7 +184,7 @@ function InvoicesSection({ data }: { data: AccountBillingDto }) {
   return (
     <section className="card space-y-3 p-4" aria-labelledby="invoices">
       <h2 id="invoices" className="flex items-center gap-2 font-semibold text-fg">
-        <Receipt className="h-4 w-4 text-fg-subtle" aria-hidden /> Payments
+        <Receipt className="h-4 w-4 text-fg-subtle" aria-hidden /> {t('billing.account.payments')}
       </h2>
       <ul className="divide-y divide-line/5 text-sm">
         {data.invoices.map((invoice) => (
@@ -191,7 +192,7 @@ function InvoicesSection({ data }: { data: AccountBillingDto }) {
             <span className="min-w-0 flex-1 text-fg-muted">
               {formatDate(invoice.periodStart)} – {formatDate(invoice.periodEnd)}
             </span>
-            {invoice.status === 'refunded' && <Badge tone="neutral">Refunded</Badge>}
+            {invoice.status === 'refunded' && <Badge tone="neutral">{t('billing.account.refunded')}</Badge>}
             <span className="tabular-nums text-fg">{formatPrice(invoice.amountMinor, invoice.currency)}</span>
           </li>
         ))}

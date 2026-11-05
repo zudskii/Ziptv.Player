@@ -10,7 +10,7 @@ import type { Logger } from '../ports/logger.js';
 import type { Mailer } from '../ports/mailer.js';
 import type { PasswordHasher } from '../ports/password-hasher.js';
 import type { UserRepository } from '../ports/user-repository.js';
-import { passwordResetMail, verifyEmailMail } from './mail-templates.js';
+import { passwordResetMail, verifyEmailMail, type MailLocale } from './mail-templates.js';
 import type { AuthUser, SessionService } from './session.service.js';
 
 const RESET_TTL_MINUTES = 60;
@@ -58,12 +58,12 @@ export class EmailFlowService {
 
   // --- forgotten password -------------------------------------------------------------------
 
-  async requestPasswordReset(email: string): Promise<void> {
+  async requestPasswordReset(email: string, locale: MailLocale = 'en'): Promise<void> {
     this.requireEnabled();
     const found = await this.deps.users.findByEmail(normalizeEmail(email));
     if (!found?.email) return; // same answer for an address nobody registered
     const user = { id: found.id, email: found.email };
-    this.dispatch(this.sendLink(user, 'reset_password'), 'password reset');
+    this.dispatch(this.sendLink(user, 'reset_password', locale), 'password reset');
   }
 
   async resetPassword(token: string, newPassword: string): Promise<void> {
@@ -91,17 +91,17 @@ export class EmailFlowService {
   // --- address confirmation -----------------------------------------------------------------
 
   /** Asked for by a signed-in account (resend). */
-  async sendVerification(user: AuthUser): Promise<void> {
+  async sendVerification(user: AuthUser, locale: MailLocale = 'en'): Promise<void> {
     this.requireEnabled();
     if (!user.email) throw AppError.forbidden('Create an account first: a guest has no email address to confirm.');
     if (user.emailVerified) return;
-    await this.sendLink({ id: user.id, email: user.email }, 'verify_email');
+    await this.sendLink({ id: user.id, email: user.email }, 'verify_email', locale);
   }
 
   /** Right after registration: best effort, never in the way of registering. */
-  sendVerificationTo(user: { id: string; email: string }): void {
+  sendVerificationTo(user: { id: string; email: string; locale?: MailLocale }): void {
     if (!this.enabled) return;
-    this.dispatch(this.sendLink(user, 'verify_email'), 'address confirmation');
+    this.dispatch(this.sendLink(user, 'verify_email', user.locale ?? 'en'), 'address confirmation');
   }
 
   async verifyEmail(token: string): Promise<void> {
@@ -133,7 +133,8 @@ export class EmailFlowService {
   }
 
   /** New link for the user (replacing their unused ones) and the email that carries it. */
-  private async sendLink(user: { id: string; email: string }, purpose: EmailTokenPurpose): Promise<void> {
+  /** The email is written in `locale`: the language of the screen the request came from. */
+  private async sendLink(user: { id: string; email: string }, purpose: EmailTokenPurpose, locale: MailLocale): Promise<void> {
     const token = randomBytes(32).toString('base64url');
     const now = this.deps.clock();
     const ttlMs = purpose === 'reset_password' ? RESET_TTL_MINUTES * 60_000 : VERIFY_TTL_HOURS * 3_600_000;
@@ -142,7 +143,7 @@ export class EmailFlowService {
 
     // The fragment keeps the secret out of server logs and Referer headers; the page reads it in the browser.
     const base = this.deps.publicUrl!;
-    const mail = purpose === 'reset_password' ? passwordResetMail(`${base}/reset-password#token=${token}`, RESET_TTL_MINUTES) : verifyEmailMail(`${base}/verify-email#token=${token}`, VERIFY_TTL_HOURS);
+    const mail = purpose === 'reset_password' ? passwordResetMail(`${base}/reset-password#token=${token}`, RESET_TTL_MINUTES, locale) : verifyEmailMail(`${base}/verify-email#token=${token}`, VERIFY_TTL_HOURS, locale);
     await this.deps.mailer!.send({ to: user.email, ...mail });
   }
 

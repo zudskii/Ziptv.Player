@@ -1,3 +1,5 @@
+import { t } from '../../../i18n';
+
 export type EngineErrorKind = 'network' | 'media' | 'unsupported' | 'timeout' | 'other';
 
 export class EngineError extends Error {
@@ -88,13 +90,13 @@ export function mediaElementError(video: HTMLVideoElement): EngineError {
   const code = video.error?.code;
   switch (code) {
     case 2:
-      return new EngineError('Network error while loading the stream.', 'network');
+      return new EngineError(t('player.err.network'), 'network');
     case 3:
-      return new EngineError('The stream could not be decoded.', 'media');
+      return new EngineError(t('player.err.decode'), 'media');
     case 4:
-      return new EngineError('This stream format or codec is not supported by the browser.', 'unsupported');
+      return new EngineError(t('player.err.formatUnsupported'), 'unsupported');
     default:
-      return new EngineError(video.error?.message || 'The media element failed.', 'other');
+      return new EngineError(video.error?.message || t('player.err.element'), 'other');
   }
 }
 

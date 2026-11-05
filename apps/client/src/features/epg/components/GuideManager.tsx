@@ -10,8 +10,8 @@ import { errorMessage } from '../../../lib/api-client';
 import { formatAgo, formatIn } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
 import { useAddGuide, useGuides, useRemoveGuide, useSyncGuide, useUpdateGuide } from '../api';
+import { i18n, t } from '../../../i18n';
 
-const ORIGIN_LABELS = { playlist: 'From playlist', xtream: 'From provider', manual: 'Added by you' } as const;
 
 /** Settings → Sources → TV guides (EPG sources): announced guides and manually added XMLTV URLs. */
 export function GuideManager({ sources }: { sources: SourceDto[] }) {
@@ -24,17 +24,17 @@ export function GuideManager({ sources }: { sources: SourceDto[] }) {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h2 id="guides-heading" className="text-lg font-semibold text-fg">
-            TV guides
+            {t('epg.manager.title')}
           </h2>
-          <p className="text-sm text-fg-muted">XMLTV programme guides. ZIPTV refreshes them every 3 hours and matches them to your channels.</p>
+          <p className="text-sm text-fg-muted">{t('epg.manager.intro')}</p>
         </div>
         <Button icon={<Plus className="h-4 w-4" />} onClick={() => setAdding(true)} disabled={sources.length === 0}>
-          Add XMLTV guide
+          {t('epg.manager.add')}
         </Button>
       </div>
       {list.length === 0 ? (
         <p className="rounded-xl border border-dashed border-line/10 p-6 text-center text-sm text-fg-muted">
-          No guides yet. Playlists that announce a guide (url-tvg) add it automatically.
+          {t('epg.manager.none')}
         </p>
       ) : (
         <ul className="space-y-2">
@@ -64,19 +64,19 @@ function GuideRow({ guide, sources }: { guide: GuideSourceDto; sources: SourceDt
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <p className="truncate font-medium text-fg">{guide.name}</p>
-            <Badge>{ORIGIN_LABELS[guide.origin]}</Badge>
-            {guide.sync.status === 'failed' && <Badge tone="warning">Unavailable</Badge>}
+            <Badge>{t(`epg.origin.${guide.origin}`)}</Badge>
+            {guide.sync.status === 'failed' && <Badge tone="warning">{t('epg.manager.unavailable')}</Badge>}
           </div>
           <p className="truncate text-xs text-fg-subtle">
-            {guide.host} · {names.length > 0 ? `used by ${names.join(', ')}` : 'not used by any source'}
+            {guide.host} · {names.length > 0 ? t('epg.usedBy', { names: i18n.formatList(names.filter((name): name is string => Boolean(name))) }) : t('epg.notUsed')}
           </p>
           <p className="mt-1 text-xs text-fg-muted">
             {syncing
-              ? 'Updating…'
+              ? t('epg.manager.updating')
               : guide.sync.lastSuccessAt
-                ? `${guide.stats.programmes.toLocaleString()} programmes for ${guide.stats.keptChannels.toLocaleString()} of ${guide.stats.channels.toLocaleString()} guide channels · updated ${formatAgo(guide.sync.lastSuccessAt, now)}`
-                : 'Not loaded yet'}
-            {!syncing && guide.sync.nextSyncAt && ` · next ${formatIn(guide.sync.nextSyncAt, now)}`}
+                ? t('epg.stats', { programmes: guide.stats.programmes, kept: guide.stats.keptChannels, channels: guide.stats.channels, when: formatAgo(guide.sync.lastSuccessAt, now) })
+                : t('epg.manager.notLoaded')}
+            {!syncing && guide.sync.nextSyncAt && t('epg.next', { when: formatIn(guide.sync.nextSyncAt, now) })}
           </p>
           {guide.sync.error && (
             <p className="mt-1 flex items-center gap-1 text-xs text-amber-500">
@@ -100,17 +100,17 @@ function GuideRow({ guide, sources }: { guide: GuideSourceDto; sources: SourceDt
         <div className="flex shrink-0 items-center">
           {guide.origin === 'manual' && (
             <Button size="sm" variant="ghost" onClick={() => setEditing((value) => !value)}>
-              {editing ? 'Done' : 'Sources'}
+              {editing ? t('epg.done') : t('epg.manager.sources')}
             </Button>
           )}
-          <IconButton label="Update now" onClick={() => sync.mutate(guide.id)} disabled={syncing}>
+          <IconButton label={t('epg.manager.update')} onClick={() => sync.mutate(guide.id)} disabled={syncing}>
             <RefreshCw className={syncing ? 'h-4 w-4 animate-spin' : 'h-4 w-4'} />
           </IconButton>
           {guide.origin === 'manual' && (
             <IconButton
-              label="Remove guide"
+              label={t('epg.manager.remove')}
               onClick={() => {
-                if (window.confirm(`Remove the guide “${guide.name}”?`)) remove.mutate(guide.id);
+                if (window.confirm(t('epg.removeGuideConfirm', { name: guide.name }))) remove.mutate(guide.id);
               }}
             >
               <Trash2 className="h-4 w-4" />
@@ -125,7 +125,7 @@ function GuideRow({ guide, sources }: { guide: GuideSourceDto; sources: SourceDt
 function SourcePicker({ sources, value, onChange }: { sources: SourceDto[]; value: string[]; onChange: (sourceIds: string[]) => void }) {
   return (
     <fieldset className="mt-2 flex flex-wrap gap-2">
-      <legend className="sr-only">Sources using this guide</legend>
+      <legend className="sr-only">{t('epg.manager.usingSources')}</legend>
       {sources.map((source) => {
         const checked = value.includes(source.id);
         return (
@@ -150,41 +150,41 @@ function AddGuideDialog({ open, sources, onClose }: { open: boolean; sources: So
     event.preventDefault();
     try {
       const guide = await add.mutateAsync({ url: url.trim(), name: name.trim() || undefined, sourceIds: sourceIds.length ? sourceIds : undefined });
-      toast.success(`“${guide.name}” added`, { description: 'Loading programmes…' });
+      toast.success(t('epg.added', { name: guide.name }), { description: t('epg.loadingProgrammes') });
       setUrl('');
       setName('');
       setSourceIds([]);
       onClose();
     } catch (error) {
-      toast.error('Could not add the guide', { description: errorMessage(error) });
+      toast.error(t('epg.manager.addFailed'), { description: errorMessage(error) });
     }
   };
 
   return (
-    <Dialog open={open} onClose={onClose} title="Add XMLTV guide" description="A programme guide URL (.xml or .xml.gz).">
+    <Dialog open={open} onClose={onClose} title={t('epg.manager.add')} description={t('epg.manager.addHint')}>
       <form onSubmit={submit} className="space-y-4">
         <div className="space-y-1.5">
           <label htmlFor={ids.url} className="text-sm text-fg-muted">
-            Guide URL
+            {t('epg.manager.url')}
           </label>
           <input id={ids.url} type="url" required value={url} onChange={(event) => setUrl(event.target.value)} placeholder="https://epg.example/guide.xml.gz" className="field" />
         </div>
         <div className="space-y-1.5">
           <label htmlFor={ids.name} className="text-sm text-fg-muted">
-            Name <span className="text-fg-subtle">(optional)</span>
+            {t('epg.manager.name')} <span className="text-fg-subtle">{t('epg.manager.optional')}</span>
           </label>
           <input id={ids.name} value={name} maxLength={100} onChange={(event) => setName(event.target.value)} className="field" />
         </div>
         <div>
-          <p className="text-sm text-fg-muted">Use for {sourceIds.length === 0 ? 'all sources' : 'these sources'}:</p>
+          <p className="text-sm text-fg-muted">{sourceIds.length === 0 ? t('epg.useForAll') : t('epg.useForThese')}</p>
           <SourcePicker sources={sources} value={sourceIds} onChange={setSourceIds} />
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="ghost" onClick={onClose}>
-            Cancel
+            {t('epg.cancel')}
           </Button>
           <Button type="submit" variant="primary" loading={add.isPending} disabled={!/^https?:\/\/\S+$/i.test(url.trim())}>
-            Add guide
+            {t('epg.manager.addGuide')}
           </Button>
         </div>
       </form>

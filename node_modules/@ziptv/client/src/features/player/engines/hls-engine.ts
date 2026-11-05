@@ -2,6 +2,7 @@ import Hls, { ErrorDetails, ErrorTypes, Events, type ErrorData } from 'hls.js';
 
 import { createNativeEngine } from './native-engine';
 import { EngineError, engineOptions, resetMediaElement, waitForCanPlay, type EngineFactory } from './types';
+import { t } from '../../../i18n';
 
 const MAX_NETWORK_RECOVERIES = 3;
 const MAX_MEDIA_RECOVERIES = 2;
@@ -10,7 +11,7 @@ const MAX_MEDIA_RECOVERIES = 2;
 export const createHlsEngine: EngineFactory = (video, url) => {
   if (!Hls.isSupported()) {
     if (video.canPlayType('application/vnd.apple.mpegurl')) return createNativeEngine(video, url);
-    throw new EngineError('HLS playback is not supported by this browser.', 'unsupported');
+    throw new EngineError(t('player.err.hlsUnsupported'), 'unsupported');
   }
 
   const hls = new Hls({
@@ -95,7 +96,7 @@ export const createHlsEngine: EngineFactory = (video, url) => {
     qualityLevels: () =>
       hls.levels.length > 1
         ? [
-            { index: -1, label: 'Auto' },
+            { index: -1, label: t('player.ctl.auto') },
             ...hls.levels
               .map((level, index) => ({
                 index,
@@ -143,24 +144,23 @@ export const createHlsEngine: EngineFactory = (video, url) => {
 
 function toEngineError(data: ErrorData): EngineError {
   const status = data.response?.code;
-  const statusText = status ? ` (HTTP ${status})` : '';
   switch (data.details) {
     case ErrorDetails.MANIFEST_LOAD_ERROR:
     case ErrorDetails.LEVEL_LOAD_ERROR:
-      return new EngineError(`Could not load the stream playlist${statusText}.`, 'network', status || undefined);
+      return new EngineError(status ? t('player.err.playlistLoadHttp', { status }) : t('player.err.playlistLoad'), 'network', status || undefined);
     case ErrorDetails.MANIFEST_LOAD_TIMEOUT:
     case ErrorDetails.LEVEL_LOAD_TIMEOUT:
     case ErrorDetails.FRAG_LOAD_TIMEOUT:
-      return new EngineError('The stream server did not answer in time.', 'timeout');
+      return new EngineError(t('player.err.timeout'), 'timeout');
     case ErrorDetails.MANIFEST_PARSING_ERROR:
-      return new EngineError('The response is not a valid HLS playlist.', 'media');
+      return new EngineError(t('player.err.notHls'), 'media');
     case ErrorDetails.MANIFEST_INCOMPATIBLE_CODECS_ERROR:
-      return new EngineError('The stream uses codecs this browser cannot play.', 'unsupported');
+      return new EngineError(t('player.err.codecs'), 'unsupported');
     case ErrorDetails.FRAG_LOAD_ERROR:
-      return new EngineError(`Could not load video segments${statusText}.`, 'network', status || undefined);
+      return new EngineError(status ? t('player.err.segmentsHttp', { status }) : t('player.err.segments'), 'network', status || undefined);
     default:
       return new EngineError(
-        data.type === ErrorTypes.MEDIA_ERROR ? 'The stream could not be decoded.' : `Playback failed (${data.details}).`,
+        data.type === ErrorTypes.MEDIA_ERROR ? t('player.err.decode') : t('player.err.failedDetail', { detail: data.details }),
         data.type === ErrorTypes.NETWORK_ERROR ? 'network' : data.type === ErrorTypes.MEDIA_ERROR ? 'media' : 'other',
         status || undefined,
       );

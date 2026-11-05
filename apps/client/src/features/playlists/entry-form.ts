@@ -1,6 +1,7 @@
 import type { PlaylistEntryDto, UpdateEntryRequest } from '@ziptv/contracts';
 
 import { MAX_CHANNEL_NUMBER } from './numbering';
+import { t } from '../../i18n';
 
 /** The edit form as typed: everything is text until it is validated. */
 export interface EntryFormValues {
@@ -34,21 +35,21 @@ function isHttpUrl(value: string): boolean {
 export function buildEntryPatch(entry: Pick<PlaylistEntryDto, 'name' | 'number' | 'tvgId' | 'logo'>, form: EntryFormValues): { patch: UpdateEntryRequest | null; errors: EntryFormErrors } {
   const errors: EntryFormErrors = {};
   const name = form.name.trim();
-  if (!name) errors.name = 'The name cannot be empty.';
-  else if (name.length > 300) errors.name = 'The name can have at most 300 characters.';
+  if (!name) errors.name = t('playlists.v.nameEmpty');
+  else if (name.length > 300) errors.name = t('playlists.v.nameLong');
 
   const numberText = form.number.trim();
   let number: number | null = null;
   if (numberText) {
     number = Number(numberText);
-    if (!Number.isInteger(number) || number < 1 || number > MAX_CHANNEL_NUMBER) errors.number = `Use a whole number from 1 to ${MAX_CHANNEL_NUMBER.toLocaleString('en-US')}, or leave it empty.`;
+    if (!Number.isInteger(number) || number < 1 || number > MAX_CHANNEL_NUMBER) errors.number = t('playlists.v.number', { max: MAX_CHANNEL_NUMBER });
   }
 
   const tvgId = form.tvgId.trim();
-  if (tvgId.length > 200) errors.tvgId = 'The guide id can have at most 200 characters.';
+  if (tvgId.length > 200) errors.tvgId = t('playlists.v.guideIdLong');
 
   const logo = form.logo.trim();
-  if (logo && (logo.length > 2000 || !isHttpUrl(logo))) errors.logo = 'Enter an http:// or https:// address, or leave it empty.';
+  if (logo && (logo.length > 2000 || !isHttpUrl(logo))) errors.logo = t('playlists.v.logo');
 
   if (Object.keys(errors).length > 0) return { patch: null, errors };
 

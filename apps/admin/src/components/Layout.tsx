@@ -8,13 +8,10 @@ import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { visibleNav, type NavItem } from '../lib/nav';
 import { Badge } from './ui';
+import { LanguagePicker } from './LanguagePicker';
+import { t } from '../i18n';
 
-const GROUPS: { id: NavItem['group']; label: string }[] = [
-  { id: 'operations', label: 'Operations' },
-  { id: 'catalog', label: 'Catalog' },
-  { id: 'customers', label: 'Customers' },
-  { id: 'admin', label: 'Administration' },
-];
+const GROUPS: NavItem['group'][] = ['operations', 'catalog', 'customers', 'admin'];
 
 export function Layout() {
   const { me, can, signOut } = useAuth();
@@ -24,9 +21,9 @@ export function Layout() {
   const open = approvals.data?.open ?? 0;
   const label = (item: NavItem) => (
     <>
-      <item.icon className="h-4 w-4 shrink-0" aria-hidden /> <span className="flex-1">{item.label}</span>
+      <item.icon className="h-4 w-4 shrink-0" aria-hidden /> <span className="flex-1">{t(item.label)}</span>
       {item.to === '/approvals' && open > 0 && (
-        <span className="rounded-full bg-accent px-1.5 text-xs font-semibold text-black" aria-label={`${open} open`}>
+        <span className="rounded-full bg-accent px-1.5 text-xs font-semibold text-black" aria-label={t('nav.openCount', { count: open })}>
           {open}
         </span>
       )}
@@ -39,16 +36,16 @@ export function Layout() {
           <img src="/favicon.svg" alt="" className="h-7 w-7" />
           <div>
             <p className="text-sm font-semibold leading-tight">ZIPTV</p>
-            <p className="text-xs text-accent">Operator console</p>
+            <p className="text-xs text-accent">{t('common.console')}</p>
           </div>
         </div>
-        <nav aria-label="Console navigation" className="flex-1 space-y-4 overflow-y-auto px-3 pb-6">
+        <nav aria-label={t('common.consoleNav')} className="flex-1 space-y-4 overflow-y-auto px-3 pb-6">
           {GROUPS.map((group) => {
-            const entries = items.filter((item) => item.group === group.id);
+            const entries = items.filter((item) => item.group === group);
             if (entries.length === 0) return null;
             return (
-              <div key={group.id} className="space-y-1">
-                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{group.label}</p>
+              <div key={group} className="space-y-1">
+                <p className="px-3 text-[11px] font-semibold uppercase tracking-wider text-fg-subtle">{t(`nav.group.${group}`)}</p>
                 {entries.map((item) => (
                   <NavLink
                     key={item.to}
@@ -67,24 +64,25 @@ export function Layout() {
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 border-b border-line/[0.07] px-4 py-3 md:px-8">
           <span className="flex items-center gap-2 text-sm font-semibold md:hidden">
-            <img src="/favicon.svg" alt="" className="h-6 w-6" /> Console
+            <img src="/favicon.svg" alt="" className="h-6 w-6" /> {t('common.consoleShort')}
           </span>
-          <nav aria-label="Console sections" className="order-last -mx-1 flex w-full gap-1 overflow-x-auto md:hidden">
+          <nav aria-label={t('common.consoleSections')} className="order-last -mx-1 flex w-full gap-1 overflow-x-auto md:hidden">
             {items.map((item) => (
               <NavLink key={item.to} to={item.to} end={item.to === '/'} className={({ isActive }) => clsx('whitespace-nowrap rounded-md px-2 py-1 text-sm', isActive ? 'bg-accent/15 text-amber-200' : 'text-fg-muted')}>
-                {item.label}
+                {t(item.label)}
               </NavLink>
             ))}
           </nav>
           <div className="ml-auto flex items-center gap-3 text-sm">
+            <LanguagePicker />
             <span className="hidden text-fg-muted sm:inline">{me?.name}</span>
             {me && (
               <span className="whitespace-nowrap">
                 <Badge tone="warn">{me.role.replace('_', ' ')}</Badge>
               </span>
             )}
-            <button type="button" onClick={() => void signOut()} aria-label="Sign out" className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-fg-muted hover:bg-line/10 hover:text-fg">
-              <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">Sign out</span>
+            <button type="button" onClick={() => void signOut()} aria-label={t('common.signOut')} className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1 text-fg-muted hover:bg-line/10 hover:text-fg">
+              <LogOut className="h-4 w-4" aria-hidden /> <span className="hidden sm:inline">{t('common.signOut')}</span>
             </button>
           </div>
         </header>

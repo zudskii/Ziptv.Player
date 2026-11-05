@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { passwordResetMail, verifyEmailMail } from './mail-templates.js';
+import { mailLocale, passwordResetMail, verifyEmailMail } from './mail-templates.js';
 
 const LINK = 'https://tv.example.com/reset-password#token=abc_DEF-123';
 
@@ -26,5 +26,23 @@ describe('mail templates', () => {
   it('says what to do when the email was not asked for', () => {
     expect(passwordResetMail(LINK, 60).text).toMatch(/did not ask.*ignore/s);
     expect(verifyEmailMail(LINK, 24).text).toMatch(/did not create.*ignore/s);
+  });
+
+  it('is written in the language of the screen that asked (Accept-Language), English otherwise', () => {
+    expect(mailLocale('ka')).toBe('ka');
+    expect(mailLocale('ru-RU,ru;q=0.9,en;q=0.8')).toBe('ru');
+    expect(mailLocale('de-DE, ka;q=0.5')).toBe('ka');
+    expect(mailLocale('de-DE')).toBe('en');
+    expect(mailLocale(undefined)).toBe('en');
+
+    const ka = passwordResetMail(LINK, 60, 'ka');
+    expect(ka.subject).toBe('ZIPTV-ის პაროლის აღდგენა');
+    expect(ka.text).toContain(LINK);
+    expect(ka.text).toContain('60 წუთში');
+    expect(ka.html).toContain('lang="ka"');
+    const ru = verifyEmailMail(LINK, 24, 'ru');
+    expect(ru.subject).toBe('Подтвердите адрес почты для ZIPTV');
+    expect(ru.html).toContain(`href="${LINK}"`);
+    expect(ru.text).toContain('24 ч');
   });
 });

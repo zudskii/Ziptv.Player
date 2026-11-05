@@ -7,11 +7,12 @@ import { useProfileStore } from '../profiles/profile-store';
 import { useThemeStore } from '../theme/theme-store';
 import { useSettings, useUpdateSettings } from './api';
 import { useDisplayPrefs } from './display-prefs';
+import { i18n, setLanguage } from '../../i18n';
 
 const THEME_SYNCED = 'ziptv:theme-synced';
 
 /**
- * Applies the active profile's settings to the app: clock format, guide progress bars, decoder
+ * Applies the active profile's settings to the app: language, clock format, guide progress bars, decoder
  * workers and the theme. The theme chosen on this device before settings lived on the server
  * is carried over once instead of being reset to the default.
  */
@@ -24,6 +25,9 @@ export function useApplySettings(): void {
   useEffect(() => {
     if (!settings) return;
     setClockFormat(settings.general.use24hClock);
+    // The profile's language wins over the device's; '' leaves the device's as it is.
+    const language = settings.general.language;
+    if (language && language !== i18n.locale) void setLanguage(language);
     setEngineOptions({ worker: settings.playback.hardwareAcceleration });
     useDisplayPrefs.setState({ showProgress: settings.epg.showProgress, use24h: settings.general.use24hClock });
 

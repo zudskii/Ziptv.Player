@@ -37,6 +37,7 @@ import { RenumberDialog } from '../../features/playlists/components/RenumberDial
 import { TransferDialog } from '../../features/playlists/components/TransferDialog';
 import { ALL_ENTRIES, filterKey, type EntryFilter } from '../../features/playlists/entry-filter';
 import { moveItem } from '../../features/playlists/reorder';
+import { t } from '../../i18n';
 
 type Dialog =
   | { type: 'add' | 'export' | 'renumber' | 'merge' | 'rename' | 'newGroup' | 'move' | 'transfer' | 'removeSelected' | 'deletePlaylist' | 'removeMissing' }
@@ -92,15 +93,15 @@ export function PlaylistEditorPage() {
 
   const groupNames = useMemo(() => new Map((playlist?.groups ?? []).map((group) => [group.id, group.name] as const)), [playlist?.groups]);
 
-  if (query.isPending) return <Spinner className="py-24" label="Loading playlist…" />;
+  if (query.isPending) return <Spinner className="py-24" label={t('playlists.editor.loading')} />;
   if (query.isError || !playlist) {
     const notFound = query.error instanceof ApiError && query.error.status === 404;
     return (
       <FullscreenMessage
         tone="error"
-        title={notFound ? 'Playlist not found' : "Couldn't load the playlist"}
-        description={notFound ? 'It may have been deleted.' : errorMessage(query.error)}
-        action={notFound ? { label: 'All playlists', onClick: () => navigate('/playlists') } : { label: 'Try again', onClick: () => void query.refetch() }}
+        title={notFound ? t('playlists.editor.notFound') : t('playlists.editor.loadFailed')}
+        description={notFound ? t('playlists.editor.maybeDeleted') : errorMessage(query.error)}
+        action={notFound ? { label: t('playlists.editor.all'), onClick: () => navigate('/playlists') } : { label: t('playlists.retry'), onClick: () => void query.refetch() }}
       />
     );
   }
@@ -114,7 +115,7 @@ export function PlaylistEditorPage() {
     try {
       const { ids, truncated, total } = await fetchEntryIds(playlistId, filter);
       setSelected(new Set(ids));
-      if (truncated) toast.info(`Selected the first ${ids.length.toLocaleString()} of ${total.toLocaleString()}`, { description: 'Narrow the view (a group or a search) to select the rest.' });
+      if (truncated) toast.info(t('playlists.toast.selectedFirst', { count: ids.length, total }), { description: t('playlists.narrow') });
     } catch (reason) {
       fail(reason);
     }
@@ -124,7 +125,7 @@ export function PlaylistEditorPage() {
     const { ids } = await fetchEntryIds(playlistId, { ...ALL_ENTRIES, missingOnly: true }, 50_000);
     const result = await removeEntries.mutateAsync(ids);
     setMissingOnly(false);
-    toast.success(`${result.removed.toLocaleString()} missing ${result.removed === 1 ? 'channel' : 'channels'} removed`);
+    toast.success(t('playlists.toast.missingRemoved', { count: result.removed }));
   };
 
   const selectedIds = [...selected];
@@ -133,31 +134,31 @@ export function PlaylistEditorPage() {
     <div className="flex h-[calc(100dvh-7.5rem)] flex-col lg:h-[calc(100dvh-3.5rem)]">
       {/* Header */}
       <header className="flex flex-wrap items-center gap-3 border-b border-line/5 px-4 py-3 sm:px-5">
-        <Link to="/playlists" aria-label="All playlists" className="flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-fg/10 hover:text-fg">
+        <Link to="/playlists" aria-label={t('playlists.editor.all')} className="flex h-9 w-9 items-center justify-center rounded-lg text-fg-muted hover:bg-fg/10 hover:text-fg">
           <ArrowLeft className="h-5 w-5" />
         </Link>
         <div className="min-w-0 flex-1">
           <h1 className="flex items-center gap-2">
             <span className="truncate text-xl font-bold text-fg">{playlist.name}</span>
-            <button type="button" aria-label="Rename playlist" onClick={() => setDialog({ type: 'rename' })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+            <button type="button" aria-label={t('playlists.editor.rename')} onClick={() => setDialog({ type: 'rename' })} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
               <Pencil className="h-3.5 w-3.5" />
             </button>
           </h1>
           <p className="text-xs text-fg-muted">
-            {playlist.entryCount.toLocaleString()} channels · {playlist.groups.length} {playlist.groups.length === 1 ? 'group' : 'groups'}
+            {t('playlists.count.channelsGroups', { channels: playlist.entryCount, groups: playlist.groups.length })}
           </p>
         </div>
         <Button variant="primary" icon={<ListPlus className="h-4 w-4" />} onClick={() => setDialog({ type: 'add' })}>
-          Add channels
+          {t('playlists.add.title')}
         </Button>
         <Button icon={<Link2 className="h-4 w-4" />} onClick={() => setDialog({ type: 'export' })}>
-          Link
-          {playlist.export.enabled && <span className="h-2 w-2 rounded-full bg-emerald-500" aria-label="on" />}
+          {t('playlists.editor.link')}
+          {playlist.export.enabled && <span className="h-2 w-2 rounded-full bg-emerald-500" aria-label={t('playlists.editor.on')} />}
         </Button>
         <Popover
           className="w-56 p-1"
           trigger={({ toggle, open }) => (
-            <Button aria-label="More actions" aria-haspopup="menu" aria-expanded={open} onClick={toggle} className="px-2.5">
+            <Button aria-label={t('playlists.editor.more')} aria-haspopup="menu" aria-expanded={open} onClick={toggle} className="px-2.5">
               <Ellipsis className="h-4 w-4" />
             </Button>
           )}
@@ -171,14 +172,14 @@ export function PlaylistEditorPage() {
             return (
               <div role="menu">
                 <button type="button" role="menuitem" className={item} onClick={open({ type: 'renumber' })}>
-                  <Hash className="h-4 w-4" /> Number channels…
+                  <Hash className="h-4 w-4" /> {t('playlists.editor.number')}
                 </button>
                 <button type="button" role="menuitem" className={item} onClick={open({ type: 'merge' })}>
-                  <Merge className="h-4 w-4" /> Merge playlists…
+                  <Merge className="h-4 w-4" /> {t('playlists.editor.merge')}
                 </button>
                 <div className="my-1 border-t border-line/5" />
                 <button type="button" role="menuitem" className={`${item} text-red-500 hover:text-red-500`} onClick={open({ type: 'deletePlaylist' })}>
-                  <Trash2 className="h-4 w-4" /> Delete playlist…
+                  <Trash2 className="h-4 w-4" /> {t('playlists.editor.delete')}
                 </button>
               </div>
             );
@@ -191,25 +192,25 @@ export function PlaylistEditorPage() {
         <div role="status" className="flex flex-wrap items-center gap-3 border-b border-amber-500/20 bg-amber-500/10 px-4 py-2.5 text-sm sm:px-5">
           <TriangleAlert className="h-4 w-4 shrink-0 text-amber-500" aria-hidden />
           <p className="min-w-0 flex-1 text-fg">
-            {playlist.missingCount.toLocaleString()} {playlist.missingCount === 1 ? 'channel is' : 'channels are'} no longer in {playlist.missingCount === 1 ? 'its' : 'their'} source and {playlist.missingCount === 1 ? 'is' : 'are'} left out of the link.
+            {t('playlists.missingBanner', { count: playlist.missingCount })}
           </p>
           <Button
             size="sm"
             loading={relink.isPending}
             onClick={() =>
               relink.mutate(undefined, {
-                onSuccess: (result) => toast[result.relinked > 0 ? 'success' : 'info'](result.relinked > 0 ? `${result.relinked.toLocaleString()} reconnected` : 'Nothing could be reconnected automatically', { description: result.stillMissing > 0 ? `${result.stillMissing.toLocaleString()} still missing.` : undefined }),
+                onSuccess: (result) => toast[result.relinked > 0 ? 'success' : 'info'](result.relinked > 0 ? t('playlists.toast.reconnected', { count: result.relinked }) : t('playlists.nothingReconnected'), { description: result.stillMissing > 0 ? t('playlists.toast.stillMissing', { count: result.stillMissing }) : undefined }),
                 onError: fail,
               })
             }
           >
-            Reconnect
+            {t('playlists.editor.reconnect')}
           </Button>
           <Button size="sm" onClick={() => setMissingOnly((value) => !value)}>
-            {missingOnly ? 'Show all' : 'Show them'}
+            {missingOnly ? t('playlists.editor.showAll') : t('playlists.editor.showThem')}
           </Button>
           <Button size="sm" variant="danger" onClick={() => setDialog({ type: 'removeMissing' })}>
-            Remove
+            {t('playlists.remove')}
           </Button>
         </div>
       )}
@@ -239,14 +240,14 @@ export function PlaylistEditorPage() {
             <div className="flex items-center gap-2">
               <input
                 type="checkbox"
-                aria-label="Select all channels in this view"
+                aria-label={t('playlists.editor.selectAll')}
                 checked={selected.size > 0}
                 onChange={() => (selected.size > 0 ? setSelected(new Set()) : void selectAll())}
                 className="h-4 w-4 shrink-0 accent-brand"
               />
-              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search in this playlist" aria-label="Search in this playlist" className="field h-9" />
+              <input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('playlists.editor.search')} aria-label={t('playlists.editor.search')} className="field h-9" />
               <select
-                aria-label="Group"
+                aria-label={t('playlists.editor.group')}
                 value={scopeValue(scope)}
                 onChange={(event) => {
                   const value = event.target.value;
@@ -254,31 +255,31 @@ export function PlaylistEditorPage() {
                 }}
                 className="field h-9 w-40 lg:hidden"
               >
-                <option value="all">All channels</option>
-                <option value="ungrouped">No group</option>
+                <option value="all">{t('playlists.allChannels')}</option>
+                <option value="ungrouped">{t('playlists.noGroup')}</option>
                 {groups.map((group) => (
                   <option key={group.id} value={group.id}>
                     {group.name}
                   </option>
                 ))}
               </select>
-              {missingOnly && <Badge tone="warning">Missing only</Badge>}
+              {missingOnly && <Badge tone="warning">{t('playlists.editor.missingOnly')}</Badge>}
             </div>
 
             {selected.size > 0 && (
-              <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label="Selected channels">
-                <span className="text-sm font-medium text-fg">{selected.size.toLocaleString()} selected</span>
+              <div className="flex flex-wrap items-center gap-2" role="toolbar" aria-label={t('playlists.editor.selected')}>
+                <span className="text-sm font-medium text-fg">{t('playlists.count.selected', { count: selected.size })}</span>
                 <Button size="sm" icon={<FolderInput className="h-4 w-4" />} onClick={() => setDialog({ type: 'move' })}>
-                  Move to…
+                  {t('playlists.editor.moveTo')}
                 </Button>
                 <Button size="sm" icon={<Send className="h-4 w-4" />} onClick={() => setDialog({ type: 'transfer' })}>
-                  Send to playlist…
+                  {t('playlists.editor.sendTo')}
                 </Button>
                 <Button size="sm" variant="danger" icon={<Trash2 className="h-4 w-4" />} onClick={() => setDialog({ type: 'removeSelected' })}>
-                  Remove
+                  {t('playlists.remove')}
                 </Button>
                 <Button size="sm" variant="ghost" icon={<X className="h-4 w-4" />} onClick={() => setSelected(new Set())}>
-                  Clear
+                  {t('playlists.clear')}
                 </Button>
               </div>
             )}
@@ -308,40 +309,40 @@ export function PlaylistEditorPage() {
       <TransferDialog open={dialog?.type === 'transfer'} onClose={close} playlistId={playlistId} entryIds={selectedIds} onDone={() => setSelected(new Set())} />
       <EditEntryDialog entry={dialog?.type === 'edit' ? dialog.entry : null} playlistId={playlistId} onClose={close} />
 
-      <PromptDialog open={dialog?.type === 'rename'} onClose={close} title="Rename playlist" label="Name" initialValue={playlist.name} submitLabel="Rename" onSubmit={(name) => renamePlaylist.mutateAsync(name)} />
-      <PromptDialog open={dialog?.type === 'newGroup'} onClose={close} title="New group" label="Group name" placeholder="e.g. News, Kids, Sport" submitLabel="Create" onSubmit={(name) => createGroup.mutateAsync(name)} />
+      <PromptDialog open={dialog?.type === 'rename'} onClose={close} title={t('playlists.editor.rename')} label={t('playlists.name')} initialValue={playlist.name} submitLabel={t('playlists.rename')} onSubmit={(name) => renamePlaylist.mutateAsync(name)} />
+      <PromptDialog open={dialog?.type === 'newGroup'} onClose={close} title={t('playlists.group.new')} label={t('playlists.group.name')} placeholder={t('playlists.group.placeholder')} submitLabel={t('playlists.create')} onSubmit={(name) => createGroup.mutateAsync(name)} />
       <PromptDialog
         open={dialog?.type === 'renameGroup'}
         onClose={close}
-        title="Rename group"
-        label="Group name"
+        title={t('playlists.group.rename')}
+        label={t('playlists.group.name')}
         initialValue={dialog?.type === 'renameGroup' ? dialog.group.name : ''}
-        submitLabel="Rename"
+        submitLabel={t('playlists.rename')}
         onSubmit={(name) => (dialog?.type === 'renameGroup' ? renameGroup.mutateAsync({ groupId: dialog.group.id, name }) : undefined)}
       />
 
       <ConfirmDialog
         open={dialog?.type === 'deleteGroup'}
         onClose={close}
-        title={`Delete the group “${dialog?.type === 'deleteGroup' ? dialog.group.name : ''}”?`}
+        title={t('playlists.deleteGroupTitle', { name: dialog?.type === 'deleteGroup' ? dialog.group.name : '' })}
         description={
           <div className="space-y-3">
-            <p>Its channels stay in the playlist (without a group), unless you also delete them.</p>
+            <p>{t('playlists.group.deleteHint')}</p>
             <label className="flex items-center gap-2 text-fg">
               <input type="checkbox" checked={deleteGroupEntries} onChange={(event) => setDeleteGroupEntries(event.target.checked)} className="h-4 w-4 accent-brand" />
-              Also delete its {dialog?.type === 'deleteGroup' ? dialog.group.entryCount.toLocaleString() : ''} channels
+              {t('playlists.alsoDelete', { count: dialog?.type === 'deleteGroup' ? dialog.group.entryCount : 0 })}
             </label>
           </div>
         }
-        confirmLabel="Delete group"
+        confirmLabel={t('playlists.group.delete')}
         onConfirm={() => (dialog?.type === 'deleteGroup' ? deleteGroup.mutateAsync({ groupId: dialog.group.id, deleteEntries: deleteGroupEntries }) : undefined)}
       />
       <ConfirmDialog
         open={dialog?.type === 'removeSelected'}
         onClose={close}
-        title={`Remove ${selected.size.toLocaleString()} ${selected.size === 1 ? 'channel' : 'channels'}?`}
-        description="They are removed from this playlist only. Your source keeps them, and you can add them again."
-        confirmLabel="Remove"
+        title={t('playlists.removeSelectedTitle', { count: selected.size })}
+        description={t('playlists.editor.removeHint')}
+        confirmLabel={t('playlists.remove')}
         onConfirm={async () => {
           await removeEntries.mutateAsync(selectedIds);
           setSelected(new Set());
@@ -350,25 +351,25 @@ export function PlaylistEditorPage() {
       <ConfirmDialog
         open={dialog?.type === 'removeEntry'}
         onClose={close}
-        title={`Remove “${dialog?.type === 'removeEntry' ? dialog.entry.name : ''}”?`}
-        description="It is removed from this playlist only. Your source keeps it."
-        confirmLabel="Remove"
+        title={t('playlists.removeEntryTitle', { name: dialog?.type === 'removeEntry' ? dialog.entry.name : '' })}
+        description={t('playlists.editor.removeOneHint')}
+        confirmLabel={t('playlists.remove')}
         onConfirm={() => (dialog?.type === 'removeEntry' ? removeEntries.mutateAsync([dialog.entry.id]) : undefined)}
       />
       <ConfirmDialog
         open={dialog?.type === 'removeMissing'}
         onClose={close}
-        title={`Remove ${playlist.missingCount.toLocaleString()} missing ${playlist.missingCount === 1 ? 'channel' : 'channels'}?`}
-        description="These channels are no longer in their source. If your provider only renamed them, try “Reconnect” first."
-        confirmLabel="Remove them"
+        title={t('playlists.removeMissingTitle', { count: playlist.missingCount })}
+        description={t('playlists.editor.missingHint')}
+        confirmLabel={t('playlists.editor.removeThem')}
         onConfirm={removeMissing}
       />
       <ConfirmDialog
         open={dialog?.type === 'deletePlaylist'}
         onClose={close}
-        title={`Delete “${playlist.name}”?`}
-        description="The playlist and its link are deleted. Your sources are not affected."
-        confirmLabel="Delete playlist"
+        title={t('playlists.deleteTitle', { name: playlist.name })}
+        description={t('playlists.editor.deleteHint')}
+        confirmLabel={t('playlists.delete')}
         onConfirm={async () => {
           await deletePlaylist.mutateAsync(playlistId);
           toast.success(`“${playlist.name}” deleted`);

@@ -1,4 +1,5 @@
-import type { ClearableData, QualityPreference, SettingsDto, StartPage, ThemePreference, UpdateSettingsRequest } from '@ziptv/contracts';
+import type { AppLanguage, ClearableData, QualityPreference, SettingsDto, StartPage, ThemePreference, UpdateSettingsRequest } from '@ziptv/contracts';
+import { LOCALE_NAMES, LOCALES } from '@ziptv/i18n';
 import { Monitor, Moon, Server, Sun } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { Link, useLocation } from 'react-router';
@@ -10,26 +11,22 @@ import { Segmented } from '../components/ui/Segmented';
 import { Spinner } from '../components/ui/Spinner';
 import { Switch } from '../components/ui/Switch';
 import { AccountSection } from '../features/auth/components/AccountSection';
-import { ParentalSection } from '../features/parental/ParentalSection';
 import { ProfilesSection } from '../features/profiles/ProfilesSection';
 import { useThemeStore } from '../features/theme/theme-store';
 import { useClearData, useSettings, useStorageUsage, useUpdateSettings } from '../features/user-state/api';
+import { setLanguage, t, useT } from '../i18n';
 import { errorMessage } from '../lib/api-client';
+import { languageName } from '../lib/language-name';
+import { formatShift } from '../lib/time';
 
-const LANGUAGES = [
-  { value: '', label: 'Stream default' },
-  { value: 'ka', label: 'Georgian' },
-  { value: 'en', label: 'English' },
-  { value: 'ru', label: 'Russian' },
-  { value: 'de', label: 'German' },
-  { value: 'fr', label: 'French' },
-  { value: 'es', label: 'Spanish' },
-  { value: 'it', label: 'Italian' },
-  { value: 'tr', label: 'Turkish' },
-  { value: 'uk', label: 'Ukrainian' },
-];
+/** Audio / subtitle languages offered, named in the current UI language when shown. */
+const STREAM_LANGUAGES = ['ka', 'en', 'ru', 'de', 'fr', 'es', 'it', 'tr', 'uk'] as const;
 
-/** Settings: General, Playback, Appearance, EPG, Profiles, Parental controls, Data & Storage, Sources, Account, About. */
+function streamLanguages(locale: string): { value: string; label: string }[] {
+  return [{ value: '', label: t('settings.streamDefault') }, ...STREAM_LANGUAGES.map((code) => ({ value: code, label: languageName(code, locale) }))];
+}
+
+/** Settings: General, Playback, Appearance, EPG, Profiles, Data & Storage, Sources, Account, About. */
 export function SettingsPage() {
   const settings = useSettings();
   const update = useUpdateSettings();
@@ -38,14 +35,14 @@ export function SettingsPage() {
     if (hash) document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' });
   }, [hash, settings.isPending]);
 
-  const save = (patch: UpdateSettingsRequest) => update.mutate(patch, { onError: (error) => toast.error('Setting not saved', { description: errorMessage(error) }) });
+  const save = (patch: UpdateSettingsRequest) => update.mutate(patch, { onError: (error) => toast.error(t('settings.notSaved'), { description: errorMessage(error) }) });
   const data = settings.data;
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
-      <h1 className="text-2xl font-bold text-fg">Settings</h1>
+      <h1 className="text-2xl font-bold text-fg">{t('settings.title')}</h1>
       {settings.isPending ? (
-        <Spinner label="Loading settings…" />
+        <Spinner label={t('settings.loading')} />
       ) : data ? (
         <>
           <GeneralSection settings={data} save={save} />
@@ -57,17 +54,16 @@ export function SettingsPage() {
         <p className="text-sm text-red-500">{errorMessage(settings.error)}</p>
       )}
       <ProfilesSection />
-      <ParentalSection />
       {data && <DataSection settings={data} save={save} />}
       <AccountSection />
-      <Section id="sources" title="Sources">
+      <Section id="sources" title={t('settings.sources')}>
         <Link to="/sources" className="inline-flex items-center gap-2 text-sm text-brand-soft hover:underline">
-          <Server className="h-4 w-4" /> Manage sources and TV guides
+          <Server className="h-4 w-4" /> {t('settings.manageSources')}
         </Link>
       </Section>
-      <Section id="about" title="About">
-        <p className="text-sm text-fg-muted">ZIPTV {__APP_VERSION__} — personal streaming hub for your own sources.</p>
-        <p className="text-xs text-fg-subtle">Shortcuts: Space play/pause · ←/→ seek · 0–9 jump · ↑/↓ volume · M mute · F fullscreen · I picture in picture · C subtitles · N/P next/previous · ? all shortcuts · / search</p>
+      <Section id="about" title={t('settings.about')}>
+        <p className="text-sm text-fg-muted">{t('settings.aboutText', { version: __APP_VERSION__ })}</p>
+        <p className="text-xs text-fg-subtle">{t('settings.shortcuts')}</p>
       </Section>
     </div>
   );
@@ -109,55 +105,68 @@ function SelectRow<T extends string | number>({ label, value, options, onChange 
 }
 
 function GeneralSection({ settings, save }: { settings: SettingsDto; save: Save }) {
+  const { locale } = useT();
   return (
-    <Section id="general" title="General">
+    <Section id="general" title={t('settings.general')}>
+      <SelectRow<AppLanguage | ''>
+        label={t('settings.language')}
+        value={settings.general.language}
+        onChange={(language) => {
+          // Shown at once; '' keeps whatever this device uses now.
+          if (language) void setLanguage(language);
+          save({ general: { language } });
+        }}
+        options={[{ value: '', label: t('settings.languageDevice', { language: LOCALE_NAMES[locale] }) }, ...LOCALES.map((code) => ({ value: code, label: LOCALE_NAMES[code] }))]}
+      />
       <SelectRow<StartPage>
-        label="Start page"
+        label={t('settings.startPage')}
         value={settings.general.startPage}
         onChange={(startPage) => save({ general: { startPage } })}
         options={[
-          { value: 'home', label: 'Home' },
-          { value: 'live', label: 'Live TV' },
-          { value: 'guide', label: 'TV Guide' },
-          { value: 'movies', label: 'Movies' },
-          { value: 'series', label: 'Series' },
+          { value: 'home', label: t('settings.page.home') },
+          { value: 'live', label: t('settings.page.live') },
+          { value: 'guide', label: t('settings.page.guide') },
+          { value: 'movies', label: t('settings.page.movies') },
+          { value: 'series', label: t('settings.page.series') },
         ]}
       />
-      <Switch label="24-hour clock" checked={settings.general.use24hClock} onChange={(use24hClock) => save({ general: { use24hClock } })} />
+      <Switch label={t('settings.clock24')} checked={settings.general.use24hClock} onChange={(use24hClock) => save({ general: { use24hClock } })} />
     </Section>
   );
 }
 
 function PlaybackSection({ settings, save }: { settings: SettingsDto; save: Save }) {
+  const { locale } = useT();
   const playback = settings.playback;
+  const languages = streamLanguages(locale);
   return (
-    <Section id="playback" title="Playback">
-      <Switch label="Autoplay" description="Start playing as soon as a channel or video opens." checked={playback.autoplay} onChange={(autoplay) => save({ playback: { autoplay } })} />
-      <Switch label="Play next episode automatically" checked={playback.autoplayNextEpisode} onChange={(autoplayNextEpisode) => save({ playback: { autoplayNextEpisode } })} />
-      <Switch label="Resume where I left off" checked={playback.resumePlayback} onChange={(resumePlayback) => save({ playback: { resumePlayback } })} />
+    <Section id="playback" title={t('settings.playback')}>
+      <Switch label={t('settings.autoplay')} description={t('settings.autoplayHint')} checked={playback.autoplay} onChange={(autoplay) => save({ playback: { autoplay } })} />
+      <Switch label={t('settings.nextEpisode')} checked={playback.autoplayNextEpisode} onChange={(autoplayNextEpisode) => save({ playback: { autoplayNextEpisode } })} />
+      <Switch label={t('settings.resume')} checked={playback.resumePlayback} onChange={(resumePlayback) => save({ playback: { resumePlayback } })} />
       <SelectRow<QualityPreference>
-        label="Preferred quality"
+        label={t('settings.quality')}
         value={playback.preferredQuality}
         onChange={(preferredQuality) => save({ playback: { preferredQuality } })}
         options={[
-          { value: 'auto', label: 'Automatic' },
-          { value: 'highest', label: 'Highest' },
+          { value: 'auto', label: t('settings.qualityAuto') },
+          { value: 'highest', label: t('settings.qualityHighest') },
           { value: '1080', label: '1080p' },
           { value: '720', label: '720p' },
           { value: '480', label: '480p' },
-          { value: 'lowest', label: 'Lowest (save data)' },
+          { value: 'lowest', label: t('settings.qualityLowest') },
         ]}
       />
-      <SelectRow label="Audio language" value={playback.preferredAudio} onChange={(preferredAudio) => save({ playback: { preferredAudio } })} options={LANGUAGES} />
+      <SelectRow label={t('settings.audioLanguage')} value={playback.preferredAudio} onChange={(preferredAudio) => save({ playback: { preferredAudio } })} options={languages} />
       <SelectRow
-        label="Subtitles"
+        label={t('settings.subtitles')}
         value={playback.preferredSubtitles}
         onChange={(preferredSubtitles) => save({ playback: { preferredSubtitles } })}
-        options={[{ value: 'off', label: 'Off' }, ...LANGUAGES]}
+        options={[{ value: 'off', label: t('common.off') }, ...languages]}
       />
       <Switch
-        label="Hardware acceleration"
-        description="Turn off only if video stutters or shows artefacts on this device."
+        label={t('settings.hwAccel')}
+        description={t('settings.hwAccelHint')}
         checked={playback.hardwareAcceleration}
         onChange={(hardwareAcceleration) => save({ playback: { hardwareAcceleration } })}
       />
@@ -169,18 +178,18 @@ function AppearanceSection({ save }: { save: Save }) {
   const preference = useThemeStore((state) => state.preference);
   const setPreference = useThemeStore((state) => state.setPreference);
   return (
-    <Section id="appearance" title="Appearance">
+    <Section id="appearance" title={t('settings.appearance')}>
       <Segmented<ThemePreference>
-        label="Theme"
+        label={t('settings.theme')}
         value={preference}
         onChange={(theme) => {
           setPreference(theme);
           save({ appearance: { theme } });
         }}
         options={[
-          { value: 'dark', label: 'Dark', icon: <Moon className="h-4 w-4" /> },
-          { value: 'light', label: 'Light', icon: <Sun className="h-4 w-4" /> },
-          { value: 'system', label: 'System', icon: <Monitor className="h-4 w-4" /> },
+          { value: 'dark', label: t('settings.themeDark'), icon: <Moon className="h-4 w-4" /> },
+          { value: 'light', label: t('settings.themeLight'), icon: <Sun className="h-4 w-4" /> },
+          { value: 'system', label: t('settings.themeSystem'), icon: <Monitor className="h-4 w-4" /> },
         ]}
       />
     </Section>
@@ -190,84 +199,85 @@ function AppearanceSection({ save }: { save: Save }) {
 function EpgSection({ settings, save }: { settings: SettingsDto; save: Save }) {
   const shifts = [-180, -120, -60, -30, 0, 30, 60, 120, 180];
   return (
-    <Section id="epg" title="TV guide">
+    <Section id="epg" title={t('settings.epg')}>
       <SelectRow
-        label="Time shift"
+        label={t('settings.timeShift')}
         value={settings.epg.timeShiftMinutes}
         onChange={(timeShiftMinutes) => save({ epg: { timeShiftMinutes } })}
-        options={[...new Set([...shifts, settings.epg.timeShiftMinutes])].sort((a, b) => a - b).map((minutes) => ({ value: minutes, label: minutes === 0 ? 'None' : `${minutes > 0 ? '+' : '−'}${Math.abs(minutes) >= 60 ? `${Math.abs(minutes) / 60} h` : `${Math.abs(minutes)} min`}` }))}
+        options={[...new Set([...shifts, settings.epg.timeShiftMinutes])].sort((a, b) => a - b).map((minutes) => ({ value: minutes, label: minutes === 0 ? t('common.none') : formatShift(minutes) }))}
       />
-      <p className="-mt-1 text-xs text-fg-subtle">For guides whose times are off by a fixed amount.</p>
-      <Switch label="Show programme progress" checked={settings.epg.showProgress} onChange={(showProgress) => save({ epg: { showProgress } })} />
+      <p className="-mt-1 text-xs text-fg-subtle">{t('settings.timeShiftHint')}</p>
+      <Switch label={t('settings.showProgress')} checked={settings.epg.showProgress} onChange={(showProgress) => save({ epg: { showProgress } })} />
     </Section>
   );
 }
 
-const CLEAR_COPY: Record<ClearableData, { label: string; title: string; description: string }> = {
-  history: { label: 'Clear history', title: 'Clear watch history?', description: 'Every viewing of this profile is removed.' },
-  progress: { label: 'Clear Continue Watching', title: 'Clear Continue Watching?', description: 'Saved positions of movies and episodes are removed.' },
-  my_list: { label: 'Clear My List', title: 'Clear My List?', description: 'Every saved channel, movie and series of this profile is removed.' },
-  cache: { label: 'Clear cache', title: 'Clear cached data?', description: 'Channel lists and guides are reloaded from the server; nothing personal is removed.' },
-};
+const CLEARABLE: readonly ClearableData[] = ['history', 'progress', 'my_list', 'cache'];
+const clearCopy = (kind: ClearableData) => ({
+  label: t(`settings.clear.${kind}.label`),
+  title: t(`settings.clear.${kind}.title`),
+  description: t(`settings.clear.${kind}.description`),
+});
 
 function DataSection({ settings, save }: { settings: SettingsDto; save: Save }) {
+  const { locale } = useT();
   const usage = useStorageUsage();
   const clear = useClearData();
   const [confirm, setConfirm] = useState<ClearableData | null>(null);
   const u = usage.data;
   return (
-    <Section id="data" title="Data & storage">
+    <Section id="data" title={t('settings.data')}>
       {u && (
         <dl className="grid grid-cols-2 gap-x-6 gap-y-1 text-sm sm:grid-cols-3">
           {(
             [
-              ['Sources', u.sources],
-              ['Live channels', u.liveChannels],
-              ['Movies', u.movies],
-              ['Series', u.series],
-              ['TV guides', u.guides],
-              ['Programmes', u.programmes],
-              ['My List', u.myList],
-              ['Continue Watching', u.progress],
-              ['History entries', u.history],
+              ['sources', u.sources],
+              ['liveChannels', u.liveChannels],
+              ['movies', u.movies],
+              ['series', u.series],
+              ['guides', u.guides],
+              ['programmes', u.programmes],
+              ['myList', u.myList],
+              ['progress', u.progress],
+              ['history', u.history],
             ] as const
           ).map(([label, value]) => (
             <div key={label} className="flex justify-between gap-2 border-b border-line/5 py-1">
-              <dt className="text-fg-muted">{label}</dt>
-              <dd className="tabular-nums text-fg">{value.toLocaleString()}</dd>
+              <dt className="text-fg-muted">{t(`settings.usage.${label}`)}</dt>
+              <dd className="tabular-nums text-fg">{value.toLocaleString(locale)}</dd>
             </div>
           ))}
         </dl>
       )}
       <SelectRow
-        label="Keep watch history"
+        label={t('settings.keepHistory')}
         value={settings.data.historyRetentionDays}
         onChange={(historyRetentionDays) => save({ data: { historyRetentionDays } })}
         options={[
-          { value: 30, label: '30 days' },
-          { value: 90, label: '90 days' },
-          { value: 180, label: '6 months' },
-          { value: 365, label: '1 year' },
-          { value: 0, label: 'Forever' },
+          { value: 30, label: t('settings.retention.days', { count: 30 }) },
+          { value: 90, label: t('settings.retention.days', { count: 90 }) },
+          { value: 180, label: t('settings.retention.months', { count: 6 }) },
+          { value: 365, label: t('settings.retention.year') },
+          { value: 0, label: t('settings.retention.forever') },
         ]}
       />
       <div className="flex flex-wrap gap-2 pt-1">
-        {(Object.keys(CLEAR_COPY) as ClearableData[]).map((kind) => (
+        {CLEARABLE.map((kind) => (
           <Button key={kind} size="sm" onClick={() => setConfirm(kind)}>
-            {CLEAR_COPY[kind].label}
+            {clearCopy(kind).label}
           </Button>
         ))}
       </div>
       <ConfirmDialog
         open={confirm !== null}
         onClose={() => setConfirm(null)}
-        title={confirm ? CLEAR_COPY[confirm].title : ''}
-        description={confirm ? CLEAR_COPY[confirm].description : ''}
-        confirmLabel={confirm ? CLEAR_COPY[confirm].label : ''}
+        title={confirm ? clearCopy(confirm).title : ''}
+        description={confirm ? clearCopy(confirm).description : ''}
+        confirmLabel={confirm ? clearCopy(confirm).label : ''}
         onConfirm={async () => {
           if (!confirm) return;
           await clear.mutateAsync(confirm);
-          toast.success('Done');
+          toast.success(t('settings.done'));
         }}
       />
     </Section>

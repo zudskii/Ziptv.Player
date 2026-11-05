@@ -10,6 +10,7 @@ import { imageSources } from '../../../lib/images';
 import { formatDay, formatDuration, formatRange } from '../../../lib/time';
 import { useNow } from '../../../lib/use-now';
 import { minutesLeft, programmeProgress, programmeState } from '../programme';
+import { t } from '../../../i18n';
 
 interface ProgrammeDialogProps {
   programme: ProgrammeDto | null;
@@ -36,7 +37,7 @@ export function ProgrammeDialog({ programme, channel, onClose, onWatchLive, onWa
         )}
         <div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
           {state === 'live' && <LiveBadge />}
-          {state === 'past' && programme.catchup && <Badge tone="brand" icon={<History className="h-3 w-3" />}>Archive</Badge>}
+          {state === 'past' && programme.catchup && <Badge tone="brand" icon={<History className="h-3 w-3" />}>{t('epg.card.archive')}</Badge>}
           <span className="inline-flex items-center gap-1">
             <CalendarDays className="h-4 w-4" /> {formatDay(programme.start, now)}
           </span>
@@ -48,8 +49,8 @@ export function ProgrammeDialog({ programme, channel, onClose, onWatchLive, onWa
         </div>
         {state === 'live' && (
           <div className="space-y-1">
-            <ProgressBar value={programmeProgress(programme, now)} tone="live" label="Programme progress" />
-            <p className="text-xs text-fg-subtle">{minutesLeft(programme, now)} min left</p>
+            <ProgressBar value={programmeProgress(programme, now)} tone="live" label={t('epg.dialog.progress')} />
+            <p className="text-xs text-fg-subtle">{t('epg.minLeft', { minutes: minutesLeft(programme, now) })}</p>
           </div>
         )}
         {programme.categories.length > 0 && (
@@ -63,12 +64,12 @@ export function ProgrammeDialog({ programme, channel, onClose, onWatchLive, onWa
         <div className="flex flex-wrap justify-end gap-2 pt-1">
           {state === 'live' && onWatchLive && (
             <Button variant="primary" icon={<Play className="h-4 w-4 fill-current" />} onClick={onWatchLive}>
-              Watch live
+              {t('epg.dialog.watchLive')}
             </Button>
           )}
           {state === 'past' && programme.catchup && onWatchArchive && (
             <Button variant="primary" icon={<Play className="h-4 w-4 fill-current" />} onClick={() => onWatchArchive(programme)}>
-              Watch
+              {t('epg.mini.watch')}
             </Button>
           )}
         </div>

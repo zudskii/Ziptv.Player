@@ -11,6 +11,7 @@ import { Spinner } from '../components/ui/Spinner';
 import { useMyList, useToggleListItem } from '../features/user-state/api';
 import { errorMessage } from '../lib/api-client';
 import { itemPath } from '../lib/routes';
+import { t } from '../i18n';
 
 type Filter = 'all' | ListItemType;
 
@@ -24,27 +25,27 @@ export function MyListPage() {
   return (
     <div className="space-y-4 p-4 sm:p-6">
       <header className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-bold text-fg">My List</h1>
+        <h1 className="text-2xl font-bold text-fg">{t('myList.title')}</h1>
         <Segmented<Filter>
-          label="Show"
+          label={t('myList.show')}
           size="sm"
           className="ml-auto w-full max-w-sm sm:w-auto"
           value={filter}
           onChange={setFilter}
           options={[
-            { value: 'all', label: 'All' },
-            { value: 'channel', label: 'Channels' },
-            { value: 'movie', label: 'Movies' },
-            { value: 'series', label: 'Series' },
+            { value: 'all', label: t('myList.all') },
+            { value: 'channel', label: t('myList.channels') },
+            { value: 'movie', label: t('myList.movies') },
+            { value: 'series', label: t('myList.series') },
           ]}
         />
       </header>
       {list.isPending ? (
-        <Spinner label="Loading…" />
+        <Spinner label={t('myList.loading')} />
       ) : list.isError ? (
-        <EmptyState title="My List could not be loaded" description={errorMessage(list.error)} />
+        <EmptyState title={t('myList.loadFailed')} description={errorMessage(list.error)} />
       ) : items.length === 0 ? (
-        <EmptyState icon={<Bookmark className="h-8 w-8" />} title="Nothing saved yet" description="Use “My List” on a movie or series, or the star next to a channel, to keep it here." />
+        <EmptyState icon={<Bookmark className="h-8 w-8" />} title={t('myList.empty')} description={t('myList.emptyHint')} />
       ) : (
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(8.5rem,1fr))] gap-x-3 gap-y-5 sm:grid-cols-[repeat(auto-fill,minmax(10rem,1fr))]">
           {items.map((item) => (
@@ -58,11 +59,11 @@ export function MyListPage() {
                 title={item.title}
                 image={item.image}
                 subtitle={item.subtitle}
-                badge={!item.available ? <Badge tone="warning">Unavailable</Badge> : undefined}
+                badge={!item.available ? <Badge tone="warning">{t('myList.unavailable')}</Badge> : undefined}
               />
               <button
                 type="button"
-                aria-label={`Remove ${item.title} from My List`}
+                aria-label={t('myList.removeNamed', { title: item.title })}
                 onClick={() => toggle.mutate({ item, add: false }, { onError: (error) => toast.error(errorMessage(error)) })}
                 className="absolute right-1.5 top-1.5 rounded-full bg-black/60 p-1 text-white hover:bg-black/80"
               >

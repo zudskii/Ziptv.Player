@@ -6,6 +6,7 @@ import { Popover } from '../../../components/ui/Popover';
 import { cn } from '../../../lib/cn';
 import { hasDrag, readDrag } from '../drag';
 import type { EntryFilter } from '../entry-filter';
+import { t } from '../../../i18n';
 
 type Scope = EntryFilter['scope'];
 
@@ -46,12 +47,12 @@ export function GroupsPanel({ playlist, scope, onScope, onDropEntries, onAddGrou
   });
 
   return (
-    <nav aria-label="Groups" className="flex h-full flex-col gap-1 overflow-y-auto p-2">
-      <Row active={sameScope(scope, { type: 'all' })} icon={<Layers className="h-4 w-4" />} label="All channels" count={playlist.entryCount} onClick={() => onScope({ type: 'all' })} />
+    <nav aria-label={t('playlists.groups')} className="flex h-full flex-col gap-1 overflow-y-auto p-2">
+      <Row active={sameScope(scope, { type: 'all' })} icon={<Layers className="h-4 w-4" />} label={t('playlists.allChannels')} count={playlist.entryCount} onClick={() => onScope({ type: 'all' })} />
       <Row
         active={sameScope(scope, { type: 'ungrouped' })}
         icon={<ListX className="h-4 w-4" />}
-        label="No group"
+        label={t('playlists.noGroup')}
         count={playlist.ungroupedCount}
         highlighted={hover === 'ungrouped'}
         onClick={() => onScope({ type: 'ungrouped' })}
@@ -83,7 +84,7 @@ export function GroupsPanel({ playlist, scope, onScope, onDropEntries, onAddGrou
       ))}
 
       <button type="button" onClick={onAddGroup} className="mt-1 flex items-center gap-2 rounded-lg px-3 py-2 text-sm text-brand-soft hover:bg-brand/10">
-        <FolderPlus className="h-4 w-4" /> New group
+        <FolderPlus className="h-4 w-4" /> {t('playlists.group.new')}
       </button>
     </nav>
   );
@@ -127,7 +128,7 @@ function GroupMenu({ group, isFirst, isLast, onRename, onDelete, onMove }: { gro
       align="right"
       className="w-44 p-1"
       trigger={({ toggle, open }) => (
-        <button type="button" onClick={toggle} aria-label={`Options for ${group.name}`} aria-haspopup="menu" aria-expanded={open} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
+        <button type="button" onClick={toggle} aria-label={t('playlists.optionsFor', { name: group.name })} aria-haspopup="menu" aria-expanded={open} className="mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-fg-subtle hover:bg-fg/10 hover:text-fg">
           <Ellipsis className="h-4 w-4" />
         </button>
       )}
@@ -135,16 +136,16 @@ function GroupMenu({ group, isFirst, isLast, onRename, onDelete, onMove }: { gro
       {(close) => (
         <div role="menu">
           <button type="button" role="menuitem" className={item} onClick={() => { close(); onRename(); }}>
-            Rename
+            {t('playlists.rename')}
           </button>
           <button type="button" role="menuitem" className={item} disabled={isFirst} onClick={() => { close(); onMove(-1); }}>
-            Move up
+            {t('playlists.group.up')}
           </button>
           <button type="button" role="menuitem" className={item} disabled={isLast} onClick={() => { close(); onMove(1); }}>
-            Move down
+            {t('playlists.group.down')}
           </button>
           <button type="button" role="menuitem" className={cn(item, 'text-red-500 hover:text-red-500')} onClick={() => { close(); onDelete(); }}>
-            Delete group…
+            {t('playlists.group.deleteEllipsis')}
           </button>
         </div>
       )}

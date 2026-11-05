@@ -1,8 +1,9 @@
-import type { ApiErrorBody, ApiErrorCode } from '@ziptv/contracts';
+import type { ApiErrorBody, ApiErrorCode } from "@ziptv/contracts";
 
-import { resolveApiUrl } from '../config';
+import { resolveApiUrl } from "../config";
+import { i18n, t, type TKey } from "../i18n";
 
-export type ClientErrorCode = ApiErrorCode | 'NETWORK_ERROR' | 'ABORTED';
+export type ClientErrorCode = ApiErrorCode | "NETWORK_ERROR" | "ABORTED";
 
 export class ApiError extends Error {
   constructor(
@@ -13,7 +14,7 @@ export class ApiError extends Error {
     readonly requestId?: string,
   ) {
     super(message);
-    this.name = 'ApiError';
+    this.name = "ApiError";
   }
 }
 
@@ -35,7 +36,9 @@ export function configureAuth(provider: AuthProvider): void {
 }
 
 /** Extra headers on every API call (active profile, parental unlock token). */
-export function configureContextHeaders(provider: () => Record<string, string>): void {
+export function configureContextHeaders(
+  provider: () => Record<string, string>,
+): void {
   contextHeaders = provider;
 }
 
@@ -49,30 +52,50 @@ export function configureProfileRecovery(handler: () => boolean): void {
   recoverProfile = handler;
 }
 
-/** Parental gate of a profile (`PIN_REQUIRED` with reason `kids_lock` / `profile_locked`). */
 export interface ProfileGate {
-  reason: 'kids_lock' | 'profile_locked';
   profileId: string;
+  reason: "kids_lock" | "pin_required";
 }
 
-let recoverGate: (gate: ProfileGate) => Promise<boolean> = async () => false;
+type GateRecoveryHandler = (gate: ProfileGate) => Promise<boolean>;
 
-/**
- * Called when the server refuses the selected profile on this device (held in a kids profile,
- * or a PIN-protected profile not opened here): the handler switches profile or asks for the PIN
- * and returns true when the request may be repeated once.
- */
-export function configureGateRecovery(handler: (gate: ProfileGate) => Promise<boolean>): void {
+let recoverGate: GateRecoveryHandler = async () => false;
+
+export function configureGateRecovery(handler: GateRecoveryHandler): void {
   recoverGate = handler;
 }
 
+function getProfileGate(error: ApiError): ProfileGate | null {
+  if (error.status !== 403) return null;
+
+  if (!error.details || typeof error.details !== "object") {
+    return null;
+  }
+
+  const details = error.details as Record<string, unknown>;
+
+  if (typeof details.profileId !== "string" || !details.profileId.trim()) {
+    return null;
+  }
+
+  if (details.reason !== "kids_lock" && details.reason !== "pin_required") {
+    return null;
+  }
+
+  return {
+    profileId: details.profileId,
+    reason: details.reason,
+  };
+}
+
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
   /** Plain objects are sent as JSON, FormData as multipart. */
   body?: unknown;
   signal?: AbortSignal;
   /** Default true. */
   auth?: boolean;
+  gateRecovery?: boolean;
   /**
    * Default true: a 401 means "my token is dead", so a new session is obtained and the request is
    * repeated. Sign-in requests must turn this off: for them a 401 means "wrong password", and
@@ -83,74 +106,173 @@ export interface RequestOptions {
   keepalive?: boolean;
 }
 
-export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
+export async function apiRequest<T>(
+  path: string,
+  options: RequestOptions = {},
+): Promise<T> {
   const response = await send(path, options, options.auth !== false);
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
 }
 
-async function send(path: string, options: RequestOptions, withAuth: boolean, isRetry = false): Promise<Response> {
-  const headers: Record<string, string> = { Accept: 'application/json', ...(withAuth ? contextHeaders() : {}) };
+interface RetryState {
+  token: boolean;
+  profile: boolean;
+  gate: boolean;
+}
+
+async function send(
+  path: string,
+  options: RequestOptions,
+  withAuth: boolean,
+  retries: RetryState = {
+    token: false,
+    profile: false,
+    gate: false,
+  },
+): Promise<Response> {
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(withAuth ? contextHeaders() : {}),
+  };
+
   let body: BodyInit | undefined;
+
   if (options.body instanceof FormData) {
     body = options.body;
   } else if (options.body !== undefined) {
-    headers['Content-Type'] = 'application/json';
+    headers["Content-Type"] = "application/json";
     body = JSON.stringify(options.body);
   }
+
   const token = withAuth ? authProvider?.getToken() : null;
-  if (token) headers.Authorization = `Bearer ${token}`;
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  headers["Accept-Language"] = i18n.locale;
 
   let response: Response;
+
   try {
-    response = await fetch(resolveApiUrl(path), { method: options.method ?? 'GET', headers, body, signal: options.signal, ...(options.keepalive ? { keepalive: true } : {}) });
+    response = await fetch(resolveApiUrl(path), {
+      method: options.method ?? "GET",
+      headers,
+      body,
+      signal: options.signal,
+      ...(options.keepalive ? { keepalive: true } : {}),
+    });
   } catch (error) {
-    if (error instanceof DOMException && error.name === 'AbortError') throw new ApiError(0, 'ABORTED', 'Request was cancelled.');
-    throw new ApiError(0, 'NETWORK_ERROR', 'Cannot reach the ZIPTV server. Check your connection and try again.');
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new ApiError(0, "ABORTED", "Request was cancelled.");
+    }
+
+    throw new ApiError(
+      0,
+      "NETWORK_ERROR",
+      "Cannot reach the ZIPTV server. Check your connection and try again.",
+    );
   }
 
-  if (response.status === 401 && withAuth && options.renewOn401 !== false && !isRetry && authProvider) {
+  // 1. Recover expired authentication token.
+  if (
+    response.status === 401 &&
+    withAuth &&
+    options.renewOn401 !== false &&
+    !retries.token &&
+    authProvider
+  ) {
     await authProvider.renewToken();
-    return send(path, options, withAuth, true);
+
+    return send(path, options, withAuth, {
+      ...retries,
+      token: true,
+    });
   }
+
   if (!response.ok) {
     const error = await toApiError(response);
-    // Reads only: a write meant for a deleted profile must not land on the default profile.
-    const read = (options.method ?? 'GET') === 'GET';
-    if (read && withAuth && !isRetry && error.status === 404 && (error.details as { reason?: unknown } | undefined)?.reason === 'profile' && recoverProfile()) {
-      return send(path, options, withAuth, true);
+
+    // 2. Recover from a protected profile gate.
+    if (withAuth && options.gateRecovery !== false && !retries.gate) {
+      const gate = getProfileGate(error);
+
+      if (gate) {
+        const recovered = await recoverGate(gate);
+
+        if (recovered) {
+          return send(path, options, withAuth, {
+            ...retries,
+            gate: true,
+          });
+        }
+      }
     }
-    const gate = profileGate(error);
-    if (gate && withAuth && !isRetry && (read || gate.reason === 'profile_locked') && (await recoverGate(gate))) {
-      return send(path, options, withAuth, true);
+
+    // 3. Recover a deleted profile for read requests only.
+    const read = (options.method ?? "GET") === "GET";
+
+    if (
+      read &&
+      withAuth &&
+      !retries.profile &&
+      error.status === 404 &&
+      (error.details as { reason?: unknown } | undefined)?.reason ===
+        "profile" &&
+      recoverProfile()
+    ) {
+      return send(path, options, withAuth, {
+        ...retries,
+        profile: true,
+      });
     }
+
     throw error;
   }
-  return response;
-}
 
-function profileGate(error: ApiError): ProfileGate | null {
-  if (error.code !== 'PIN_REQUIRED') return null;
-  const details = error.details as { reason?: unknown; profileId?: unknown } | undefined;
-  if ((details?.reason === 'kids_lock' || details?.reason === 'profile_locked') && typeof details.profileId === 'string') return { reason: details.reason, profileId: details.profileId };
-  return null;
+  return response;
 }
 
 async function toApiError(response: Response): Promise<ApiError> {
   try {
     const body = (await response.json()) as Partial<ApiErrorBody>;
     if (body.error) {
-      return new ApiError(response.status, body.error.code, body.error.message, body.error.details, body.error.requestId);
+      return new ApiError(
+        response.status,
+        body.error.code,
+        body.error.message,
+        body.error.details,
+        body.error.requestId,
+      );
     }
   } catch {
     // Non-JSON error (proxy/CDN page) — fall through.
   }
-  return new ApiError(response.status, response.status >= 500 ? 'SERVICE_UNAVAILABLE' : 'INTERNAL_ERROR', `Server responded with HTTP ${response.status}.`);
+  return new ApiError(
+    response.status,
+    response.status >= 500 ? "SERVICE_UNAVAILABLE" : "INTERNAL_ERROR",
+    `Server responded with HTTP ${response.status}.`,
+  );
 }
 
 /** Human-readable message for any thrown value. */
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) return apiErrorMessage(error);
   if (error instanceof Error) return error.message;
-  return 'Something went wrong.';
+  return t("common.somethingWrong");
+}
+
+/**
+ * The server explains failures in English, with a stable `code`. In English that explanation is
+ * shown as it is (it is the most specific); in the other languages the code's translation is,
+ * falling back to the server's words for a code the client does not know yet.
+ */
+function apiErrorMessage(error: ApiError): string {
+  if (error.code === "NETWORK_ERROR") return t("errors.network");
+  if (error.code === "ABORTED") return t("errors.aborted");
+  if (i18n.locale === "en") return error.message;
+  const key = `errors.code.${error.code}` as TKey;
+  const translated = t(key);
+  return translated === key ? error.message : translated;
 }
