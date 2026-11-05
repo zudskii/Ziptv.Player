@@ -39,6 +39,8 @@ import { ParentalService } from './application/identity/parental.service.js';
 import { ProfileViewerResolver } from './application/identity/profile-viewer-resolver.js';
 import { HmacUnlockTokens } from './infrastructure/crypto/unlock-tokens.js';
 import { PgParentalRepository } from './infrastructure/persistence/postgres/repositories/parental.repository.js';
+import { PgLibraryRepository } from './infrastructure/persistence/postgres/repositories/library.repository.js';
+import { LibraryService } from './application/identity/library.service.js';
 import { ProfileService } from './application/identity/profile.service.js';
 import type { ViewerResolver } from './application/identity/viewer-resolver.js';
 import { SearchService } from './application/catalog/search.service.js';
@@ -187,6 +189,7 @@ export interface Container {
   viewers: ViewerResolver;
   parental: ParentalService;
   profiles: ProfileService;
+  library: LibraryService;
   myList: MyListService;
   watch: WatchStateService;
   viewerData: ViewerDataService;
@@ -267,6 +270,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const progressRepository = new PgProgressRepository(db);
   const historyRepository = new PgHistoryRepository(db);
   const profiles = new ProfileService({ profiles: profileRepository, cache, limits: { maxProfiles: MAX_PROFILES } });
+  const library = new LibraryService({ library: new PgLibraryRepository(db), sources: sourceRepository, profiles, cache });
+  profiles.useLibrary(library);
   const notifications = new NotificationService(notificationRepository, clock, logger.child({ module: 'notifications' }));
   const parental = new ParentalService({
     parental: new PgParentalRepository(db),
@@ -274,6 +279,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     profileStore: profileRepository,
     sessions: sessionRepository,
     sources: sourceRepository,
+    library,
     hasher: options.passwordHasher ?? new ScryptPasswordHasher(),
     tokens: new HmacUnlockTokens(config.stream.tokenSecret),
     cache,
@@ -282,6 +288,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     notifications,
   });
   profiles.useGuard(parental);
+  library.useGuard(parental);
   const viewers: ViewerResolver = new ProfileViewerResolver(parental);
   const m3u = new M3uProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
   const xtream = new XtreamProvider(upstream, { maxBytes: config.limits.maxSourceBytes, maxEntries: config.limits.maxEntriesPerSource });
@@ -345,6 +352,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     clock,
     logger: logger.child({ module: 'sources' }),
     limits: { maxSourcesPerUser: config.limits.maxSourcesPerUser },
+    library,
   });
 
   const playlists = new PlaylistService({
@@ -390,6 +398,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       max: MAX_PROFILES,
       afterMerge: async (accountId) => {
         profiles.forget(accountId);
+        await library.changed(accountId, (await profiles.records(accountId)).map((profile) => profile.id));
         for (const profile of await profiles.records(accountId)) invalidateHome(cache, profile.id);
       },
     },
@@ -854,6 +863,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     viewers,
     parental,
     profiles,
+    library,
     myList,
     watch,
     viewerData,

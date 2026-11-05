@@ -1,5 +1,5 @@
 import type { ProfileDto, ProfileKind } from '@ziptv/contracts';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Library, Pencil, Plus, Trash2 } from 'lucide-react';
 import { useId, useState, type FormEvent } from 'react';
 import { toast } from 'sonner';
 
@@ -14,6 +14,7 @@ import { ProfileAvatar } from './ProfileSwitcher';
 import { isPinRequired, useParental } from '../parental/api';
 import { askPin } from '../parental/pin-prompt';
 import { Switch } from '../../components/ui/Switch';
+import { LibraryEditor } from './LibraryEditor';
 import { t } from '../../i18n';
 
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#a855f7', '#14b8a6', '#ec4899', '#64748b'];
@@ -23,7 +24,7 @@ const MAX_PROFILES = 5;
 export function ProfilesSection() {
   const profiles = useProfiles().data ?? [];
   const active = useActiveProfile();
-  const [editing, setEditing] = useState<ProfileDto | 'new' | null>(null);
+  const [editing, setEditing] = useState<{ profile: ProfileDto | 'new'; tab: Tab } | null>(null);
   const [deleting, setDeleting] = useState<ProfileDto | null>(null);
   const remove = useDeleteProfile();
 
@@ -33,7 +34,7 @@ export function ProfilesSection() {
         <h2 id="profiles-title" className="flex-1 font-semibold text-fg">
           {t('profiles.title')}
         </h2>
-        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing('new')} disabled={profiles.length >= MAX_PROFILES}>
+        <Button size="sm" icon={<Plus className="h-4 w-4" />} onClick={() => setEditing({ profile: 'new', tab: 'profile' })} disabled={profiles.length >= MAX_PROFILES}>
           {t('profiles.add')}
         </Button>
       </div>
@@ -48,7 +49,10 @@ export function ProfilesSection() {
                 {[profile.isDefault ? t('profiles.main') : null, profile.kind === 'kids' ? t('profiles.kids') : t('profiles.standard'), profile.pinProtected ? t('profiles.pinProtected') : null, profile.id === active?.id ? t('profiles.activeHere') : null].filter(Boolean).join(' · ')}
               </span>
             </span>
-            <IconButton label={t('profiles.editNamed', { name: profile.name })} onClick={() => setEditing(profile)}>
+            <IconButton label={t('library.ofNamed', { name: profile.name })} onClick={() => setEditing({ profile, tab: 'library' })}>
+              <Library className="h-4 w-4" />
+            </IconButton>
+            <IconButton label={t('profiles.editNamed', { name: profile.name })} onClick={() => setEditing({ profile, tab: 'profile' })}>
               <Pencil className="h-4 w-4" />
             </IconButton>
             {!profile.isDefault && (
@@ -59,7 +63,7 @@ export function ProfilesSection() {
           </li>
         ))}
       </ul>
-      <ProfileDialog profile={editing} onClose={() => setEditing(null)} usedColors={profiles.map((profile) => profile.color)} />
+      <ProfileDialog editing={editing} onClose={() => setEditing(null)} usedColors={profiles.map((profile) => profile.color)} />
       <ConfirmDialog
         open={deleting !== null}
         onClose={() => setDeleting(null)}
@@ -81,11 +85,34 @@ export function ProfilesSection() {
   );
 }
 
-function ProfileDialog({ profile, onClose, usedColors }: { profile: ProfileDto | 'new' | null; onClose: () => void; usedColors: string[] }) {
+type Tab = 'profile' | 'library';
+
+/** New profile: the form. An existing one: "Profile" (name, type, colour) and "Library" (its sources). */
+function ProfileDialog({ editing, onClose, usedColors }: { editing: { profile: ProfileDto | 'new'; tab: Tab } | null; onClose: () => void; usedColors: string[] }) {
+  const profile = editing?.profile ?? null;
   return (
-    <Dialog open={profile !== null} onClose={onClose} title={profile === 'new' ? t('profiles.new') : t('profiles.edit')} className="w-[min(94vw,26rem)]">
-      {profile !== null && <ProfileForm key={profile === 'new' ? 'new' : profile.id} profile={profile === 'new' ? null : profile} onClose={onClose} usedColors={usedColors} />}
+    <Dialog open={editing !== null} onClose={onClose} title={profile === 'new' ? t('profiles.new') : t('profiles.edit')} className="w-[min(94vw,28rem)]">
+      {editing && profile === 'new' && <ProfileForm key="new" profile={null} onClose={onClose} usedColors={usedColors} />}
+      {editing && profile && profile !== 'new' && <ProfileTabs key={profile.id} profile={profile} initialTab={editing.tab} onClose={onClose} usedColors={usedColors} />}
     </Dialog>
+  );
+}
+
+function ProfileTabs({ profile, initialTab, onClose, usedColors }: { profile: ProfileDto; initialTab: Tab; onClose: () => void; usedColors: string[] }) {
+  const [tab, setTab] = useState<Tab>(initialTab);
+  return (
+    <div className="space-y-4">
+      <Segmented<Tab>
+        label={t('profiles.sections')}
+        value={tab}
+        onChange={setTab}
+        options={[
+          { value: 'profile', label: t('profiles.profileTab') },
+          { value: 'library', label: t('library.tab') },
+        ]}
+      />
+      {tab === 'profile' ? <ProfileForm profile={profile} onClose={onClose} usedColors={usedColors} /> : <LibraryEditor profile={profile} onDone={onClose} />}
+    </div>
   );
 }
 
@@ -137,6 +164,7 @@ function ProfileForm({ profile, onClose, usedColors }: { profile: ProfileDto | n
           { value: 'kids', label: t('profiles.kids') },
         ]}
       />
+      {!profile && <p className="-mt-2 text-xs text-fg-subtle">{kind === 'kids' ? t('library.newKidsHint') : t('library.newStandardHint')}</p>}
       {pinSet && (
         <Switch checked={pinProtected} onChange={setPinProtected} label={t('profiles.requirePin')} description={t('profiles.requirePinHint')} />
       )}

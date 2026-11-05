@@ -1,4 +1,4 @@
-import type { AddSourceRequest, ChannelListDto, SourceDto, UpdateSourceRequest } from '@ziptv/contracts';
+import type { AddSourceRequest, ChannelListDto, NewSourceAudience, SourceDto, SourceProfilesDto, UpdateSourceProfilesRequest, UpdateSourceRequest } from '@ziptv/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef } from 'react';
 
@@ -7,12 +7,17 @@ import { apiRequest } from '../../lib/api-client';
 const BASE = '/api/v1/sources';
 
 export const sourcesApi = {
+  /** The active profile's library. */
   list: (signal?: AbortSignal) => apiRequest<SourceDto[]>(BASE, { signal }),
+  /** Every source of the account (Settings → Sources). */
+  listAccount: (signal?: AbortSignal) => apiRequest<SourceDto[]>(`${BASE}?scope=account`, { signal }),
+  setProfiles: (id: string, body: UpdateSourceProfilesRequest) => apiRequest<SourceProfilesDto>(`${BASE}/${id}/profiles`, { method: 'PUT', body }),
   get: (id: string, signal?: AbortSignal) => apiRequest<SourceDto>(`${BASE}/${id}`, { signal }),
   add: (input: AddSourceRequest) => apiRequest<SourceDto>(BASE, { method: 'POST', body: input }),
-  upload: (input: { file: File; name?: string }) => {
+  upload: (input: { file: File; name?: string; audience?: NewSourceAudience }) => {
     const form = new FormData();
     if (input.name) form.append('name', input.name);
+    if (input.audience) form.append('audience', input.audience);
     form.append('file', input.file);
     return apiRequest<SourceDto>(`${BASE}/upload`, { method: 'POST', body: form });
   },
@@ -29,7 +34,9 @@ export const sourcesApi = {
 };
 
 export const sourceKeys = {
+  /** The active profile's library (and, as a prefix, every source query). */
   all: ['sources'] as const,
+  account: ['sources', 'account'] as const,
   channels: (sourceId: string, catalogVersion: string) => ['channels', sourceId, catalogVersion] as const,
 };
 
@@ -46,7 +53,34 @@ export function useSources() {
     queryKey: sourceKeys.all,
     queryFn: ({ signal }) => sourcesApi.list(signal),
     staleTime: 10_000,
-    refetchInterval: (query) => (query.state.data?.some(isSyncing) ? 1_500 : query.state.data?.some((source) => source.epg.syncing) ? 3_000 : 60_000),
+    refetchInterval: pollWhileSyncing,
+  });
+}
+
+/** Every source of the account, with the profiles that see each (Settings → Sources). */
+export function useAccountSources() {
+  return useQuery({
+    queryKey: sourceKeys.account,
+    queryFn: ({ signal }) => sourcesApi.listAccount(signal),
+    staleTime: 10_000,
+    refetchInterval: pollWhileSyncing,
+  });
+}
+
+function pollWhileSyncing(query: { state: { data?: SourceDto[] | undefined } }): number {
+  const data = query.state.data;
+  return data?.some(isSyncing) ? 1_500 : data?.some((source) => source.epg.syncing) ? 3_000 : 60_000;
+}
+
+/**
+ * Who sees a source. Everything the active profile shows may change with it, so every query is
+ * refreshed (a library change is rare).
+ */
+export function useSetSourceProfiles() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: UpdateSourceProfilesRequest & { id: string }) => sourcesApi.setProfiles(id, body),
+    onSuccess: () => queryClient.invalidateQueries(),
   });
 }
 
@@ -68,13 +102,16 @@ export function useChannelList(source: SourceDto | undefined) {
   });
 }
 
+/** A new or changed source: into the account list, and into this profile's library (a new source is always in the adding profile's). */
 function useUpsertSource() {
   const queryClient = useQueryClient();
   return (source: SourceDto) => {
-    queryClient.setQueryData<SourceDto[]>(sourceKeys.all, (current = []) => {
+    const upsert = (current: SourceDto[] = []) => {
       const exists = current.some((item) => item.id === source.id);
       return exists ? current.map((item) => (item.id === source.id ? source : item)) : [...current, source];
-    });
+    };
+    queryClient.setQueryData<SourceDto[]>(sourceKeys.all, upsert);
+    if (queryClient.getQueryData(sourceKeys.account)) queryClient.setQueryData<SourceDto[]>(sourceKeys.account, upsert);
   };
 }
 
@@ -114,6 +151,7 @@ export function useDeleteSource() {
     mutationFn: sourcesApi.remove,
     onSuccess: (_result, id) => {
       queryClient.setQueryData<SourceDto[]>(sourceKeys.all, (current = []) => current.filter((item) => item.id !== id));
+      queryClient.setQueryData<SourceDto[]>(sourceKeys.account, (current) => current?.filter((item) => item.id !== id));
       queryClient.removeQueries({ queryKey: ['channels', id] });
       void queryClient.invalidateQueries({ queryKey: ['home'] });
     },

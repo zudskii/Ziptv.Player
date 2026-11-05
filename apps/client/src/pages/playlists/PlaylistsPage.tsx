@@ -99,7 +99,7 @@ export function PlaylistsPage() {
         onConfirm={async () => {
           if (!deleting) return;
           await remove.mutateAsync(deleting.id);
-          toast.success(`“${deleting.name}” deleted`);
+          toast.success(t('playlists.deletedNamed', { name: deleting.name }));
         }}
       />
     </div>

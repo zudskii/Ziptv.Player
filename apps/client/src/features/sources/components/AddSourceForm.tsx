@@ -8,7 +8,8 @@ import { ApiError, errorMessage } from '../../../lib/api-client';
 import { cn } from '../../../lib/cn';
 import { useAddSource, useUploadSource } from '../api';
 import { detectXtream } from '../xtream-detect';
-import { t } from '../../../i18n';
+import { i18n, t } from '../../../i18n';
+import { useActiveProfile, useProfiles } from '../../profiles/api';
 
 type Mode = 'url' | 'file' | 'xtream';
 
@@ -29,11 +30,17 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
   const [file, setFile] = useState<File | null>(null);
   const [dragging, setDragging] = useState(false);
   const [xtream, setXtream] = useState({ server: '', username: '', password: '' });
+  const profiles = useProfiles().data ?? [];
+  const active = useActiveProfile();
+  // Other grown-up profiles that could see it too (kids profiles are always assigned by hand).
+  const others = profiles.filter((profile) => profile.kind === 'standard' && profile.id !== active?.id);
+  const [forEveryone, setForEveryone] = useState(false);
+  const audience = forEveryone && others.length > 0 ? ('all' as const) : undefined;
   const add = useAddSource();
   const upload = useUploadSource();
   const pending = add.isPending || upload.isPending;
   const error = mode === 'file' ? upload.error : add.error;
-  const ids = { name: useId(), url: useId(), server: useId(), username: useId(), password: useId() };
+  const ids = { name: useId(), url: useId(), server: useId(), username: useId(), password: useId(), audience: useId() };
 
   const detected = mode === 'url' ? detectXtream(url) : null;
 
@@ -43,10 +50,10 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
     try {
       const source =
         mode === 'file'
-          ? await upload.mutateAsync({ file: file!, name: label })
+          ? await upload.mutateAsync({ file: file!, name: label, ...(audience ? { audience } : {}) })
           : mode === 'url'
-            ? await add.mutateAsync({ type: 'm3u_url', url: url.trim(), name: label })
-            : await add.mutateAsync({ type: 'xtream', server: xtream.server.trim(), username: xtream.username.trim(), password: xtream.password, name: label });
+            ? await add.mutateAsync({ type: 'm3u_url', url: url.trim(), name: label, ...(audience ? { audience } : {}) })
+            : await add.mutateAsync({ type: 'xtream', server: xtream.server.trim(), username: xtream.username.trim(), password: xtream.password, name: label, ...(audience ? { audience } : {}) });
       onAdded(source);
     } catch {
       /* shown inline via the mutation error */
@@ -185,6 +192,18 @@ export function AddSourceForm({ onAdded, onCancel, submitLabel, initialMode = 'u
         </label>
         <input id={ids.name} value={name} maxLength={80} onChange={(event) => setName(event.target.value)} placeholder={t('sources.form.namePlaceholder')} className="field" />
       </div>
+
+      {others.length > 0 && (
+        <label htmlFor={ids.audience} className="flex cursor-pointer items-start gap-3 rounded-lg border border-line/10 p-3">
+          <input id={ids.audience} type="checkbox" checked={forEveryone} onChange={(event) => setForEveryone(event.target.checked)} className="mt-0.5 h-4 w-4 accent-brand" />
+          <span className="min-w-0">
+            <span className="block text-sm text-fg">{t('library.addForAll')}</span>
+            <span className="block text-xs text-fg-muted">
+              {forEveryone ? t('library.addForAllOn', { names: i18n.formatList(others.map((profile) => profile.name)) }) : t('library.addForAllOff', { name: active?.name ?? '' })}
+            </span>
+          </span>
+        </label>
+      )}
 
       {error && <ErrorBox error={error} />}
 

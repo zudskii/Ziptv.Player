@@ -153,6 +153,7 @@ export class SourceSyncPipeline {
     if (!rejectedUpload && (!source.sync.error || source.sync.error.problem !== problem)) {
       await this.deps.notifications.notify({
         ownerId: source.ownerId,
+        sourceIds: [source.id],
         type: 'source_failed',
         severity: 'error',
         title: `${source.name}: ${PROBLEM_TITLES[problem]}`,
@@ -166,7 +167,7 @@ export class SourceSyncPipeline {
 
   private async notifySuccess(before: SourceRecord, after: SourceRecord, added: AddedCounts): Promise<void> {
     const { notifications } = this.deps;
-    const base = { ownerId: after.ownerId, link: '/sources' };
+    const base = { ownerId: after.ownerId, link: '/sources', sourceIds: [after.id] };
     if (before.revision === 0) {
       await notifications.notify({
         ...base,

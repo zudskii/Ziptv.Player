@@ -133,6 +133,7 @@ export class EpgSyncPipeline {
       if (guide.generation === 0 || guide.sync.error) {
         await this.deps.notifications.notify({
           ownerId: guide.ownerId,
+          sourceIds: guide.sourceIds,
           type: 'epg_updated',
           severity: 'success',
           title: 'EPG updated',
@@ -159,6 +160,7 @@ export class EpgSyncPipeline {
       if (!guide.sync.error) {
         await this.deps.notifications.notify({
           ownerId: guide.ownerId,
+          sourceIds: guide.sourceIds,
           type: 'epg_failed',
           severity: 'warning',
           title: 'EPG unavailable',

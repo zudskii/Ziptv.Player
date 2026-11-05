@@ -9,7 +9,7 @@ export function catalogVersion(source: Pick<SourceRecord, 'revision' | 'epgVersi
   return `${source.revision}.${source.epgVersion}`;
 }
 
-export function toSourceDto(source: SourceRecord, guides: SourceGuideSummary = NO_GUIDES): SourceDto {
+export function toSourceDto(source: SourceRecord, guides: SourceGuideSummary = NO_GUIDES, profileIds: string[] = []): SourceDto {
   const iso = (date: Date | null | undefined) => (date ? date.toISOString() : null);
   return {
     id: source.id,
@@ -53,6 +53,7 @@ export function toSourceDto(source: SourceRecord, guides: SourceGuideSummary = N
     warnings: source.warnings,
     warningCount: source.warningCount,
     xtreamCandidate: source.xtreamCandidate,
+    profileIds,
     createdAt: source.createdAt.toISOString(),
     updatedAt: source.updatedAt.toISOString(),
   };

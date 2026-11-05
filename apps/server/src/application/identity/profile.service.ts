@@ -38,6 +38,12 @@ export class ProfileService {
   ) {}
 
   private guard: ProfileGuard | null = null;
+  private library: { seedProfile(userId: string, profile: Pick<ProfileRecord, 'id' | 'kind'>): Promise<void> } | null = null;
+
+  /** The per-profile library gives a new profile its starting sources. */
+  useLibrary(library: { seedProfile(userId: string, profile: Pick<ProfileRecord, 'id' | 'kind'>): Promise<void> }): void {
+    this.library = library;
+  }
 
   /** Parental controls are built on top of profiles; they plug their checks in here. */
   useGuard(guard: ProfileGuard): void {
@@ -84,6 +90,7 @@ export class ProfileService {
     }
     const result = input.pinProtected ? ((await this.deps.profiles.update(created.id, userId, { pinProtected: true })) ?? created) : created;
     this.forget(userId);
+    await this.library?.seedProfile(userId, result);
     return toProfileDto(result);
   }
 

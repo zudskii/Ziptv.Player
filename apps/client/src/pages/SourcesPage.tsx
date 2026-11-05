@@ -10,17 +10,22 @@ import { FullscreenMessage } from '../components/ui/FullscreenMessage';
 import { Spinner } from '../components/ui/Spinner';
 import { errorMessage } from '../lib/api-client';
 import { GuideManager } from '../features/epg/components/GuideManager';
-import { useSources } from '../features/sources/api';
+import { useAccountSources } from '../features/sources/api';
 import { AddSourceForm } from '../features/sources/components/AddSourceForm';
 import { SourceCard } from '../features/sources/components/SourceCard';
+import { SourceProfilesDialog } from '../features/sources/components/SourceProfilesDialog';
 import { SourceSettingsDialog } from '../features/sources/components/SourceSettingsDialog';
 import { t } from '../i18n';
 
-/** Settings → Sources: every provider the user added, its sync state, health and actions. */
+/**
+ * Settings → Sources: every provider of the account (not only this profile's library), its sync
+ * state, health, actions — and which profiles see it.
+ */
 export function SourcesPage({ children }: { children?: ReactNode }) {
-  const sourcesQuery = useSources();
+  const sourcesQuery = useAccountSources();
   const [adding, setAdding] = useState(false);
   const [editing, setEditing] = useState<SourceDto | null>(null);
+  const [sharing, setSharing] = useState<SourceDto | null>(null);
   const sources = sourcesQuery.data ?? [];
 
   return (
@@ -53,7 +58,7 @@ export function SourcesPage({ children }: { children?: ReactNode }) {
       ) : (
         <div className="space-y-3">
           {sources.map((source) => (
-            <SourceCard key={source.id} source={source} onEdit={setEditing} />
+            <SourceCard key={source.id} source={source} onEdit={setEditing} onProfiles={setSharing} />
           ))}
         </div>
       )}
@@ -67,11 +72,12 @@ export function SourcesPage({ children }: { children?: ReactNode }) {
           onCancel={() => setAdding(false)}
           onAdded={(source) => {
             setAdding(false);
-            toast.success(`“${source.name}” added`, { description: source.type === 'm3u_file' ? `${source.stats.live.toLocaleString()} channels` : t('sources.syncingBg') });
+            toast.success(t('sources.toast.added', { name: source.name }), { description: source.type === 'm3u_file' ? t('sources.toast.addedChannels', { count: source.stats.live }) : t('sources.syncingBg') });
           }}
         />
       </Dialog>
       <SourceSettingsDialog source={editing} onClose={() => setEditing(null)} />
+      <SourceProfilesDialog source={sharing} onClose={() => setSharing(null)} />
     </div>
   );
 }

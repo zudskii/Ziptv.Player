@@ -3,7 +3,7 @@ import type { NotificationDto, NotificationListDto, NotificationType } from '@zi
 import { AppError } from '../errors.js';
 import type { Clock } from '../ports/clock.js';
 import type { Logger } from '../ports/logger.js';
-import type { NewNotification, NotificationRecord, NotificationRepository } from '../ports/notification-repository.js';
+import type { NewNotification, NotificationRecord, NotificationRepository, NotificationScope } from '../ports/notification-repository.js';
 
 const LIST_LIMIT = 50;
 /** Account matters a kids profile does not see (and cannot dismiss for the grown-ups). */
@@ -12,9 +12,11 @@ const ADULT_ONLY: readonly NotificationType[] = ['billing', 'account_security', 
 export interface NotificationViewer {
   userId: string;
   kids: boolean;
+  /** The profile's library; notices about other sources are not shown. Absent/null = everything. */
+  library?: ReadonlySet<string> | null;
 }
 
-const excluded = (viewer: NotificationViewer) => (viewer.kids ? ADULT_ONLY : []);
+const excluded = (viewer: NotificationViewer): NotificationScope => ({ exclude: viewer.kids ? ADULT_ONLY : [], library: viewer.library ? [...viewer.library] : null });
 export const NOTIFICATION_RETENTION_DAYS = 30;
 
 /** In-app notification center ("Source refreshed · 12 new channels added", "EPG updated", …). */

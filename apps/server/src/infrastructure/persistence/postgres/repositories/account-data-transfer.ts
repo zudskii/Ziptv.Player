@@ -43,6 +43,11 @@ async function mergeProfiles(trx: Transaction<Database>, guestId: string, accoun
       SELECT ${to}, source_id, content_type, series_key, key, season, episode, title, series_title, image, position, duration, completed, updated_at FROM progress WHERE profile_id = ${from}
       ON CONFLICT DO NOTHING`.execute(trx);
     await trx.updateTable('history').set({ profile_id: to }).where('profile_id', '=', from).execute();
+    // What the guest's default profile saw (its sources just moved to the account), the account's default now sees too.
+    await sql`
+      INSERT INTO profile_sources (profile_id, source_id)
+      SELECT ${to}, source_id FROM profile_sources WHERE profile_id = ${from}
+      ON CONFLICT DO NOTHING`.execute(trx);
     // The emptied guest default disappears with the guest (ON DELETE CASCADE).
     await trx.updateTable('profiles').set({ user_id: accountId }).where('user_id', '=', guestId).where('is_default', '=', false).execute();
     return;

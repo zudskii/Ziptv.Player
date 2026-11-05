@@ -20,7 +20,7 @@ import { queryTerms } from '../../domain/shared/text.js';
 import { toChannelDto } from '../catalog/catalog-mapper.js';
 import type { LiveCatalogService } from '../catalog/live.service.js';
 import { AppError } from '../errors.js';
-import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
+import { inLibrary, isHiddenForViewer, seesSource, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { LiveChannelSummary } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
@@ -211,8 +211,9 @@ export class EpgService {
     const terms = queryTerms(query);
     if (terms.length === 0) return { query, items: [] };
     const now = this.deps.clock.now();
-    const sources = (await this.deps.sources.listByOwner(viewer.userId)).filter((source) => source.revision > 0);
-    const guides = (await this.deps.guides.listByOwner(viewer.userId)).filter((guide) => guide.generation > 0);
+    // Guides follow sources: a profile searches the guides of the sources in its library.
+    const sources = inLibrary(viewer, await this.deps.sources.listByOwner(viewer.userId)).filter((source) => source.revision > 0);
+    const guides = (await this.deps.guides.listByOwner(viewer.userId)).filter((guide) => guide.generation > 0 && guide.sourceIds.some((id) => seesSource(viewer, id)));
     if (sources.length === 0 || guides.length === 0) return { query, items: [] };
 
     // (guide, epg channel) → the live channels showing it.

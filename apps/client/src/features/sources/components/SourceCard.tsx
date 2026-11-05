@@ -1,5 +1,5 @@
 import type { SourceDto } from '@ziptv/contracts';
-import { CalendarClock, FileText, Globe, KeyRound, MoreHorizontal, Pencil, RefreshCw, Trash2, TriangleAlert, Tv } from 'lucide-react';
+import { CalendarClock, FileText, Globe, KeyRound, MoreHorizontal, Pencil, RefreshCw, Trash2, TriangleAlert, Tv, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router';
 import { toast } from 'sonner';
@@ -15,10 +15,15 @@ import { describeLibrary, describeSync, HEALTH_LABELS, SOURCE_TYPE_LABELS } from
 import { SourceProblemNotice } from './SourceProblemNotice';
 import { SyncProgress } from './SyncProgress';
 import { i18n, t } from '../../../i18n';
+import { useActiveProfile, useProfiles } from '../../profiles/api';
 
 const TYPE_ICONS = { m3u_url: Globe, m3u_file: FileText, xtream: KeyRound } as const;
 
-export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (source: SourceDto) => void }) {
+export function SourceCard({ source, onEdit, onProfiles }: { source: SourceDto; onEdit: (source: SourceDto) => void; onProfiles?: (source: SourceDto) => void }) {
+  const profiles = useProfiles().data ?? [];
+  const active = useActiveProfile();
+  const seenBy = profiles.filter((profile) => source.profileIds.includes(profile.id));
+  const hereToo = !active || source.profileIds.includes(active.id);
   const now = useNow(30_000);
   const sync = useSyncSource();
   const remove = useDeleteSource();
@@ -49,7 +54,7 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
     if (!window.confirm(t('sources.card.removeConfirm', { name: source.name }))) return;
     try {
       await remove.mutateAsync(source.id);
-      toast.success(`“${source.name}” removed`);
+      toast.success(t('sources.toast.removed', { name: source.name }));
     } catch (error) {
       toast.error(errorMessage(error));
     }
@@ -66,11 +71,23 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
             <h3 className="truncate font-semibold text-fg">{source.name}</h3>
             <Badge>{SOURCE_TYPE_LABELS[source.type]}</Badge>
             {source.revision > 0 && source.health.state !== 'unknown' && <Badge tone={health.tone}>{health.label}</Badge>}
+            {!hereToo && <Badge>{t('library.notHere')}</Badge>}
           </div>
           <p className="mt-0.5 truncate text-xs text-fg-subtle">
             {source.origin.kind === 'file' ? source.origin.fileName : source.origin.kind === 'xtream' ? `${source.origin.username} @ ${source.origin.host}` : source.origin.host}
           </p>
           <p className="mt-2 text-sm text-fg-muted">{describeLibrary(source)}</p>
+          {profiles.length > 1 && (
+            <p className="mt-0.5 flex items-center gap-1 text-xs text-fg-subtle">
+              <Users className="h-3.5 w-3.5" aria-hidden />
+              {seenBy.length > 0 ? t('library.seenBy', { names: i18n.formatList(seenBy.map((profile) => profile.name)) }) : t('library.nobody')}
+              {onProfiles && (
+                <button type="button" onClick={() => onProfiles(source)} className="ml-1 font-medium text-brand-soft hover:underline">
+                  {t('library.change')}
+                </button>
+              )}
+            </p>
+          )}
           <p className="mt-0.5 text-xs text-fg-subtle">
             {describeSync(source, now)}
             {source.sync.autoSync && source.sync.nextSyncAt && !syncing && t('sources.card.next', { when: formatIn(source.sync.nextSyncAt, now) })}
@@ -107,7 +124,7 @@ export function SourceCard({ source, onEdit }: { source: SourceDto; onEdit: (sou
           >
             {(close) => (
               <ul className="w-52 py-1 text-sm" role="menu">
-                {source.revision > 0 && source.stats.live > 0 && (
+                {hereToo && source.revision > 0 && source.stats.live > 0 && (
                   <MenuLink to={`/live/${source.id}`} icon={<Tv className="h-4 w-4" />} onClick={close}>
                     {t('sources.card.openLive')}
                   </MenuLink>

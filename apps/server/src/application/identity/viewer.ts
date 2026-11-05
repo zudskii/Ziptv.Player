@@ -20,6 +20,22 @@ export interface Viewer {
   unlocked: boolean;
   /** Changes whenever the restrictions change (part of HTTP cache validators). */
   restrictionsVersion: string;
+  /**
+   * The account's sources this profile sees (its library); `null` = all of them (background work,
+   * tests). Everything a viewer reads is scoped to it: catalog, search, Home, guide, My List,
+   * history, notifications.
+   */
+  library: ReadonlySet<string> | null;
+}
+
+/** The profile sees this source (it is in its library). Ownership is checked separately. */
+export function seesSource(viewer: Pick<Viewer, 'library'>, sourceId: string): boolean {
+  return viewer.library === null || viewer.library.has(sourceId);
+}
+
+/** Only the sources in the viewer's library, in the same order. */
+export function inLibrary<T extends { id: string }>(viewer: Pick<Viewer, 'library'>, sources: readonly T[]): T[] {
+  return sources.filter((source) => seesSource(viewer, source.id));
 }
 
 export function lockKey(sourceId: string, value: string): string {
@@ -53,5 +69,6 @@ export function unrestrictedViewer(userId: string, profileId = userId, sessionId
     lockedChannels: new Set(),
     unlocked: false,
     restrictionsVersion: '0',
+    library: null,
   };
 }

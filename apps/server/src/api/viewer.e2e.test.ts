@@ -132,6 +132,9 @@ describe.skipIf(!TEST_DATABASE_URL)('Viewer experience end-to-end', () => {
     const kids = (await request(t.app).post('/api/v1/profiles').set(auth()).send({ name: '  Kids ', kind: 'kids' }).expect(201)).body as ProfileDto;
     expect(kids).toMatchObject({ name: 'Kids', kind: 'kids', isDefault: false });
     expect(kids.color).not.toBe(main!.color);
+    // Kids profiles start with nothing: the source exists for them only once a grown-up assigns it.
+    await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(auth(kids.id)).expect(404);
+    await request(t.app).put(`/api/v1/profiles/${kids.id}/library`).set(auth()).send({ sourceIds: [source.id] }).expect(200);
 
     expect(channels.channels.map((c) => c.name)).toContain('Night Club TV');
     const kidsChannels = (await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(auth(kids.id)).expect(200)).body as ChannelListDto;

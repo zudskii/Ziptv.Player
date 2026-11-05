@@ -3,7 +3,7 @@ import type { HistoryItemDto, HistoryPageDto, ProgressContentType, ProgressItemD
 import { HISTORY_MIN_SECS, remainingSecs } from '../../domain/viewer/progress.js';
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { AppError } from '../errors.js';
-import type { Viewer } from '../identity/viewer.js';
+import { seesSource, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { HistoryRecord, HistoryRepository, ProgressRecord, ProgressRepository } from '../ports/user-state-repository.js';
 import { invalidateHome } from './cache-keys.js';
@@ -26,7 +26,9 @@ export class WatchStateService {
   }
 
   async continueWatching(viewer: Viewer, limit = 20): Promise<ProgressItemDto[]> {
-    return (await this.deps.progress.listRecent(viewer.profileId, Math.min(limit, MAX_PAGE))).map((record) => this.toProgressDto(record));
+    // Over-fetch a little: entries of sources taken out of this profile's library are skipped.
+    const records = await this.deps.progress.listRecent(viewer.profileId, Math.min(limit * 2, MAX_PAGE));
+    return records.filter((record) => seesSource(viewer, record.sourceId)).slice(0, limit).map((record) => this.toProgressDto(record));
   }
 
   async removeProgress(viewer: Viewer, ref: { contentType: ProgressContentType; sourceId: string; key: string; seriesKey?: string | undefined }): Promise<void> {
@@ -41,13 +43,14 @@ export class WatchStateService {
     const page = rows.slice(0, limit);
     const last = page.at(-1);
     return {
-      items: page.map((row) => this.toHistoryDto(row)),
+      items: page.filter((row) => row.sourceId === null || seesSource(viewer, row.sourceId)).map((row) => this.toHistoryDto(row)),
       nextCursor: rows.length > limit && last ? encodeCursor(last) : null,
     };
   }
 
   async recentlyWatched(viewer: Viewer, limit: number): Promise<HistoryItemDto[]> {
-    return (await this.deps.history.recentDistinct(viewer.profileId, limit, HISTORY_MIN_SECS)).map((row) => this.toHistoryDto(row));
+    const rows = await this.deps.history.recentDistinct(viewer.profileId, Math.min(limit * 2, MAX_PAGE), HISTORY_MIN_SECS);
+    return rows.filter((row) => row.sourceId === null || seesSource(viewer, row.sourceId)).slice(0, limit).map((row) => this.toHistoryDto(row));
   }
 
   async removeHistory(viewer: Viewer, id: string): Promise<void> {

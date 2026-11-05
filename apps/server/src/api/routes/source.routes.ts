@@ -1,13 +1,17 @@
 import path from 'node:path';
 
-import { Router, type RequestHandler } from 'express';
+import { Router, type Request, type RequestHandler } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 
 import { AppError } from '../../application/errors.js';
 import type { SourceService } from '../../application/sources/source.service.js';
 import type { RateLimiterFactory } from '../middleware/rate-limit.js';
-import { currentUser, routeParam } from '../middleware/request-context.js';
+import type { NewSourceAudience, SourceDto } from '@ziptv/contracts';
+
+import type { LibraryService } from '../../application/identity/library.service.js';
+import { seesSource } from '../../application/identity/viewer.js';
+import { currentUser, currentViewer, routeParam } from '../middleware/request-context.js';
 import { parseInput } from '../middleware/validate.js';
 
 const Name = z.string().trim().min(1, 'must not be empty').max(80, 'must be at most 80 characters');
@@ -26,12 +30,17 @@ const XtreamCredentials = z
   })
   .strict();
 
+const Audience = z.enum(['profile', 'all']);
+
 const AddSourceBody = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('m3u_url'), url: HttpUrl, name: Name.optional() }).strict(),
-  XtreamCredentials.extend({ type: z.literal('xtream'), name: Name.optional() }).strict(),
+  z.object({ type: z.literal('m3u_url'), url: HttpUrl, name: Name.optional(), audience: Audience.optional() }).strict(),
+  XtreamCredentials.extend({ type: z.literal('xtream'), name: Name.optional(), audience: Audience.optional() }).strict(),
 ]);
 
-const UploadBody = z.object({ name: Name.optional() });
+const UploadBody = z.object({ name: Name.optional(), audience: Audience.optional() });
+
+const SourceProfilesBody = z.object({ profileIds: z.array(z.string().uuid()).max(50), pin: z.string().max(12).optional() }).strict();
+const ListQuery = z.object({ scope: z.enum(['profile', 'account']).optional() });
 
 const UpdateSourceBody = z
   .object({
@@ -44,8 +53,18 @@ const UpdateSourceBody = z
   .strict();
 
 /** Settings → Sources. */
-export function createSourceRouter(deps: { sources: SourceService; auth: RequestHandler; maxSourceBytes: number; limit: RateLimiterFactory }): Router {
-  const { sources, auth } = deps;
+export function createSourceRouter(deps: { sources: SourceService; library: LibraryService; auth: RequestHandler; maxSourceBytes: number; limit: RateLimiterFactory }): Router {
+  const { sources, library, auth } = deps;
+  /** A new source goes into the adding profile's library (or every grown-up profile's). */
+  const assign = async (req: Request, created: SourceDto, audience: NewSourceAudience | undefined): Promise<SourceDto> => {
+    await library.assignNewSource(currentViewer(req), created.id, audience ?? 'profile');
+    return sources.get(currentUser(req).id, created.id);
+  };
+  /**
+   * Profiles see their library; Settings → Sources manages the whole account (`?scope=account`).
+   * Kids profiles never see sources outside their library.
+   */
+  const scoped = (req: Request, scope: 'profile' | 'account' | undefined) => (scope === 'account' && !currentViewer(req).kids ? undefined : currentViewer(req));
   const router = Router();
 
   // Memory storage: the upload is parsed and stored in the database — nothing touches the
@@ -60,7 +79,7 @@ export function createSourceRouter(deps: { sources: SourceService; auth: Request
 
   router.get('/', async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-cache');
-    res.json(await sources.list(currentUser(req).id));
+    res.json(await sources.list(currentUser(req).id, scoped(req, parseInput(ListQuery, req.query).scope)));
   });
 
   router.post('/', writeLimiter, async (req, res) => {
@@ -71,7 +90,7 @@ export function createSourceRouter(deps: { sources: SourceService; auth: Request
         ? await sources.addUrl(ownerId, { url: new URL(body.url), name: body.name })
         : await sources.addXtream(ownerId, { server: new URL(body.server), username: body.username, password: body.password, name: body.name });
     // Accepted: the first sync runs in the background; poll GET /sources/:id for progress.
-    res.status(202).json(created);
+    res.status(202).json(await assign(req, created, body.audience));
   });
 
   router.post('/upload', writeLimiter, upload.single('file'), async (req, res) => {
@@ -82,12 +101,24 @@ export function createSourceRouter(deps: { sources: SourceService; auth: Request
       bytes: req.file.buffer,
       name: body.name,
     });
-    res.status(201).json(created);
+    res.status(201).json(await assign(req, created, body.audience));
   });
 
   router.get('/:sourceId', async (req, res) => {
     res.setHeader('Cache-Control', 'private, no-cache');
-    res.json(await sources.get(currentUser(req).id, routeParam(req, 'sourceId')));
+    const viewer = currentViewer(req);
+    const sourceId = routeParam(req, 'sourceId');
+    if (viewer.kids && !seesSource(viewer, sourceId)) throw AppError.notFound('Source');
+    res.json(await sources.get(currentUser(req).id, sourceId));
+  });
+
+  router.get('/:sourceId/profiles', async (req, res) => {
+    if (currentViewer(req).kids) throw AppError.forbidden('Kids profiles cannot see other profiles.');
+    res.json(await library.sourceProfiles(currentUser(req), routeParam(req, 'sourceId')));
+  });
+
+  router.put('/:sourceId/profiles', writeLimiter, async (req, res) => {
+    res.json(await library.setSourceProfiles(currentUser(req), routeParam(req, 'sourceId'), parseInput(SourceProfilesBody, req.body)));
   });
 
   router.patch('/:sourceId', async (req, res) => {

@@ -1,7 +1,7 @@
 import type { ChannelDto, ChannelListDto } from '@ziptv/contracts';
 
 import { AppError } from '../errors.js';
-import { isHiddenForViewer, isLockedForViewer, type Viewer } from '../identity/viewer.js';
+import { isHiddenForViewer, isLockedForViewer, seesSource, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository, LiveChannelSummary } from '../ports/catalog-repository.js';
 import type { SourceRecord, SourceRepository } from '../ports/source-repository.js';
@@ -29,6 +29,8 @@ export class LiveCatalogService {
 
   async requireSource(viewer: Viewer, sourceId: string): Promise<SourceRecord> {
     if (!this.deps.sources.isValidId(sourceId)) throw AppError.notFound('Source');
+    // Not in this profile's library = does not exist for it (same answer as another account's source).
+    if (!seesSource(viewer, sourceId)) throw AppError.notFound('Source');
     const source = await this.deps.sources.findOwned(sourceId, viewer.userId);
     if (!source) throw AppError.notFound('Source');
     return source;

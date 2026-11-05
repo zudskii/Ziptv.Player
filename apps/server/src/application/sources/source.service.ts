@@ -20,6 +20,7 @@ import type { SourceOrigin, SourceRecord, SourceRepository, SourceSyncState } fr
 import type { UrlPolicy } from '../ports/url-policy.js';
 import type { CatalogEpgLinker, JobKicker, SourceRemovalListener } from './hooks.js';
 import type { SourceSecrets } from './secrets.js';
+import { inLibrary, type Viewer } from '../identity/viewer.js';
 import { toSourceDto } from './source-mapper.js';
 import { classifyFailure, sourceCachePrefix, type SourceSyncPipeline } from './source-sync.pipeline.js';
 
@@ -42,6 +43,8 @@ export interface SourceServiceDeps {
   clock: Clock;
   logger: Logger;
   limits: { maxSourcesPerUser: number };
+  /** Profile id → its sources (LibraryService), for `SourceDto.profileIds`. */
+  library?: { librariesOf(userId: string): Promise<Map<string, Set<string>>> };
 }
 
 /**
@@ -52,9 +55,10 @@ export interface SourceServiceDeps {
 export class SourceService {
   constructor(private readonly deps: SourceServiceDeps) {}
 
-  async list(ownerId: string): Promise<SourceDto[]> {
-    const [sources, guides] = await Promise.all([this.deps.sources.listByOwner(ownerId), this.deps.epg.guideSummaries(ownerId)]);
-    return sources.map((source) => toSourceDto(source, guides.get(source.id)));
+  /** The account's sources; with `viewer`, only those in that profile's library. */
+  async list(ownerId: string, viewer?: Pick<Viewer, 'library'>): Promise<SourceDto[]> {
+    const [sources, guides, profilesOf] = await Promise.all([this.deps.sources.listByOwner(ownerId), this.deps.epg.guideSummaries(ownerId), this.profilesOf(ownerId)]);
+    return (viewer ? inLibrary(viewer, sources) : sources).map((source) => toSourceDto(source, guides.get(source.id), profilesOf(source.id)));
   }
 
   async get(ownerId: string, sourceId: string): Promise<SourceDto> {
@@ -280,8 +284,13 @@ export class SourceService {
   }
 
   private async toDto(source: SourceRecord): Promise<SourceDto> {
-    const guides = await this.deps.epg.guideSummaries(source.ownerId);
-    return toSourceDto(source, guides.get(source.id));
+    const [guides, profilesOf] = await Promise.all([this.deps.epg.guideSummaries(source.ownerId), this.profilesOf(source.ownerId)]);
+    return toSourceDto(source, guides.get(source.id), profilesOf(source.id));
+  }
+
+  private async profilesOf(ownerId: string): Promise<(sourceId: string) => string[]> {
+    const libraries = (await this.deps.library?.librariesOf(ownerId)) ?? new Map<string, Set<string>>();
+    return (sourceId) => [...libraries].filter(([, sources]) => sources.has(sourceId)).map(([profileId]) => profileId);
   }
 
   private assertUrlAllowed(url: URL): void {

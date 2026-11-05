@@ -206,6 +206,8 @@ export interface NotificationsTable {
   read: Generated<boolean>;
   dedupe_key: string | null;
   created_at: Date;
+  /** Sources the notice is about: only profiles that see one of them get it. NULL = whole account. */
+  source_ids: string[] | null;
 }
 
 export interface SchedulesTable {
@@ -353,6 +355,12 @@ export interface GuidesTable {
   stats: JsonDefault<StoredGuideStats>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+}
+
+export interface ProfileSourcesTable {
+  profile_id: string;
+  source_id: string;
+  created_at: Generated<Date>;
 }
 
 export interface GuideSourcesTable {
@@ -945,6 +953,7 @@ export interface Database {
   outbox: OutboxTable;
   guides: GuidesTable;
   guide_sources: GuideSourcesTable;
+  profile_sources: ProfileSourcesTable;
   guide_channels: GuideChannelsTable;
   programmes: ProgrammesTable;
   epg_mappings: EpgMappingsTable;

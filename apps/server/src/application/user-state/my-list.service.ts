@@ -2,7 +2,7 @@ import type { ListItemDto, ListStateDto } from '@ziptv/contracts';
 
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { AppError } from '../errors.js';
-import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
+import { isHiddenForViewer, seesSource, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository, SourceRevisionRef } from '../ports/catalog-repository.js';
 import type { SourceRepository } from '../ports/source-repository.js';
@@ -53,6 +53,7 @@ export class MyListService {
     }
     const items: ListItemDto[] = [];
     for (const record of records) {
+      if (!seesSource(viewer, record.sourceId)) continue; // a source taken out of this profile's library
       const item = current.get(itemId(record));
       if (item && isHiddenForViewer(viewer, item, record.sourceId)) continue;
       items.push({

@@ -97,6 +97,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Parental controls', () => {
     channels = (await request(t.app).get(`/api/v1/live/${source.id}/channels`).set(as()).expect(200)).body as ChannelListDto;
     main = ((await request(t.app).get('/api/v1/profiles').set(as()).expect(200)).body as ProfileDto[])[0]!;
     kids = (await request(t.app).post('/api/v1/profiles').set(as()).send({ name: 'Kids', kind: 'kids' }).expect(201)).body as ProfileDto;
+    // A kids profile starts with an empty library: a grown-up assigns what it sees (no PIN set yet).
+    await request(t.app).put(`/api/v1/profiles/${kids.id}/library`).set(as()).send({ sourceIds: [source.id] }).expect(200);
 
     // One licensed (FAST) operator channel.
     const content = await staffSession(t, admin, 'content@ops.example', 'CONTENT_MANAGER');

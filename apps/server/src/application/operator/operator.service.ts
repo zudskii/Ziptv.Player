@@ -8,7 +8,7 @@ import { catchupDaysFor, catchupGrants, denialReason, findCoveringGrant, isLicen
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { AppError } from '../errors.js';
 import { OPERATOR_LOCK_SOURCE } from '../../domain/viewer/parental.js';
-import { lockKey, type Viewer } from '../identity/viewer.js';
+import { inLibrary, lockKey, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
@@ -265,7 +265,7 @@ export class OperatorService {
   async importFavoritesFromMyList(viewer: Viewer, context: ViewingContext): Promise<OperatorFavoritesImportDto> {
     const items = (await this.deps.list.list(viewer.profileId, 1_000)).filter((item) => item.type === 'channel');
     if (items.length === 0) return { added: 0 };
-    const sources = new Map((await this.deps.sources.listByOwner(viewer.userId)).filter((source) => source.revision > 0).map((source) => [source.id, source]));
+    const sources = new Map(inLibrary(viewer, await this.deps.sources.listByOwner(viewer.userId)).filter((source) => source.revision > 0).map((source) => [source.id, source]));
     const keys: ReturnType<typeof aliasKeys> = [];
     for (const item of items) {
       const source = sources.get(item.sourceId);

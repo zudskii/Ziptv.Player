@@ -1,11 +1,11 @@
-import type { CreateProfileRequest, ProfileDto, UpdateProfileRequest } from '@ziptv/contracts';
+import type { CreateProfileRequest, ProfileDto, ProfileLibraryDto, UpdateProfileLibraryRequest, UpdateProfileRequest } from '@ziptv/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../lib/api-client';
 import { useProfileStore } from './profile-store';
 
 const BASE = '/api/v1/profiles';
-export const profileKeys = { all: ['profiles'] as const };
+export const profileKeys = { all: ['profiles'] as const, library: (id: string) => ['profiles', id, 'library'] as const };
 
 export function useProfiles() {
   return useQuery({ queryKey: profileKeys.all, queryFn: ({ signal }) => apiRequest<ProfileDto[]>(BASE, { signal }), staleTime: 60_000 });
@@ -42,5 +42,23 @@ export function useDeleteProfile() {
       if (useProfileStore.getState().profileId === id) useProfileStore.getState().select(null);
       return client.invalidateQueries({ queryKey: profileKeys.all });
     },
+  });
+}
+
+/** The account's sources this profile sees (Profile → Library). */
+export function useProfileLibrary(id: string | undefined) {
+  return useQuery({
+    queryKey: profileKeys.library(id ?? 'none'),
+    queryFn: ({ signal }) => apiRequest<ProfileLibraryDto>(`${BASE}/${id}/library`, { signal }),
+    enabled: Boolean(id),
+  });
+}
+
+/** Saving a library changes what the profile shows everywhere: every query is refreshed. */
+export function useSetProfileLibrary() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, ...body }: UpdateProfileLibraryRequest & { id: string }) => apiRequest<ProfileLibraryDto>(`${BASE}/${id}/library`, { method: 'PUT', body }),
+    onSuccess: () => client.invalidateQueries(),
   });
 }

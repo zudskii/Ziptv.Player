@@ -3,7 +3,7 @@ import type { ClearableData, ImportLocalStateDto, ImportLocalStateRequest, Stora
 import { newEntityId } from '../../domain/shared/ids.js';
 import { HISTORY_MIN_SECS } from '../../domain/viewer/progress.js';
 import type { EpgService } from '../epg/epg.service.js';
-import { isHiddenForViewer, type Viewer } from '../identity/viewer.js';
+import { inLibrary, isHiddenForViewer, seesSource, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Clock } from '../ports/clock.js';
@@ -33,8 +33,8 @@ export class ViewerDataService {
 
   async usage(viewer: Viewer): Promise<StorageUsageDto> {
     const [sources, guides, myList, progress, history] = await Promise.all([
-      this.deps.sources.listByOwner(viewer.userId),
-      this.deps.epg.listGuides(viewer.userId),
+      this.deps.sources.listByOwner(viewer.userId).then((all) => inLibrary(viewer, all)),
+      this.deps.epg.listGuides(viewer.userId).then((all) => all.filter((guide) => guide.sourceIds.length === 0 || guide.sourceIds.some((id) => seesSource(viewer, id)))),
       this.deps.list.count(viewer.profileId),
       this.deps.progress.count(viewer.profileId),
       this.deps.history.count(viewer.profileId, HISTORY_MIN_SECS),

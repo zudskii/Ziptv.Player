@@ -1,7 +1,6 @@
-import type { NotificationType } from '@ziptv/contracts';
-import type { Selectable } from 'kysely';
+import { sql, type Selectable, type WhereInterface } from 'kysely';
 
-import type { NewNotification, NotificationRecord, NotificationRepository } from '../../../../application/ports/notification-repository.js';
+import type { NewNotification, NotificationRecord, NotificationRepository, NotificationScope } from '../../../../application/ports/notification-repository.js';
 import { isEntityId, newEntityId } from '../../../../domain/shared/ids.js';
 import type { Db } from '../database.js';
 import type { NotificationsTable } from '../schema.js';
@@ -18,7 +17,19 @@ function toRecord(row: Selectable<NotificationsTable>): NotificationRecord {
     read: row.read,
     dedupeKey: row.dedupe_key,
     createdAt: row.created_at,
+    sourceIds: row.source_ids,
   };
+}
+
+/** Applies a viewer's scope to any notifications query (select, update, delete). */
+function scoped<Q extends WhereInterface<{ notifications: NotificationsTable }, 'notifications'>>(query: Q, scope: NotificationScope): Q {
+  let result = query;
+  if (scope.exclude?.length) result = result.where('type', 'not in', [...scope.exclude]) as Q;
+  if (scope.library) {
+    const library = scope.library.filter(isEntityId);
+    result = (library.length ? result.where(sql<boolean>`(source_ids IS NULL OR source_ids && ${sql.val(library)}::uuid[])`) : result.where('source_ids', 'is', null)) as Q;
+  }
+  return result;
 }
 
 export class PgNotificationRepository implements NotificationRepository {
@@ -34,6 +45,7 @@ export class PgNotificationRepository implements NotificationRepository {
       link: notification.link,
       dedupe_key: notification.dedupeKey,
       created_at: now,
+      source_ids: notification.sourceIds?.length ? notification.sourceIds : null,
     };
     const insert = this.db.insertInto('notifications').values({ id: newEntityId(), ...values });
     // The partial unique index (owner, dedupe_key) WHERE unread makes this race-free:
@@ -45,7 +57,7 @@ export class PgNotificationRepository implements NotificationRepository {
               .columns(['owner_id', 'dedupe_key'])
               .where('read', '=', false)
               .where('dedupe_key', 'is not', null)
-              .doUpdateSet({ type: values.type, severity: values.severity, title: values.title, body: values.body, link: values.link, created_at: now }),
+              .doUpdateSet({ type: values.type, severity: values.severity, title: values.title, body: values.body, link: values.link, created_at: now, source_ids: values.source_ids }),
           )
           .returningAll()
           .executeTakeFirstOrThrow()
@@ -53,34 +65,34 @@ export class PgNotificationRepository implements NotificationRepository {
     return toRecord(row);
   }
 
-  async list(ownerId: string, limit: number, exclude: readonly NotificationType[] = []): Promise<NotificationRecord[]> {
+  async list(ownerId: string, limit: number, scope: NotificationScope = {}): Promise<NotificationRecord[]> {
     let query = this.db.selectFrom('notifications').selectAll().where('owner_id', '=', ownerId);
-    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    query = scoped(query, scope);
     const rows = await query.orderBy('created_at', 'desc').limit(limit).execute();
     return rows.map(toRecord);
   }
 
-  async unreadCount(ownerId: string, exclude: readonly NotificationType[] = []): Promise<number> {
+  async unreadCount(ownerId: string, scope: NotificationScope = {}): Promise<number> {
     let query = this.db
       .selectFrom('notifications')
       .select((eb) => eb.fn.countAll<string>().as('n'))
       .where('owner_id', '=', ownerId)
       .where('read', '=', false);
-    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    query = scoped(query, scope);
     const row = await query.executeTakeFirstOrThrow();
     return Number(row.n);
   }
 
-  async deleteRead(ownerId: string, exclude: readonly NotificationType[] = []): Promise<number> {
+  async deleteRead(ownerId: string, scope: NotificationScope = {}): Promise<number> {
     let query = this.db.deleteFrom('notifications').where('owner_id', '=', ownerId).where('read', '=', true);
-    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    query = scoped(query, scope);
     const result = await query.executeTakeFirst();
     return Number(result.numDeletedRows);
   }
 
-  async markRead(ownerId: string, ids: string[] | 'all', exclude: readonly NotificationType[] = []): Promise<void> {
+  async markRead(ownerId: string, ids: string[] | 'all', scope: NotificationScope = {}): Promise<void> {
     let query = this.db.updateTable('notifications').set({ read: true }).where('owner_id', '=', ownerId).where('read', '=', false);
-    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    query = scoped(query, scope);
     if (ids !== 'all') {
       const valid = ids.filter(isEntityId);
       if (valid.length === 0) return;
@@ -89,10 +101,10 @@ export class PgNotificationRepository implements NotificationRepository {
     await query.execute();
   }
 
-  async deleteOwned(ownerId: string, id: string, exclude: readonly NotificationType[] = []): Promise<boolean> {
+  async deleteOwned(ownerId: string, id: string, scope: NotificationScope = {}): Promise<boolean> {
     if (!isEntityId(id)) return false;
     let query = this.db.deleteFrom('notifications').where('id', '=', id).where('owner_id', '=', ownerId);
-    if (exclude.length) query = query.where('type', 'not in', [...exclude]);
+    query = scoped(query, scope);
     const result = await query.executeTakeFirst();
     return result.numDeletedRows > 0n;
   }

@@ -54,6 +54,8 @@ export class ParentalService {
       profileStore: Pick<ProfileRepository, 'update' | 'clearPinProtection'>;
       sessions: Pick<SessionRepository, 'setProfileGate' | 'clearProfileGates'>;
       sources: Pick<SourceRepository, 'listByOwner'>;
+      /** Profile id → its sources (LibraryService: cached, invalidated on every library change). */
+      library: { librariesOf(userId: string): Promise<Map<string, Set<string>>> };
       hasher: PasswordHasher;
       tokens: UnlockTokens;
       cache: Cache;
@@ -75,7 +77,7 @@ export class ParentalService {
    * with its restrictions. Refuses a profile the device may not open without the PIN.
    */
   async viewerFor(user: AuthUser, input: { profileId?: string | undefined; unlockToken?: string | undefined }): Promise<Viewer> {
-    const [profiles, state] = await Promise.all([this.deps.profiles.records(user.id), this.state(user.id)]);
+    const [profiles, state, libraries] = await Promise.all([this.deps.profiles.records(user.id), this.state(user.id), this.deps.library.librariesOf(user.id)]);
     const kidsLock = state.pin && user.kidsLockProfileId ? profiles.find((item) => item.id === user.kidsLockProfileId) : undefined;
     const wanted = input.profileId ?? kidsLock?.id;
     const profile = wanted ? profiles.find((item) => item.id === wanted) : profiles.find((item) => item.isDefault);
@@ -101,6 +103,7 @@ export class ParentalService {
       unlocked,
       // Shared caches (VOD overview per source) key on this: profiles with their own rules never share.
       restrictionsVersion: `${profile.kind}.${rules === NO_RULES ? '0' : `${profile.id}@${rules.updatedAt.getTime().toString(36)}`}.${state.pin?.version ?? 0}`,
+      library: libraries.get(profile.id) ?? new Set(),
     };
   }
 

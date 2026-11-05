@@ -105,13 +105,44 @@ export interface SourceDto {
   warningCount: number;
   /** This M3U URL is an Xtream panel — it can be converted to an Xtream source (Movies/Series/archive). */
   xtreamCandidate: boolean;
+  /** Profiles of the account that see this source (their library). */
+  profileIds: string[];
   createdAt: string;
   updatedAt: string;
 }
 
+/**
+ * Who sees a new source: `profile` (default) — only the profile that adds it; `all` — every
+ * standard profile too. Kids profiles get a source only when a grown-up assigns it to them.
+ */
+export type NewSourceAudience = 'profile' | 'all';
+
 export type AddSourceRequest =
-  | { type: 'm3u_url'; url: string; name?: string }
-  | { type: 'xtream'; server: string; username: string; password: string; name?: string };
+  | { type: 'm3u_url'; url: string; name?: string; audience?: NewSourceAudience }
+  | { type: 'xtream'; server: string; username: string; password: string; name?: string; audience?: NewSourceAudience };
+
+/** GET/PUT /profiles/:id/library — the account's sources this profile sees. */
+export interface ProfileLibraryDto {
+  profileId: string;
+  sourceIds: string[];
+}
+
+export interface UpdateProfileLibraryRequest {
+  sourceIds: string[];
+  /** Needed (when a PIN is set) to change a kids profile's library, or from a device held in a kids profile. */
+  pin?: string;
+}
+
+/** GET/PUT /sources/:id/profiles — the profiles that see this source. */
+export interface SourceProfilesDto {
+  sourceId: string;
+  profileIds: string[];
+}
+
+export interface UpdateSourceProfilesRequest {
+  profileIds: string[];
+  pin?: string;
+}
 
 export interface UpdateSourceRequest {
   name?: string;

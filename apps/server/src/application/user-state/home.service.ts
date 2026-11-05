@@ -4,7 +4,7 @@ import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { toMovieDto, toSeriesDto } from '../catalog/catalog-mapper.js';
 import type { LiveCatalogService } from '../catalog/live.service.js';
 import type { EpgService } from '../epg/epg.service.js';
-import type { Viewer } from '../identity/viewer.js';
+import { inLibrary, type Viewer } from '../identity/viewer.js';
 import type { Cache } from '../ports/cache.js';
 import type { CatalogRepository } from '../ports/catalog-repository.js';
 import type { Logger } from '../ports/logger.js';
@@ -41,7 +41,7 @@ export class HomeService {
   ) {}
 
   async home(viewer: Viewer): Promise<HomeDto> {
-    const owned = await this.deps.sources.listByOwner(viewer.userId);
+    const owned = inLibrary(viewer, await this.deps.sources.listByOwner(viewer.userId));
     const versions = owned.map((source) => `${source.id}:${catalogVersion(source)}:${source.sync.status}`).join(',');
     const key = `${homeCachePrefix(viewer.profileId)}${homeEpoch(this.deps.cache, viewer.profileId)}:${viewer.restrictionsVersion}${viewer.unlocked ? 'u' : ''}:${versions}`;
     return this.deps.cache.wrap(key, HOME_TTL_MS, () => this.build(viewer, owned));
@@ -55,7 +55,7 @@ export class HomeService {
     const locked = (sourceId: string, item: { key: string; groups: readonly string[] }) => this.deps.live.isLocked(viewer, sourceId, item);
 
     const [sources, continueWatching, favorites, recentlyWatched] = await Promise.all([
-      this.rail('sources', () => this.deps.sourceService.list(viewer.userId)),
+      this.rail('sources', () => this.deps.sourceService.list(viewer.userId, viewer)),
       this.rail('continueWatching', () => this.deps.watch.continueWatching(viewer, RAIL)),
       this.rail('favorites', async () => (await this.deps.myList.list(viewer, 60)).items.filter((item) => item.available).slice(0, RAIL)),
       this.rail('recentlyWatched', () => this.deps.watch.recentlyWatched(viewer, RAIL)),

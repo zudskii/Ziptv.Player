@@ -29,9 +29,9 @@ export function createApiRouters(deps: { container: Container; auth: RequestHand
   const viewingContext = viewingContextResolver({ header: config.operator.countryHeader, defaultCountry: config.operator.defaultCountry, geo: container.geo });
   router.use('/sessions', createSessionRouter(container.sessions, auth, limit));
   router.use('/auth', createAuthRouter({ accounts: container.accounts, emailFlow: container.emailFlow, auth, optionalAuth: deps.optionalAuth, limit }));
-  router.use('/sources', createSourceRouter({ sources: container.sources, auth: kidsReadOnly, maxSourceBytes: config.limits.maxSourceBytes, limit }));
+  router.use('/sources', createSourceRouter({ sources: container.sources, library: container.library, auth: kidsReadOnly, maxSourceBytes: config.limits.maxSourceBytes, limit }));
   router.use('/live', createLiveRouter({ live: container.live, auth }));
-  router.use('/profiles', createProfileRouter({ profiles: container.profiles, parental: container.parental, auth: deps.accountAuth, limit }));
+  router.use('/profiles', createProfileRouter({ profiles: container.profiles, parental: container.parental, library: container.library, auth: deps.accountAuth, limit }));
   router.use('/me', createMeRouter({ myList: container.myList, watch: container.watch, data: container.viewerData, profiles: container.profiles, parental: container.parental, auth, limit }));
   router.use('/', createDiscoverRouter({ home: container.home, search: container.search, auth, limit }));
   router.use('/vod', createVodRouter({ vod: container.vod, auth, limit }));

@@ -375,7 +375,7 @@ export function PlaylistEditorPage() {
         confirmLabel={t('playlists.delete')}
         onConfirm={async () => {
           await deletePlaylist.mutateAsync(playlistId);
-          toast.success(`“${playlist.name}” deleted`);
+          toast.success(t('playlists.deletedNamed', { name: playlist.name }));
           navigate('/playlists', { replace: true });
         }}
       />
