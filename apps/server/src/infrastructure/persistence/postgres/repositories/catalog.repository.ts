@@ -22,6 +22,7 @@ import type {
 import type { EpgLink } from '../../../../domain/catalog/model.js';
 import type { Db } from '../database.js';
 import { analyzeAfterBulkLoad } from '../maintenance.js';
+import { canonicalGenres } from '../../../../domain/catalog/genres.js';
 import { likeTerm, tokensText } from '../search-sql.js';
 import { jsonOrNull, type Database, type EpisodesTable, type LiveChannelsTable, type MoviesTable, type SeriesTable } from '../schema.js';
 
@@ -174,6 +175,7 @@ export class PgCatalogRepository implements CatalogRepository {
               added_at: item.addedAt,
               search_tokens: item.searchTokens,
               search: tokensText(item.searchTokens),
+              genre_ids: canonicalGenres(item.genres, item.groups),
             })),
           )
           .execute(),
@@ -199,6 +201,7 @@ export class PgCatalogRepository implements CatalogRepository {
               added_at: item.addedAt,
               search_tokens: item.searchTokens,
               search: tokensText(item.searchTokens),
+              genre_ids: canonicalGenres(item.genres, item.groups),
               details_fetched_at: item.detailsFetchedAt,
             })),
           )
@@ -552,10 +555,10 @@ export class PgCatalogRepository implements CatalogRepository {
   }
 }
 
-const MOVIE_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'poster', 'rating', 'genres', 'duration_secs', 'plot', 'kind', 'adult', 'xtream', 'added_at'] as const;
-const SERIES_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'cover', 'rating', 'genres', 'plot', 'adult', 'xtream', 'added_at'] as const;
+export const MOVIE_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'poster', 'rating', 'genres', 'duration_secs', 'plot', 'kind', 'adult', 'xtream', 'added_at'] as const;
+export const SERIES_SUMMARY_COLUMNS = ['key', 'position', 'name', 'year', 'groups', 'cover', 'rating', 'genres', 'plot', 'adult', 'xtream', 'added_at'] as const;
 
-function toMovieSummary(row: Pick<Selectable<MoviesTable>, (typeof MOVIE_SUMMARY_COLUMNS)[number]>): MovieSummary {
+export function toMovieSummary(row: Pick<Selectable<MoviesTable>, (typeof MOVIE_SUMMARY_COLUMNS)[number]>): MovieSummary {
   return {
     key: row.key,
     position: row.position,
@@ -574,7 +577,7 @@ function toMovieSummary(row: Pick<Selectable<MoviesTable>, (typeof MOVIE_SUMMARY
   };
 }
 
-function toSeriesSummary(row: Pick<Selectable<SeriesTable>, (typeof SERIES_SUMMARY_COLUMNS)[number]>): SeriesSummary {
+export function toSeriesSummary(row: Pick<Selectable<SeriesTable>, (typeof SERIES_SUMMARY_COLUMNS)[number]>): SeriesSummary {
   return {
     key: row.key,
     position: row.position,

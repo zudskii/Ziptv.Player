@@ -13,6 +13,7 @@ import { createPlaybackRouter } from './playback.routes.js';
 import { createSessionRouter } from './session.routes.js';
 import { createSourceRouter } from './source.routes.js';
 import { createVodRouter } from './vod.routes.js';
+import { createBrowseRouter } from './browse.routes.js';
 import { createDiscoverRouter } from './discover.routes.js';
 import { createMeRouter } from './me.routes.js';
 import { createProfileRouter } from './profile.routes.js';
@@ -35,6 +36,7 @@ export function createApiRouters(deps: { container: Container; auth: RequestHand
   router.use('/me', createMeRouter({ myList: container.myList, watch: container.watch, data: container.viewerData, profiles: container.profiles, parental: container.parental, auth, limit }));
   router.use('/', createDiscoverRouter({ home: container.home, search: container.search, auth, limit }));
   router.use('/vod', createVodRouter({ vod: container.vod, auth, limit }));
+  router.use('/browse', createBrowseRouter({ browse: container.vodBrowse, auth }));
   router.use('/epg', createEpgRouter({ epg: container.epg, auth: kidsReadOnly, limit }));
   router.use('/playback', createPlaybackRouter({ playback: container.playback, auth, withUnlock: deps.withUnlock, viewingContext, limit }));
   router.use('/playlists', createPlaylistRouter({ playlists: container.playlists, entries: container.playlistEntries, auth: withoutKids(auth, 'all'), publicUrl: config.publicUrl, limit, parental: container.parental }));

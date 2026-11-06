@@ -77,7 +77,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Per-profile library', () => {
     t = await startTestApp({ JOBS_ENABLED: 'true' }, { clock });
     t.container.jobs.start();
     token = ((await request(t.app).post('/api/v1/sessions').send({}).expect(201)).body as SessionDto).token;
-    [main] = await get<ProfileDto[]>('/profiles');
+    main = (await get<ProfileDto[]>('/profiles'))[0]!;
     // Profiles that exist before the sources are added.
     bob = (await request(t.app).post('/api/v1/profiles').set(auth()).send({ name: 'Bob' }).expect(201)).body as ProfileDto;
     kids = (await request(t.app).post('/api/v1/profiles').set(auth()).send({ name: 'Kids', kind: 'kids' }).expect(201)).body as ProfileDto;

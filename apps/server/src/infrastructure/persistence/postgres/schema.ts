@@ -155,6 +155,8 @@ export interface MoviesTable {
   added_at: Date | null;
   search_tokens: string[];
   search: Generated<string>;
+  /** Canonical genres (domain/catalog/genres), for filters. */
+  genre_ids: Generated<string[]>;
 }
 
 export interface SeriesTable {
@@ -174,6 +176,8 @@ export interface SeriesTable {
   added_at: Date | null;
   search_tokens: string[];
   search: Generated<string>;
+  /** Canonical genres (domain/catalog/genres), for filters. */
+  genre_ids: Generated<string[]>;
   /** Xtream: when seasons/episodes were last loaded (lazily, on first open). */
   details_fetched_at: Date | null;
 }

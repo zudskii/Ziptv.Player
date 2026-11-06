@@ -131,6 +131,74 @@ export type VodSort = 'recent' | 'name' | 'rating' | 'year';
 export type MoviePageDto = PageDto<MovieDto>;
 export type SeriesPageDto = PageDto<SeriesDto>;
 
+/** Canonical genres (the server maps provider genres and categories onto these). */
+export type GenreId =
+  | 'action'
+  | 'adventure'
+  | 'animation'
+  | 'biography'
+  | 'comedy'
+  | 'crime'
+  | 'documentary'
+  | 'drama'
+  | 'family'
+  | 'fantasy'
+  | 'history'
+  | 'horror'
+  | 'kids'
+  | 'music'
+  | 'mystery'
+  | 'reality'
+  | 'romance'
+  | 'scifi'
+  | 'sport'
+  | 'thriller'
+  | 'war'
+  | 'western';
+
+export type VodLength = 'short' | 'medium' | 'long';
+export type VodWatchFilter = 'unwatched' | 'started' | 'finished';
+
+/**
+ * GET /browse/movies | /browse/series — every source of the profile's library at once. All
+ * parameters are optional; lists are comma-separated. `finished` and `length` apply to movies only.
+ */
+export interface VodBrowseParams {
+  sources?: string;
+  genres?: string;
+  category?: string;
+  yearMin?: number;
+  yearMax?: number;
+  ratingMin?: number;
+  length?: VodLength;
+  /** Added in the last N days: 7, 30, 90 or 365. */
+  added?: number;
+  watch?: VodWatchFilter;
+  q?: string;
+  sort?: VodSort;
+  cursor?: string;
+  limit?: number;
+  /** `1`: include facet counts (ask on the first page). */
+  facets?: 1;
+}
+
+/** How many items each choice would give with the other filters applied. */
+export interface VodFacetsDto {
+  genres: { id: GenreId; count: number }[];
+  decades: { decade: number; count: number }[];
+  ratings: { min: number; count: number }[];
+  lengths: { id: VodLength; count: number }[];
+  added: { days: number; count: number }[];
+  sources: { sourceId: string; count: number }[];
+}
+
+export interface VodBrowsePageDto<T> {
+  items: T[];
+  nextCursor: string | null;
+  total: number;
+  facets?: VodFacetsDto;
+}
+
 /** Movies home: a few rails (Trending/Recently added/per category). */
 export interface VodRailDto<T> {
   id: string;

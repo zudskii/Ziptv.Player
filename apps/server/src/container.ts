@@ -41,6 +41,8 @@ import { HmacUnlockTokens } from './infrastructure/crypto/unlock-tokens.js';
 import { PgParentalRepository } from './infrastructure/persistence/postgres/repositories/parental.repository.js';
 import { PgLibraryRepository } from './infrastructure/persistence/postgres/repositories/library.repository.js';
 import { LibraryService } from './application/identity/library.service.js';
+import { VodBrowseService } from './application/catalog/vod-browse.service.js';
+import { PgVodBrowseRepository } from './infrastructure/persistence/postgres/repositories/vod-browse.repository.js';
 import { ProfileService } from './application/identity/profile.service.js';
 import type { ViewerResolver } from './application/identity/viewer-resolver.js';
 import { SearchService } from './application/catalog/search.service.js';
@@ -190,6 +192,7 @@ export interface Container {
   parental: ParentalService;
   profiles: ProfileService;
   library: LibraryService;
+  vodBrowse: VodBrowseService;
   myList: MyListService;
   watch: WatchStateService;
   viewerData: ViewerDataService;
@@ -407,6 +410,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   const live = new LiveCatalogService({ sources: sourceRepository, catalog: catalogRepository, cache, artwork });
   const seriesEpisodes = new SeriesEpisodes({ catalog: catalogRepository, secrets, details: xtream, cache, clock, logger: logger.child({ module: 'series-episodes' }) });
   const vod = new VodCatalogService({ live, catalog: catalogRepository, episodes: seriesEpisodes, list: listRepository, progress: progressRepository, cache, artwork });
+  const vodBrowse = new VodBrowseService({ sources: sourceRepository, browse: new PgVodBrowseRepository(db), live, clock, artwork });
   // --- stream health (ZP-ENT-06): repositories and metrics shared by playback, probes and console --
   const healthRepository = new PgHealthRepository(db);
   const metrics = new PrometheusMetrics({
@@ -864,6 +868,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     parental,
     profiles,
     library,
+    vodBrowse,
     myList,
     watch,
     viewerData,
