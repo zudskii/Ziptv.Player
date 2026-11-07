@@ -40,11 +40,11 @@ export function createApiRouters(deps: { container: Container; auth: RequestHand
   router.use('/epg', createEpgRouter({ epg: container.epg, auth: kidsReadOnly, limit }));
   router.use('/playback', createPlaybackRouter({ playback: container.playback, auth, withUnlock: deps.withUnlock, viewingContext, limit }));
   router.use('/playlists', createPlaylistRouter({ playlists: container.playlists, entries: container.playlistEntries, auth: withoutKids(auth, 'all'), publicUrl: config.publicUrl, limit, parental: container.parental }));
-  router.use('/billing', createBillingRouter({ billing: container.commerce.billing, accounts: container.commerce.accounts, auth: kidsReadOnly, publicUrl: config.publicUrl, limit }));
+  router.use('/billing', createBillingRouter({ billing: container.commerce.billing, accounts: container.commerce.accounts, auth: kidsReadOnly, publicUrl: config.publicUrl, limit, viewingContext }));
   router.use('/devices', createDeviceRouter({ authorization: container.commerce.authorization, auth, limit }));
   // Before `/operator`: that router answers everything under its prefix.
   router.use('/operator/playback/sessions', createPlaybackSessionRouter({ authorization: container.commerce.authorization, auth, viewingContext, limit }));
-  router.use('/operator', createOperatorRouter({ operator: container.operator, epg: container.operatorEpg, auth, viewingContext, limit }));
+  router.use('/operator', createOperatorRouter({ operator: container.operator, vod: container.operatorVod, epg: container.operatorEpg, auth, viewingContext, limit }));
   router.use('/notifications', createNotificationRouter({ notifications: container.notifications, auth }));
   return router;
 }

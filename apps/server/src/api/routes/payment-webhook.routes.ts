@@ -31,7 +31,9 @@ export function createFakeCheckoutRouter(processor: HostedCheckoutPage): Router 
   router.get('/:ref', (req, res) => {
     const checkout = processor.checkout(routeParam(req, 'ref'));
     if (!checkout) return void res.status(404).send('Unknown checkout');
-    const price = `${(checkout.pkg.priceMinor / 100).toFixed(2)} ${escape(checkout.pkg.currency)} / ${checkout.pkg.billingPeriod}`;
+    const amount = (minor: number) => `${(minor / 100).toFixed(2)} ${escape(checkout.price.currency)}`;
+    const discount = checkout.price.firstDiscountMinor > 0 ? ` · first payment ${amount(checkout.price.amountMinor - checkout.price.firstDiscountMinor)} (promo)` : '';
+    const price = `${amount(checkout.price.amountMinor)} / ${checkout.pkg.billingPeriod}${discount}`;
     res.setHeader('Cache-Control', 'no-store');
     res.type('html').send(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Fake Pay — checkout</title>
 <style>body{font-family:system-ui,sans-serif;background:#f4f4f7;display:grid;place-items:center;min-height:100vh;margin:0}main{background:#fff;padding:32px;border-radius:12px;box-shadow:0 4px 24px #0002;max-width:380px;width:90%}h1{font-size:20px;margin:0 0 4px}.muted{color:#666;font-size:14px}button{width:100%;padding:12px;border:0;border-radius:8px;font-size:16px;margin-top:12px;cursor:pointer}.pay{background:#4f46e5;color:#fff}.cancel{background:#eee}.tag{display:inline-block;background:#fef3c7;color:#92400e;font-size:12px;padding:2px 8px;border-radius:99px;margin-bottom:12px}</style></head>

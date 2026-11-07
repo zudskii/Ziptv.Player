@@ -1,4 +1,4 @@
-import { Bookmark, Clapperboard, CreditCard, Grid2x2, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
+import { Bookmark, Clapperboard, CreditCard, Film, Grid2x2, History, Home, LayoutGrid, ListVideo, MonitorPlay, RadioTower, Server, Settings, Tv } from 'lucide-react';
 import type { ComponentType } from 'react';
 
 import type { TKey } from '../i18n';
@@ -31,13 +31,17 @@ export const NAV_ITEMS: NavItem[] = [
 /** Operator (licensed) channels: shown only when the operator offers channels to this viewer. */
 export const CHANNELS_ITEM: NavItem = { to: '/channels', label: 'nav.channels', icon: RadioTower, group: 1, primary: true };
 
+/** The operator's films and series (Phase 17): next to the channels, where the operator offers them. */
+export const FILMS_ITEM: NavItem = { to: '/films', label: 'nav.films', icon: Film, group: 2 };
+
 /** Plans, subscription and devices: only where the operator offers channels. */
 export const SUBSCRIPTION_ITEM: NavItem = { to: '/account', label: 'nav.subscription', icon: CreditCard, group: 4 };
 
 export function navItems(options: { operatorChannels?: boolean } = {}): NavItem[] {
   if (!options.operatorChannels) return NAV_ITEMS;
   const settings = NAV_ITEMS.findIndex((item) => item.to === '/settings');
-  return [NAV_ITEMS[0]!, CHANNELS_ITEM, ...NAV_ITEMS.slice(1, settings), SUBSCRIPTION_ITEM, ...NAV_ITEMS.slice(settings)];
+  const series = NAV_ITEMS.findIndex((item) => item.to === '/series');
+  return [NAV_ITEMS[0]!, CHANNELS_ITEM, ...NAV_ITEMS.slice(1, series + 1), FILMS_ITEM, ...NAV_ITEMS.slice(series + 1, settings), SUBSCRIPTION_ITEM, ...NAV_ITEMS.slice(settings)];
 }
 
 export function isActivePath(item: NavItem, pathname: string): boolean {

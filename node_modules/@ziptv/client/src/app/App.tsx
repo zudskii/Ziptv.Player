@@ -37,6 +37,9 @@ const PlansPage = lazy(() => import('../pages/billing/PlansPage').then((module) 
 const AccountPage = lazy(() => import('../pages/billing/AccountPage').then((module) => ({ default: module.AccountPage })));
 const BillingReturnPage = lazy(() => import('../pages/billing/BillingReturnPage').then((module) => ({ default: module.BillingReturnPage })));
 const MultiViewPage = lazy(() => import('../pages/MultiViewPage').then((module) => ({ default: module.MultiViewPage })));
+const FilmsPage = lazy(() => import('../pages/films/FilmsPage').then((module) => ({ default: module.FilmsPage })));
+const FilmDetailsPage = lazy(() => import('../pages/films/FilmDetailsPage').then((module) => ({ default: module.FilmDetailsPage })));
+const FilmPlayPage = lazy(() => import('../pages/films/FilmPlayPage').then((module) => ({ default: module.FilmPlayPage })));
 const HistoryPage = lazy(() => import('../pages/HistoryPage').then((module) => ({ default: module.HistoryPage })));
 
 export function App() {
@@ -78,6 +81,9 @@ export function App() {
             <Route path="playlists/:playlistId" element={<Lazy><PlaylistEditorPage /></Lazy>} />
             <Route path="sources" element={<SourcesPage />} />
             <Route path="settings" element={<SettingsPage />} />
+            <Route path="films" element={<Lazy><FilmsPage /></Lazy>} />
+            <Route path="films/:id" element={<Lazy><FilmDetailsPage /></Lazy>} />
+            <Route path="films/:id/play" element={<Lazy><FilmPlayPage /></Lazy>} />
             <Route path="plans" element={<Lazy><PlansPage /></Lazy>} />
             <Route path="account" element={<Lazy><AccountPage /></Lazy>} />
             <Route path="billing/return" element={<Lazy><BillingReturnPage /></Lazy>} />

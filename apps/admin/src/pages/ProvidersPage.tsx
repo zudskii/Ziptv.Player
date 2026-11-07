@@ -197,6 +197,9 @@ export function ProviderDetailPage() {
             [t('providers.term'), `${formatDate(provider.contract.startAt)} → ${formatDate(provider.contract.endAt)}`],
             [t('providers.slaTarget'), percent(provider.contract.slaTargetPct, 2)],
             [t('providers.costPerMonth'), money(provider.contract.monthlyCost)],
+            [t('contract.guarantee'), provider.contract.minimumGuarantee ? t('contract.perMonth', { amount: money(provider.contract.minimumGuarantee) }) : '—'],
+            [t('contract.catchupWeight'), t('contract.weightValue', { weight: provider.contract.catchupWeight })],
+            [t('contract.catchupFee'), provider.contract.catchupFeePerHour ? t('contract.perHour', { amount: money(provider.contract.catchupFeePerHour) }) : '—'],
             [t('common.notes'), provider.contract.notes || '—'],
           ]}
         />
@@ -236,7 +239,13 @@ function ContractDialog({ open, provider, onClose }: { open: boolean; provider: 
     const form = new FormData(event.currentTarget);
     const value = (key: string) => String(form.get(key) ?? '').trim();
     const cost = value('cost');
+    const guarantee = value('guarantee');
+    const fee = value('fee');
+    const termsCurrency = value('termsCurrency').toUpperCase() || 'GEL';
     save.mutate({
+      minimumGuarantee: guarantee ? { currency: termsCurrency, amountMinor: Math.round(Number(guarantee) * 100) } : null,
+      catchupWeight: Number(value('weight') || 1),
+      catchupFeePerHour: fee ? { currency: termsCurrency, amountMinor: Math.round(Number(fee) * 100) } : null,
       ref: value('ref') || null,
       startAt: fromDateInput(value('start')),
       endAt: fromDateInput(value('end')),
@@ -258,6 +267,18 @@ function ContractDialog({ open, provider, onClose }: { open: boolean; provider: 
           <Field label={t('providers.costPerMonth')} name="cost" type="number" step="0.01" min="0" defaultValue={provider.contract.monthlyCost ? provider.contract.monthlyCost.amountMinor / 100 : ''} />
           <Field label={t('common.currency')} name="currency" maxLength={3} defaultValue={provider.contract.monthlyCost?.currency ?? 'GEL'} />
         </div>
+        <fieldset className="space-y-3 rounded-lg border border-line/10 p-3">
+          <legend className="px-1 text-xs font-medium text-fg-muted">{t('contract.reportTerms')}</legend>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('contract.guaranteePerMonth')} name="guarantee" type="number" step="0.01" min="0" defaultValue={provider.contract.minimumGuarantee ? provider.contract.minimumGuarantee.amountMinor / 100 : ''} />
+            <Field label={t('common.currency')} name="termsCurrency" maxLength={3} defaultValue={provider.contract.minimumGuarantee?.currency ?? provider.contract.catchupFeePerHour?.currency ?? 'GEL'} />
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label={t('contract.catchupWeight')} name="weight" type="number" step="0.05" min="0" max="5" defaultValue={provider.contract.catchupWeight} />
+            <Field label={t('contract.catchupFeePerHour')} name="fee" type="number" step="0.01" min="0" defaultValue={provider.contract.catchupFeePerHour ? provider.contract.catchupFeePerHour.amountMinor / 100 : ''} />
+          </div>
+          <p className="text-xs text-fg-subtle">{t('contract.hint')}</p>
+        </fieldset>
         <TextArea label={t('common.notes')} name="notes" defaultValue={provider.contract.notes} maxLength={4000} />
         <ErrorNote error={save.error} />
         <div className="flex justify-end gap-2">

@@ -6,6 +6,7 @@ import { AccountBillingService } from './application/commerce/account-billing.se
 import { BillingService, CANCEL_AT_PROCESSOR, SUBSCRIPTION_CHANGED, VOID_AT_PROCESSOR } from './application/commerce/billing.service.js';
 import { CommerceAdminService } from './application/commerce/commerce-admin.service.js';
 import { EntitlementService } from './application/commerce/entitlement.service.js';
+import { OperatorVodService } from './application/operator/operator-vod.service.js';
 import { PlaybackAuthorizationService } from './application/commerce/playback-authorization.service.js';
 import type { GeoResolver } from './application/ports/geo.js';
 import { FakePaymentProcessor } from './infrastructure/billing/fake-processor.js';
@@ -173,6 +174,8 @@ export interface Container {
     console: ConsoleService;
     epg: OperatorEpgService;
   };
+  /** The operator's films and series with each viewer's access (Phase 17). */
+  operatorVod: OperatorVodService;
   commerce: {
     billing: BillingService;
     accounts: AccountBillingService;
@@ -451,6 +454,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     health: healthRepository,
     entitlements,
   });
+  const operatorVod = new OperatorVodService({ feeds: providerFeeds, entitlements, clock, artwork, openLocator: (sealed) => secrets.openLocator(sealed) });
   const providerSync = new ProviderSyncService({
     catalog: operatorCatalog,
     adapters: providerAdapters,
@@ -514,6 +518,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     streamUrls: new ProviderStreamUrls(secrets),
     episodes: seriesEpisodes,
     operator,
+    operatorVod,
     operatorAccess: config.commerce.access,
     programmes: epg,
     connections: new SourceConnections(leases),
@@ -684,6 +689,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     commerce: new CommerceAdminService({
       commerce: commerceRepository,
       catalog: operatorCatalog,
+      feeds: providerFeeds,
       changes,
       billing,
       accounts: accountBilling,
@@ -861,6 +867,7 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     secretStore,
     admin,
     commerce: { billing, accounts: accountBilling, entitlements, authorization, fakeProcessor, streamLeases },
+    operatorVod,
     geo,
     sessions,
     accounts,

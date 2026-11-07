@@ -4,7 +4,9 @@
 
 export type DeviceClass = 'web' | 'mobile' | 'tv' | 'stb';
 export type BusinessModel = 'subscription' | 'fast' | 'b2b';
-export type ProviderType = 'm3u' | 'xtream' | 'mock';
+/** vendor_feed = the signed ZIPTV Vendor Feed v1 (catalogue, VOD, packages and rights). */
+export type ProviderType = 'm3u' | 'xtream' | 'mock' | 'vendor_feed';
+export type Quality = 'sd' | 'hd' | 'fhd' | 'uhd';
 export type ProviderStatus = 'active' | 'paused' | 'terminated';
 export type ProviderStreamStatus = 'pending' | 'matched' | 'ignored' | 'gone';
 
@@ -25,6 +27,37 @@ export interface OperatorChannelDto {
   catchupDays: number;
   /** Locked by this profile's parental controls: playing it needs the PIN (unlock token). */
   parentalLock: boolean;
+}
+
+/** Phase 17 — where a film/series stands for this viewer: in their plan, in a plan they could switch to, or not sold. */
+export type VodAccess = 'included' | 'upgrade' | 'unavailable';
+
+/** `GET /operator/vod` — films and series the operator licenses here, with the viewer's access. */
+export interface OperatorVodItemDto {
+  id: string;
+  type: 'movie' | 'series';
+  title: string;
+  year: number | null;
+  poster: string | null;
+  genres: string[];
+  rating: number | null;
+  access: VodAccess;
+  /** Plans on sale that would open it (for `upgrade`). */
+  plans: { slug: string; name: string }[];
+  /** Picture ceiling for this viewer (licence × plan; null = none). */
+  maxQuality: 'sd' | 'hd' | 'fhd' | 'uhd' | null;
+}
+
+/** `GET /operator/vod/:id` — one film/series with its episodes. */
+export interface OperatorVodDetailDto extends OperatorVodItemDto {
+  plot: string | null;
+  durationSecs: number | null;
+  episodes: { id: string; season: number; episode: number; title: string; durationSecs: number | null }[];
+}
+
+export interface OperatorVodPageDto {
+  items: OperatorVodItemDto[];
+  total: number;
 }
 
 export interface OperatorLineupDto {
@@ -69,7 +102,39 @@ export interface ProviderDto {
   /** Where the credential lives — never the credential: `env:NAME` or `stored`. */
   credential: { source: string; rotatedAt: string } | null;
   contract: ProviderContractDto;
+  /** Vendor feeds: incremental position and the generation time of the last feed applied. */
+  feed: { cursor: string | null; generatedAt: string | null; keyIds: string[] } | null;
   createdAt: string;
+}
+
+/** GET /providers/:id/events — the sync journal, newest first. */
+export interface ProviderSyncEventDto {
+  id: string;
+  at: string;
+  level: 'info' | 'warning' | 'error';
+  /** Stable machine code: sync_ok, sync_failed, signature_invalid, item_skipped, stale_feed, … */
+  code: string;
+  message: string;
+  details: Record<string, unknown>;
+}
+
+/** GET /providers/:id/conflicts — what needs a decision. */
+export interface ProviderConflictsDto {
+  /** Staff grants wider than the provider licenses (territory, device, model or time not in its feed). */
+  grantsBeyondFeed: { grantId: string; channelId: string; channelName: string; territory: string; reason: string }[];
+  /** Streams waiting for review (no master channel matched them automatically). */
+  pendingStreams: number;
+  /** Items the last feed sync skipped (invalid), with the reason. */
+  skippedItems: { path: string; message: string }[];
+}
+
+/** GET /providers/:id/content — what a vendor feed delivered besides channels. */
+export interface ProviderContentDto {
+  movies: number;
+  series: number;
+  episodes: number;
+  packages: { externalId: string; name: string; status: 'active' | 'gone'; items: number }[];
+  recent: { externalId: string; type: 'movie' | 'series'; title: string; year: number | null; status: 'active' | 'gone' }[];
 }
 
 export interface ProviderContractDto {
@@ -80,12 +145,19 @@ export interface ProviderContractDto {
   slaTargetPct: number | null;
   monthlyCost: { currency: string; amountMinor: number } | null;
   notes: string;
+  /** Partner report (Phase 17): the licensor gets at least this per month. */
+  minimumGuarantee: { currency: string; amountMinor: number } | null;
+  /** How much a catch-up minute counts in the revenue share (1 = like a live minute, 0 = not at all). */
+  catchupWeight: number;
+  /** Separate catch-up tariff, per hour of catch-up viewing. */
+  catchupFeePerHour: { currency: string; amountMinor: number } | null;
 }
 
 /**
  * Credentials are given either as a secret reference (`env:ZIPTV_SECRET_*`, preferred) whose value
  * is the JSON connection document, or as the connection itself (stored encrypted).
- * Connection: m3u `{ "url" }`, xtream `{ "server", "username", "password" }`.
+ * Connection: m3u `{ "url" }`, xtream `{ "server", "username", "password" }`,
+ * vendor_feed `{ "url", "token"? }` (the vendor's public keys go in `config.publicKeys`).
  */
 export type ProviderCredentialInput = { secretRef: string } | { connection: Record<string, string> };
 
@@ -94,7 +166,10 @@ export interface CreateProviderRequest {
   slug?: string;
   type: ProviderType;
   credential?: ProviderCredentialInput;
-  /** Mock providers: `{ channels: [{ id, name, url, tvgId?, group?, kind? }] }`. */
+  /**
+   * Mock providers: `{ channels: [{ id, name, url, tvgId?, group?, kind? }] }`.
+   * Vendor feeds: `{ publicKeys: [{ id, key }] }` — Ed25519 public keys (base64 raw or PEM) the feed is signed with.
+   */
   config?: Record<string, unknown>;
   syncIntervalHours?: number;
 }
@@ -111,6 +186,9 @@ export interface UpdateProviderRequest {
     slaTargetPct?: number | null;
     monthlyCost?: { currency: string; amountMinor: number } | null;
     notes?: string;
+    minimumGuarantee?: { currency: string; amountMinor: number } | null;
+    catchupWeight?: number;
+    catchupFeePerHour?: { currency: string; amountMinor: number } | null;
   };
 }
 
@@ -204,6 +282,11 @@ export interface RightsGrantDto {
   contractRef: string;
   /** Catch-up rights: how many days back viewers may replay (0 = live only). */
   catchupDays: number;
+  /** Highest licensed picture quality; null = no limit. */
+  maxQuality: Quality | null;
+  /** manual = made in the console; feed = from the provider's signed feed (changes with it). */
+  origin: 'manual' | 'feed';
+  providerId: string | null;
   status: 'active' | 'revoked';
   createdAt: string;
   revokedAt: string | null;
@@ -247,6 +330,8 @@ export interface CreateGrantRequest {
   contractRef: string;
   /** Catch-up rights in days (0–30; default 0 = live only). */
   catchupDays?: number;
+  /** Quality limit (default none). */
+  maxQuality?: Quality | null;
 }
 
 export interface LineupDto {

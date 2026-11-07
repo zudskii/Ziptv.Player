@@ -30,7 +30,7 @@ const findTarget = (target: string) => document.querySelector<HTMLElement>(`[dat
 export function Tour({ id, steps, enabled = true }: { id: string; steps: () => TourStep[]; enabled?: boolean }) {
   const help = useHelp();
   const tourId = `tour-${id}`;
-  const [active, setActive] = useState<TourStep[]| null>(null);
+  const [active, setActive] = useState<TourStep[] | null>(null);
   const [index, setIndex] = useState(0);
   const pending = help.ready && enabled && !help.seen(tourId);
 
@@ -51,12 +51,13 @@ export function Tour({ id, steps, enabled = true }: { id: string; steps: () => T
     return () => window.clearTimeout(timer);
   }, [pending]);
 
-  if (!active) return null;
+  const step = active?.[index];
+  if (!active || !step) return null;
   const finish = () => {
     setActive(null);
     help.markSeen(tourId);
   };
-  return <TourCard step={active[index] as TourStep} index={index} total={active.length} onBack={() => setIndex(index - 1)} onNext={() => (index === active.length - 1 ? finish() : setIndex(index + 1))} onClose={finish} />;
+  return <TourCard step={step} index={index} total={active.length} onBack={() => setIndex(index - 1)} onNext={() => (index === active.length - 1 ? finish() : setIndex(index + 1))} onClose={finish} />;
 }
 
 interface TourCardProps {

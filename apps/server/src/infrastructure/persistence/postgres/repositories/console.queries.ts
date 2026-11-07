@@ -1,6 +1,6 @@
 import { sql } from 'kysely';
 
-import type { ConsoleQueries, Money, PackageFinanceRow, StaffSecurityRow, SubscriptionCounts, SupportNoteRecord } from '../../../../application/ports/console.js';
+import type { ConsoleQueries, Money, PackageFinanceRow, StaffSecurityRow, SubscriptionCounts, SupportNoteRecord, PartnerTerms } from '../../../../application/ports/console.js';
 import { isEntityId } from '../../../../domain/shared/ids.js';
 import type { Db } from '../database.js';
 
@@ -152,19 +152,34 @@ export class PgConsoleQueries implements ConsoleQueries {
     }));
   }
 
-  async watchMinutes(from: Date, to: Date): Promise<{ packageId: string; providerId: string | null; minutes: number }[]> {
-    const rows = await sql<{ package_id: string; provider_id: string | null; minutes: string }>`
+  async watchMinutes(from: Date, to: Date): Promise<{ packageId: string; providerId: string | null; minutes: number; catchupMinutes: number }[]> {
+    const watched = sql`greatest(0, extract(epoch FROM (least(${WATCH_END}, ${to}::timestamptz) - greatest(ps.started_at, ${from}::timestamptz))))`;
+    const rows = await sql<{ package_id: string; provider_id: string | null; minutes: string; catchup_minutes: string }>`
       SELECT ps.package_id, ps.provider_id,
-        sum(greatest(0, extract(epoch FROM (least(${WATCH_END}, ${to}::timestamptz) - greatest(ps.started_at, ${from}::timestamptz))))) / 60.0 AS minutes
+        coalesce(sum(${watched}) FILTER (WHERE ps.archive_start IS NULL), 0) / 60.0 AS minutes,
+        coalesce(sum(${watched}) FILTER (WHERE ps.archive_start IS NOT NULL), 0) / 60.0 AS catchup_minutes
       FROM playback_sessions ps
       WHERE ps.access = 'package' AND ps.package_id IS NOT NULL AND ps.started_at < ${to} AND ${WATCH_END} > ${from}
       GROUP BY 1, 2`.execute(this.db);
-    return rows.rows.map((row) => ({ packageId: row.package_id, providerId: row.provider_id, minutes: Number(row.minutes) })).filter((row) => row.minutes > 0);
+    return rows.rows.map((row) => ({ packageId: row.package_id, providerId: row.provider_id, minutes: Number(row.minutes), catchupMinutes: Number(row.catchup_minutes) })).filter((row) => row.minutes > 0 || row.catchupMinutes > 0);
   }
 
-  async providers(): Promise<{ id: string; name: string; contractRef: string | null; monthlyCost: Money | null }[]> {
-    const rows = await this.db.selectFrom('providers').select(['id', 'name', 'contract_ref', 'monthly_cost_minor', 'cost_currency']).orderBy('name').execute();
-    return rows.map((row) => ({ id: row.id, name: row.name, contractRef: row.contract_ref, monthlyCost: row.monthly_cost_minor !== null && row.cost_currency ? { currency: row.cost_currency, amountMinor: row.monthly_cost_minor } : null }));
+  async providers(): Promise<PartnerTerms[]> {
+    const rows = await this.db
+      .selectFrom('providers')
+      .select(['id', 'name', 'contract_ref', 'monthly_cost_minor', 'cost_currency', 'minimum_guarantee_minor', 'guarantee_currency', 'catchup_weight', 'catchup_fee_per_hour_minor', 'catchup_fee_currency'])
+      .orderBy('name')
+      .execute();
+    const money = (amount: number | null, currency: string | null): Money | null => (amount !== null && currency ? { currency, amountMinor: amount } : null);
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      contractRef: row.contract_ref,
+      monthlyCost: money(row.monthly_cost_minor, row.cost_currency),
+      minimumGuarantee: money(row.minimum_guarantee_minor, row.guarantee_currency),
+      catchupWeight: Number(row.catchup_weight),
+      catchupFeePerHour: money(row.catchup_fee_per_hour_minor, row.catchup_fee_currency),
+    }));
   }
 
   async providerReport(providerId: string, since: Date): Promise<{ feeds: { total: number; healthy: number; unhealthy: number }; probes: { ok: number; total: number }; openIncidents: number; incidents: number; minutes: number }> {

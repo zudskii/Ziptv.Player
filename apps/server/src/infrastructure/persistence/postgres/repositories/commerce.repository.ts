@@ -9,8 +9,10 @@ import type {
   PackageRecord,
   PaymentEventRecord,
   PlaybackSessionRecord,
+  PromoCodeRecord,
   SubscriptionRecord,
 } from '../../../../application/ports/commerce.js';
+import type { RegionalPrice } from '../../../../domain/commerce/plan.js';
 import type { DeviceClass } from '../../../../domain/operator/catalog.js';
 import { isEntityId, newEntityId } from '../../../../domain/shared/ids.js';
 import { json, type Database } from '../schema.js';
@@ -35,6 +37,32 @@ function toPackage(row: Row<'packages'>): PackageRecord {
     businessModel: row.business_model,
     status: row.status,
     createdAt: row.created_at,
+    vodMode: row.vod_mode,
+    vodPackages: row.vod_packages,
+    maxQuality: row.max_quality,
+    catchupDays: row.catchup_days,
+    familyId: row.family_id,
+    version: row.version,
+    supersededBy: row.superseded_by,
+  };
+}
+
+function toPromo(row: Row<'promo_codes'>): PromoCodeRecord {
+  return {
+    id: row.id,
+    code: row.code,
+    kind: row.kind,
+    value: row.value,
+    currency: row.currency,
+    families: row.families,
+    maxRedemptions: row.max_redemptions,
+    redemptions: row.redemptions,
+    startsAt: row.starts_at,
+    endsAt: row.ends_at,
+    active: row.active,
+    note: row.note,
+    createdBy: row.created_by,
+    createdAt: row.created_at,
   };
 }
 
@@ -51,6 +79,8 @@ function toSubscription(row: Row<'subscriptions'>): SubscriptionRecord {
     endedAt: row.ended_at,
     processor: row.processor,
     processorRef: row.processor_ref,
+    priceMinor: row.price_minor,
+    currency: row.currency,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -108,6 +138,11 @@ function toCheckout(row: Row<'checkouts'>): CheckoutRecord {
     subscriptionId: row.subscription_id,
     createdAt: row.created_at,
     completedAt: row.completed_at,
+    amountMinor: row.amount_minor,
+    currency: row.currency,
+    country: row.country,
+    promoId: row.promo_id,
+    discountMinor: row.discount_minor,
   };
 }
 
@@ -186,6 +221,13 @@ export class PgCommerceRepository implements CommerceRepository {
         max_streams: input.maxStreams,
         business_model: input.businessModel,
         status: input.status,
+        vod_mode: input.vodMode,
+        vod_packages: input.vodPackages,
+        max_quality: input.maxQuality,
+        catchup_days: input.catchupDays,
+        family_id: input.familyId,
+        version: input.version,
+        superseded_by: input.supersededBy,
       })
       .returningAll()
       .executeTakeFirstOrThrow();
@@ -208,6 +250,11 @@ export class PgCommerceRepository implements CommerceRepository {
         ...(patch.maxStreams !== undefined ? { max_streams: patch.maxStreams } : {}),
         ...(patch.businessModel !== undefined ? { business_model: patch.businessModel } : {}),
         ...(patch.status !== undefined ? { status: patch.status } : {}),
+        ...(patch.vodMode !== undefined ? { vod_mode: patch.vodMode } : {}),
+        ...(patch.vodPackages !== undefined ? { vod_packages: patch.vodPackages } : {}),
+        ...(patch.maxQuality !== undefined ? { max_quality: patch.maxQuality } : {}),
+        ...(patch.catchupDays !== undefined ? { catchup_days: patch.catchupDays } : {}),
+        ...(patch.supersededBy !== undefined ? { superseded_by: patch.supersededBy } : {}),
         updated_at: new Date(),
       })
       .where('id', '=', id)
@@ -232,6 +279,120 @@ export class PgCommerceRepository implements CommerceRepository {
     const rows = await this.db.selectFrom('package_channels as pc').innerJoin('packages as p', 'p.id', 'pc.package_id').selectAll('p').select('pc.channel_id').where('pc.channel_id', 'in', channelIds).execute();
     for (const row of rows) result.set(row.channel_id, [...(result.get(row.channel_id) ?? []), toPackage(row)]);
     return result;
+  }
+
+  async packageFamily(familyId: string): Promise<PackageRecord[]> {
+    if (!isEntityId(familyId)) return [];
+    return (await this.db.selectFrom('packages').selectAll().where('family_id', '=', familyId).orderBy('version', 'desc').execute()).map(toPackage);
+  }
+
+  async packageHolders(packageIds: string[], now: Date): Promise<Map<string, number>> {
+    const result = new Map<string, number>(packageIds.map((id) => [id, 0]));
+    if (packageIds.length === 0) return result;
+    const rows = await this.db
+      .selectFrom('entitlements')
+      .select(['package_id'])
+      .select((eb) => eb.fn.count<string>('user_id').distinct().as('n'))
+      .where('package_id', 'in', packageIds)
+      .where('revoked_at', 'is', null)
+      .where('starts_at', '<=', now)
+      .where((eb) => eb.or([eb('ends_at', 'is', null), eb('ends_at', '>', now)]))
+      .groupBy('package_id')
+      .execute();
+    for (const row of rows) result.set(row.package_id, Number(row.n));
+    return result;
+  }
+
+  async packagePrices(packageIds: string[]): Promise<Map<string, RegionalPrice[]>> {
+    const result = new Map<string, RegionalPrice[]>(packageIds.map((id) => [id, []]));
+    if (packageIds.length === 0) return result;
+    const rows = await this.db.selectFrom('package_prices').selectAll().where('package_id', 'in', packageIds).orderBy('country').execute();
+    for (const row of rows) result.get(row.package_id)?.push({ country: row.country, currency: row.currency, priceMinor: row.price_minor });
+    return result;
+  }
+
+  async setPackagePrices(packageId: string, prices: readonly RegionalPrice[]): Promise<void> {
+    await this.db.deleteFrom('package_prices').where('package_id', '=', packageId).execute();
+    if (prices.length > 0) {
+      await this.db
+        .insertInto('package_prices')
+        .values(prices.map((price) => ({ package_id: packageId, country: price.country, currency: price.currency, price_minor: price.priceMinor })))
+        .execute();
+    }
+  }
+
+  async vodPlans(): Promise<PackageRecord[]> {
+    return (await this.db.selectFrom('packages').selectAll().where('vod_mode', '!=', 'none').execute()).map(toPackage);
+  }
+
+  // --- promo codes --------------------------------------------------------------------------------
+
+  async listPromos(): Promise<PromoCodeRecord[]> {
+    return (await this.db.selectFrom('promo_codes').selectAll().orderBy('created_at', 'desc').limit(500).execute()).map(toPromo);
+  }
+
+  async findPromo(idOrCode: string, options: { lock?: boolean } = {}): Promise<PromoCodeRecord | null> {
+    const query = this.db
+      .selectFrom('promo_codes')
+      .selectAll()
+      .where((eb) => (isEntityId(idOrCode) ? eb('id', '=', idOrCode) : eb('code', '=', idOrCode)));
+    const row = await (options.lock ? query.forUpdate() : query).executeTakeFirst();
+    return row ? toPromo(row) : null;
+  }
+
+  async createPromo(record: Omit<PromoCodeRecord, 'redemptions' | 'createdAt'>): Promise<PromoCodeRecord> {
+    const row = await this.db
+      .insertInto('promo_codes')
+      .values({
+        id: record.id,
+        code: record.code,
+        kind: record.kind,
+        value: record.value,
+        currency: record.currency,
+        families: [...record.families],
+        max_redemptions: record.maxRedemptions,
+        starts_at: record.startsAt,
+        ends_at: record.endsAt,
+        active: record.active,
+        note: record.note,
+        created_by: record.createdBy,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
+    return toPromo(row);
+  }
+
+  async updatePromo(id: string, patch: Partial<Pick<PromoCodeRecord, 'active' | 'endsAt' | 'maxRedemptions' | 'note'>>): Promise<PromoCodeRecord | null> {
+    if (!isEntityId(id)) return null;
+    const row = await this.db
+      .updateTable('promo_codes')
+      .set({
+        ...(patch.active !== undefined ? { active: patch.active } : {}),
+        ...(patch.endsAt !== undefined ? { ends_at: patch.endsAt } : {}),
+        ...(patch.maxRedemptions !== undefined ? { max_redemptions: patch.maxRedemptions } : {}),
+        ...(patch.note !== undefined ? { note: patch.note } : {}),
+      })
+      .where('id', '=', id)
+      .returningAll()
+      .executeTakeFirst();
+    return row ? toPromo(row) : null;
+  }
+
+  async hasRedeemed(promoId: string, userId: string): Promise<boolean> {
+    if (!isEntityId(promoId) || !isEntityId(userId)) return false;
+    return (await this.db.selectFrom('promo_redemptions').select('promo_id').where('promo_id', '=', promoId).where('user_id', '=', userId).executeTakeFirst()) !== undefined;
+  }
+
+  async redeemPromo(input: { promoId: string; userId: string; checkoutId: string; now: Date }): Promise<boolean> {
+    const inserted = await this.db
+      .insertInto('promo_redemptions')
+      .values({ promo_id: input.promoId, user_id: input.userId, checkout_id: input.checkoutId, at: input.now })
+      .onConflict((conflict) => conflict.doNothing())
+      .returning('promo_id')
+      .executeTakeFirst();
+    if (!inserted) return false;
+    await this.db.updateTable('promo_codes').set((eb) => ({ redemptions: eb('redemptions', '+', 1) })).where('id', '=', input.promoId).execute();
+    return true;
   }
 
   // --- subscriptions ------------------------------------------------------------------------------
@@ -270,6 +431,8 @@ export class PgCommerceRepository implements CommerceRepository {
         ended_at: record.endedAt,
         processor: record.processor,
         processor_ref: record.processorRef,
+        price_minor: record.priceMinor,
+        currency: record.currency,
         reconciled_at: now,
         created_at: now,
         updated_at: now,
@@ -293,6 +456,10 @@ export class PgCommerceRepository implements CommerceRepository {
       })
       .where('id', '=', record.id)
       .execute();
+  }
+
+  async changeSubscriptionPlan(id: string, change: { packageId: string; priceMinor: number; currency: string }, now: Date): Promise<void> {
+    await this.db.updateTable('subscriptions').set({ package_id: change.packageId, price_minor: change.priceMinor, currency: change.currency, updated_at: now }).where('id', '=', id).execute();
   }
 
   async dueSubscriptions(now: Date, limit: number): Promise<string[]> {
@@ -536,7 +703,22 @@ export class PgCommerceRepository implements CommerceRepository {
   async createCheckout(record: Omit<CheckoutRecord, 'createdAt' | 'completedAt' | 'status' | 'subscriptionId'>, now: Date): Promise<CheckoutRecord> {
     const row = await this.db
       .insertInto('checkouts')
-      .values({ id: record.id, user_id: record.userId, package_id: record.packageId, processor: record.processor, processor_ref: record.processorRef, with_trial: record.withTrial, subscription_id: null, created_at: now, completed_at: null })
+      .values({
+        id: record.id,
+        user_id: record.userId,
+        package_id: record.packageId,
+        processor: record.processor,
+        processor_ref: record.processorRef,
+        with_trial: record.withTrial,
+        subscription_id: null,
+        created_at: now,
+        completed_at: null,
+        amount_minor: record.amountMinor,
+        currency: record.currency,
+        country: record.country,
+        promo_id: record.promoId,
+        discount_minor: record.discountMinor,
+      })
       .returningAll()
       .executeTakeFirstOrThrow();
     return toCheckout(row);

@@ -722,6 +722,9 @@ function toProviderDto(provider: ProviderRecord): ProviderDto {
       slaTargetPct: provider.contract.slaTargetPct,
       monthlyCost: provider.contract.monthlyCostMinor !== null && provider.contract.costCurrency ? { currency: provider.contract.costCurrency, amountMinor: provider.contract.monthlyCostMinor } : null,
       notes: provider.contract.notes,
+      minimumGuarantee: provider.contract.minimumGuarantee,
+      catchupWeight: provider.contract.catchupWeight,
+      catchupFeePerHour: provider.contract.catchupFeePerHour,
     },
     feed:
       provider.type === 'vendor_feed'
@@ -752,6 +755,9 @@ function contractPatch(input: NonNullable<UpdateProviderRequest['contract']>, cu
     ...(input.slaTargetPct !== undefined ? { slaTargetPct: input.slaTargetPct } : {}),
     ...(input.monthlyCost !== undefined ? { monthlyCostMinor: input.monthlyCost?.amountMinor ?? null, costCurrency: input.monthlyCost?.currency.toUpperCase() ?? null } : {}),
     ...(input.notes !== undefined ? { notes: input.notes.trim() } : {}),
+    ...(input.minimumGuarantee !== undefined ? { minimumGuarantee: input.minimumGuarantee ? { amountMinor: input.minimumGuarantee.amountMinor, currency: input.minimumGuarantee.currency.toUpperCase() } : null } : {}),
+    ...(input.catchupWeight !== undefined ? { catchupWeight: input.catchupWeight } : {}),
+    ...(input.catchupFeePerHour !== undefined ? { catchupFeePerHour: input.catchupFeePerHour ? { amountMinor: input.catchupFeePerHour.amountMinor, currency: input.catchupFeePerHour.currency.toUpperCase() } : null } : {}),
   };
 }
 

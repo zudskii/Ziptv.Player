@@ -122,6 +122,11 @@ export class PlaybackAuthorizationService {
     if (archive && usable.length === 0) throw new AppError('NOT_ENTITLED', 403, 'Catch-up is not licensed for this programme.', { reason: 'catchup_not_licensed' });
     const decision = await this.deps.entitlements.decide(access, channel.id, usable, where);
     if (!decision.allowed) throw denied(decision.reason);
+    // The plan narrows the licence: archive days and picture quality (Phase 17).
+    const limits = this.deps.entitlements.planLimits(access, decision);
+    if (archive && limits.catchupDays !== null && archive.start.getTime() < now.getTime() - limits.catchupDays * 86_400_000) {
+      throw new AppError('NOT_ENTITLED', 403, limits.catchupDays === 0 ? 'Your plan does not include catch-up.' : `Your plan includes ${limits.catchupDays} days of catch-up.`, { reason: 'catchup_not_in_plan', catchupDays: limits.catchupDays });
+    }
 
     // 3. concurrency lease (atomic across instances)
     const id = randomUUID();
@@ -162,7 +167,7 @@ export class PlaybackAuthorizationService {
       const plan = await this.deps.playback.operatorPlan(
         viewer,
         { channelId: channel.id, secureContext: input.secureContext, ...(continueSession ? { continueSession } : {}), ...(archive ? { archive } : {}) },
-        where,
+        { ...where, plan: limits },
         { kind: 'playback', id },
       );
       this.deps.logger.info({ userId: viewer.userId, playbackSessionId: id, channelId: channel.id, deviceId: device.id, access: decision.via.kind, country: where.country }, 'Playback session started');

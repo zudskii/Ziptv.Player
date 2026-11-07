@@ -1,4 +1,6 @@
 import type { DeviceClass } from '../../domain/operator/catalog.js';
+import type { Quality } from '../../domain/operator/vendor-feed.js';
+import type { PromoView, RegionalPrice, VodMode } from '../../domain/commerce/plan.js';
 import type { SubscriptionState } from '../../domain/commerce/subscription.js';
 
 // ---------------------------------------------------------------------------------------------
@@ -19,6 +21,22 @@ export interface PackageRecord {
   businessModel: 'subscription' | 'b2b';
   status: 'draft' | 'active' | 'retired';
   createdAt: Date;
+  /** Phase 17 — the plan's entitlements beyond channels. */
+  vodMode: VodMode;
+  vodPackages: string[];
+  maxQuality: Quality | null;
+  catchupDays: number | null;
+  /** Versions of one plan share the family; holders keep the version they bought. */
+  familyId: string;
+  version: number;
+  supersededBy: string | null;
+}
+
+export interface PromoCodeRecord extends PromoView {
+  id: string;
+  note: string;
+  createdBy: string | null;
+  createdAt: Date;
 }
 
 export interface SubscriptionRecord extends SubscriptionState {
@@ -27,6 +45,9 @@ export interface SubscriptionRecord extends SubscriptionState {
   packageId: string;
   processor: string;
   processorRef: string;
+  /** What this subscriber pays per period (null = before Phase 17: the package's price). */
+  priceMinor: number | null;
+  currency: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -86,6 +107,12 @@ export interface CheckoutRecord {
   subscriptionId: string | null;
   createdAt: Date;
   completedAt: Date | null;
+  /** The quoted price per period after any promo (null = before Phase 17). */
+  amountMinor: number | null;
+  currency: string | null;
+  country: string | null;
+  promoId: string | null;
+  discountMinor: number;
 }
 
 export interface InvoiceRecord {
@@ -165,16 +192,30 @@ export class WebhookSignatureError extends Error {
  */
 /** A processor-hosted payment page served by ZIPTV itself (only the built-in test processor has one). */
 export interface HostedCheckoutPage {
-  checkout(ref: string): { ref: string; pkg: Pick<PackageRecord, 'name' | 'priceMinor' | 'currency' | 'billingPeriod'>; trialDays: number; status: 'open' | 'paid' | 'expired' } | null;
+  checkout(ref: string): { ref: string; pkg: Pick<PackageRecord, 'name' | 'billingPeriod'>; price: CheckoutPrice; trialDays: number; status: 'open' | 'paid' | 'expired' } | null;
   /** The customer pays; returns where the browser goes next. Throws when the checkout is not open. */
   pay(ref: string): string;
   /** The customer gives up; returns where the browser goes next. */
   abandon(ref: string): string;
 }
 
+/** What the viewer pays: the recurring price, and the first payment after a promo discount. */
+export interface CheckoutPrice {
+  amountMinor: number;
+  currency: string;
+  /** Promo discount on the first payment (0 = none). */
+  firstDiscountMinor: number;
+}
+
 export interface PaymentProcessor {
   readonly name: string;
-  createCheckout(input: { checkoutId: string; userId: string; email: string | null; pkg: PackageRecord; trialDays: number; successUrl: string; cancelUrl: string }): Promise<{ ref: string; redirectUrl: string }>;
+  createCheckout(input: { checkoutId: string; userId: string; email: string | null; pkg: PackageRecord; price: CheckoutPrice; trialDays: number; successUrl: string; cancelUrl: string }): Promise<{ ref: string; redirectUrl: string }>;
+  /**
+   * Moves a subscription to another plan now: the processor collects `dueNowMinor` at once (an
+   * upgrade) or keeps `carryMinor` as credit for the next invoices (a downgrade), and renews at
+   * the new price. Confirmed by a `subscription.updated` webhook.
+   */
+  changePlan(ref: string, input: { pkg: PackageRecord; price: { amountMinor: number; currency: string }; dueNowMinor: number; carryMinor: number }): Promise<void>;
   /** Verifies the signature and parses; throws WebhookSignatureError when it is not authentic. */
   parseWebhook(rawBody: Buffer, headers: Record<string, string | string[] | undefined>): ProcessorEvent;
   fetchCheckout(ref: string): Promise<{ status: 'open' | 'paid' | 'expired'; subscription: ProcessorSubscription | null }>;
@@ -202,6 +243,23 @@ export interface CommerceRepository {
   setPackageChannels(packageId: string, channelIds: string[]): Promise<void>;
   /** Packages (any status) that contain each channel: access follows what viewers hold, not what is on sale. */
   packagesOfChannels(channelIds: string[]): Promise<Map<string, PackageRecord[]>>;
+  /** Every version of a plan, newest first. */
+  packageFamily(familyId: string): Promise<PackageRecord[]>;
+  /** Accounts holding the package now (active subscription or comp entitlements). */
+  packageHolders(packageIds: string[], now: Date): Promise<Map<string, number>>;
+  packagePrices(packageIds: string[]): Promise<Map<string, RegionalPrice[]>>;
+  setPackagePrices(packageId: string, prices: readonly RegionalPrice[]): Promise<void>;
+  /** Plans that open VOD (any mode but none) — the VOD entitlement candidates. */
+  vodPlans(): Promise<PackageRecord[]>;
+
+  // promo codes
+  listPromos(): Promise<PromoCodeRecord[]>;
+  findPromo(idOrCode: string, options?: { lock?: boolean }): Promise<PromoCodeRecord | null>;
+  createPromo(record: Omit<PromoCodeRecord, 'redemptions' | 'createdAt'>): Promise<PromoCodeRecord>;
+  updatePromo(id: string, patch: Partial<Pick<PromoCodeRecord, 'active' | 'endsAt' | 'maxRedemptions' | 'note'>>): Promise<PromoCodeRecord | null>;
+  hasRedeemed(promoId: string, userId: string): Promise<boolean>;
+  /** Records the redemption once (false when this account already used the code). */
+  redeemPromo(input: { promoId: string; userId: string; checkoutId: string; now: Date }): Promise<boolean>;
 
   // subscriptions
   liveSubscription(userId: string, options?: { lock?: boolean }): Promise<SubscriptionRecord | null>;
@@ -209,6 +267,8 @@ export interface CommerceRepository {
   findSubscriptionByRef(processor: string, ref: string, options?: { lock?: boolean }): Promise<SubscriptionRecord | null>;
   createSubscription(record: Omit<SubscriptionRecord, 'createdAt' | 'updatedAt'>, now: Date): Promise<SubscriptionRecord>;
   saveSubscription(record: SubscriptionRecord, now: Date): Promise<void>;
+  /** Plan change: another package (and the price paid for it). */
+  changeSubscriptionPlan(id: string, change: { packageId: string; priceMinor: number; currency: string }, now: Date): Promise<void>;
   /** Live subscriptions whose paid/trial time is over (time transitions due). */
   dueSubscriptions(now: Date, limit: number): Promise<string[]>;
   /** Live subscriptions not checked against the processor since `before`. */

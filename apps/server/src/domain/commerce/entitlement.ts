@@ -1,5 +1,7 @@
 import type { BusinessModel, DeviceClass } from '../operator/catalog.js';
 import { findCoveringGrant, denialReason, type RightsGrant } from '../operator/rights.js';
+import type { Quality } from '../operator/vendor-feed.js';
+import { morePlan } from './plan.js';
 
 /**
  * Entitlement engine (ZP-ENT-08): may this viewer play this channel here, now?
@@ -26,6 +28,9 @@ export interface PackageView {
   businessModel: BusinessModel;
   maxStreams: number;
   maxDevices: number;
+  /** Plan ceilings on top of the licence (null = the licence decides). */
+  maxQuality: Quality | null;
+  catchupDays: number | null;
 }
 
 export type AccessDenial = 'account_blocked' | 'territory' | 'device' | 'not_licensed' | 'no_subscription' | 'not_in_package';
@@ -60,10 +65,11 @@ export function decideAccess(input: AccessInput): AccessDecision {
   if (findCoveringGrant(input.grants, { ...where, model: 'fast' })) return { allowed: true, via: { kind: 'fast' } };
 
   const active = new Set(input.entitlements.filter((entitlement) => isEntitlementActive(entitlement, input.now)).map((entitlement) => entitlement.packageId));
-  for (const pkg of input.channelPackages) {
-    // The package must carry the channel *and* the licence must allow selling it that way.
-    if (active.has(pkg.id) && findCoveringGrant(input.grants, { ...where, model: pkg.businessModel })) return { allowed: true, via: { kind: 'package', packageId: pkg.id } };
-  }
+  // The package must carry the channel *and* the licence must allow selling it that way; of
+  // several (a subscription and a comp), the one that gives the most (quality, archive) counts.
+  const usable = input.channelPackages.filter((pkg) => active.has(pkg.id) && findCoveringGrant(input.grants, { ...where, model: pkg.businessModel }));
+  const best = [...usable].sort((a, b) => morePlan(b, a))[0];
+  if (best) return { allowed: true, via: { kind: 'package', packageId: best.id } };
   return { allowed: false, reason: active.size > 0 ? 'not_in_package' : 'no_subscription' };
 }
 

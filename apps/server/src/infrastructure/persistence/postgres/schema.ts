@@ -513,6 +513,11 @@ export interface ProvidersTable {
   sla_target_pct: ColumnType<string | null, number | null | undefined, number | null>;
   monthly_cost_minor: number | null;
   cost_currency: string | null;
+  minimum_guarantee_minor: number | null;
+  guarantee_currency: string | null;
+  catchup_weight: ColumnType<string, number | undefined, number>;
+  catchup_fee_per_hour_minor: number | null;
+  catchup_fee_currency: string | null;
   notes: Generated<string>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
@@ -807,6 +812,44 @@ export interface PackagesTable {
   status: Generated<'draft' | 'active' | 'retired'>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  vod_mode: Generated<'included' | 'package' | 'none'>;
+  vod_packages: Generated<string[]>;
+  max_quality: 'sd' | 'hd' | 'fhd' | 'uhd' | null;
+  catchup_days: number | null;
+  family_id: Generated<string>;
+  version: Generated<number>;
+  superseded_by: string | null;
+}
+
+export interface PackagePricesTable {
+  package_id: string;
+  country: string;
+  currency: string;
+  price_minor: number;
+}
+
+export interface PromoCodesTable {
+  id: string;
+  code: string;
+  kind: 'percent' | 'amount';
+  value: number;
+  currency: string | null;
+  families: Generated<string[]>;
+  max_redemptions: number | null;
+  redemptions: Generated<number>;
+  starts_at: Generated<Date>;
+  ends_at: Date | null;
+  active: Generated<boolean>;
+  note: Generated<string>;
+  created_by: string | null;
+  created_at: Generated<Date>;
+}
+
+export interface PromoRedemptionsTable {
+  promo_id: string;
+  user_id: string;
+  checkout_id: string;
+  at: Generated<Date>;
 }
 
 export interface PackageChannelsTable {
@@ -829,6 +872,8 @@ export interface SubscriptionsTable {
   reconciled_at: Date | null;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  price_minor: number | null;
+  currency: string | null;
 }
 
 export interface EntitlementsTable {
@@ -887,6 +932,11 @@ export interface CheckoutsTable {
   subscription_id: string | null;
   created_at: Generated<Date>;
   completed_at: Date | null;
+  amount_minor: number | null;
+  currency: string | null;
+  country: string | null;
+  promo_id: string | null;
+  discount_minor: Generated<number>;
 }
 
 export interface InvoicesTable {
@@ -921,7 +971,7 @@ export interface LeasesTable {
   expires_at: Date;
 }
 
-export type ChangeRequestKind = 'package.create' | 'package.update' | 'rights.grant' | 'rights.revoke';
+export type ChangeRequestKind = 'package.create' | 'package.update' | 'rights.grant' | 'rights.revoke' | 'promo.create';
 export type ChangeRequestStatus = 'pending' | 'applied' | 'rejected' | 'withdrawn' | 'failed' | 'reviewed';
 
 export interface ChangeRequestsTable {
@@ -1059,6 +1109,9 @@ export interface Database {
   source_probe_state: SourceProbeStateTable;
   packages: PackagesTable;
   package_channels: PackageChannelsTable;
+  package_prices: PackagePricesTable;
+  promo_codes: PromoCodesTable;
+  promo_redemptions: PromoRedemptionsTable;
   subscriptions: SubscriptionsTable;
   entitlements: EntitlementsTable;
   devices: DevicesTable;

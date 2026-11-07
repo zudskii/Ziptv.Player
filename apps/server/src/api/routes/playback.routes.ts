@@ -15,6 +15,7 @@ export const ContentRef = z.discriminatedUnion('type', [
   z.object({ type: z.literal('episode'), sourceId: EntityId, seriesKey: ContentKey, key: ContentKey }).strict(),
   z.object({ type: z.literal('catchup'), sourceId: EntityId, key: ContentKey, start: IsoInstant, end: IsoInstant }).strict(),
   z.object({ type: z.literal('operator'), channelId: EntityId, start: IsoInstant.optional(), end: IsoInstant.optional() }).strict(),
+  z.object({ type: z.literal('operator_vod'), vodId: EntityId, episodeId: z.string().trim().min(1).max(200).optional() }).strict(),
 ]);
 
 const ResolveBody = z

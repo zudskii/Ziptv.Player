@@ -21,8 +21,7 @@ import type {
   OperatorGuideChannelDto,
   OperatorGuideDto,
   OperatorNowNextDto,
-  SessionDto,
-} from '@ziptv/contracts';
+  SessionDto, PromoCodeDto } from '@ziptv/contracts';
 import type { Express } from 'express';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -135,6 +134,19 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator console (Phase 9)', () => {
       expect((await packages()).filter((pkg) => pkg.slug === 'sport').map((pkg) => pkg.priceMinor)).toEqual([500]);
     });
 
+    it('a promo code (a discount on revenue) waits for a second finance member; stopping one acts at once', async () => {
+      const cr = ((await request(admin).post('/admin/v1/promo-codes').set(finance.headers).send({ code: 'launch', kind: 'percent', value: 30, maxRedemptions: 500 }).expect(202)).body as ChangeRequestedDto).changeRequest;
+      expect(cr).toMatchObject({ kind: 'promo.create', status: 'pending' });
+      expect(cr.summary).toMatch(/^Promo code LAUNCH: 30 % off the first payment, every plan, up to 500 uses/);
+      expect((await request(admin).get('/admin/v1/promo-codes').set(finance.headers).expect(200)).body).toEqual([]);
+      await decide(finance, cr.id, 'approve').expect(403);
+      await request(admin).post('/admin/v1/promo-codes').set(content.headers).send({ code: 'x-content', kind: 'percent', value: 10 }).expect(403);
+      await decide(finance2, cr.id, 'approve').expect(200);
+      const [promo] = (await request(admin).get('/admin/v1/promo-codes').set(finance.headers).expect(200)).body as PromoCodeDto[];
+      expect(promo).toMatchObject({ code: 'LAUNCH', active: true, value: 30 });
+      expect((await request(admin).patch(`/admin/v1/promo-codes/${promo!.id}`).set(finance.headers).send({ active: false }).expect(200)).body).toMatchObject({ active: false });
+    });
+
     it('a new rights grant waits for a second content manager; a revocation applies at once and is reviewed', async () => {
       const cr = ((await request(admin).post(`/admin/v1/channels/${channel.id}/grants`).set(content.headers).send({ territory: 'GE', deviceClasses: ['web'], businessModels: ['subscription'], startAt: new Date().toISOString(), contractRef: 'LIC-9' }).expect(202)).body as ChangeRequestedDto).changeRequest;
       expect(cr.summary).toMatch(/^Rights for “Rustavi Live”: GE · web · subscription · .* · contract LIC-9$/);
@@ -191,7 +203,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator console (Phase 9)', () => {
         .set(content.headers)
         .send({ contract: { ref: 'LIC-A-2026', startAt: '2026-01-01T00:00:00Z', endAt: '2027-01-01T00:00:00Z', slaTargetPct: 99.5, monthlyCost: { currency: 'gel', amountMinor: 250000 }, notes: 'Renewal in November' } })
         .expect(200)).body as ProviderDto;
-      expect(updated.contract).toEqual({ ref: 'LIC-A-2026', startAt: '2026-01-01T00:00:00.000Z', endAt: '2027-01-01T00:00:00.000Z', slaTargetPct: 99.5, monthlyCost: { currency: 'GEL', amountMinor: 250000 }, notes: 'Renewal in November' });
+      expect(updated.contract).toEqual({ ref: 'LIC-A-2026', startAt: '2026-01-01T00:00:00.000Z', endAt: '2027-01-01T00:00:00.000Z', slaTargetPct: 99.5, monthlyCost: { currency: 'GEL', amountMinor: 250000 }, notes: 'Renewal in November', minimumGuarantee: null, catchupWeight: 1, catchupFeePerHour: null });
       await request(admin).patch(`/admin/v1/providers/${providerA.id}`).set(content.headers).send({ contract: { startAt: '2027-01-01T00:00:00Z', endAt: '2026-01-01T00:00:00Z' } }).expect(400);
       await request(admin).patch(`/admin/v1/providers/${providerA.id}`).set(finance.headers).send({ contract: { notes: 'x' } }).expect(403);
       const report = (await request(admin).get(`/admin/v1/providers/${providerA.id}/report`).set(content.headers).expect(200)).body as ProviderReportDto;
@@ -245,8 +257,36 @@ describe.skipIf(!TEST_DATABASE_URL)('Operator console (Phase 9)', () => {
 
       const csv = await request(admin).get('/admin/v1/finance/partners.csv').set(finance.headers).expect(200);
       expect(csv.headers['content-type']).toMatch(/text\/csv/);
-      expect(csv.text).toContain('provider,contract,minutes,share_pct,revenue_GEL,monthly_cost,cost_currency');
-      expect(csv.text).toContain('Licensor A,LIC-A-2026,60,66.67,87.99,2500.00,GEL');
+      expect(csv.text).toContain('provider,contract,minutes,live_minutes,catchup_minutes,share_pct,revenue_GEL,monthly_cost,cost_currency,minimum_guarantee,guarantee_top_up,guarantee_currency,catchup_fees,catchup_fee_currency');
+      expect(csv.text).toContain('Licensor A,LIC-A-2026,60,60,0,66.67,87.99,2500.00,GEL,,,,,');
+    });
+
+    it('contract terms (17.5): catch-up minutes weighted per contract, a separate catch-up tariff, a minimum guarantee topped up', async () => {
+      // B's catch-up counts half in the share and costs 1.20 GEL per hour; A is guaranteed 300 GEL a month.
+      await request(admin).patch(`/admin/v1/providers/${providerB.id}`).set(content.headers).send({ contract: { catchupWeight: 0.5, catchupFeePerHour: { currency: 'gel', amountMinor: 120 } } }).expect(200);
+      await request(admin).patch(`/admin/v1/providers/${providerB.id}`).set(content.headers).send({ contract: { catchupWeight: 9 } }).expect(400);
+      const updated = (await request(admin).patch(`/admin/v1/providers/${providerA.id}`).set(content.headers).send({ contract: { minimumGuarantee: { currency: 'GEL', amountMinor: 30000 } } }).expect(200)).body as ProviderDto;
+      expect(updated.contract).toMatchObject({ minimumGuarantee: { currency: 'GEL', amountMinor: 30000 }, catchupWeight: 1, catchupFeePerHour: null });
+      const deviceId = newEntityId();
+      await t.db.insertInto('devices').values({ id: deviceId, user_id: users[1]!, key_hash: newEntityId(), name: 'TV', platform: 'tv' }).execute();
+      const started = ago(2 * 3600_000);
+      const ended = new Date(started.getTime() + 60 * 60_000);
+      await t.db
+        .insertInto('playback_sessions')
+        .values({ id: newEntityId(), user_id: users[1]!, profile_id: null, device_id: deviceId, channel_id: channel.id, access: 'package', package_id: basic.id, country: 'GE', provider_id: providerB.id, started_at: started, last_heartbeat_at: new Date(ended.getTime() - 30_000), expires_at: ended, ended_at: ended, end_reason: 'stopped', archive_start: ago(30 * 3600_000), archive_end: ago(29 * 3600_000) })
+        .execute();
+
+      const report = (await request(admin).get('/admin/v1/finance/partners').set(finance.headers).expect(200)).body as PartnerReportDto;
+      const a = report.partners.find((row) => row.providerId === providerA.id)!;
+      const b = report.partners.find((row) => row.providerId === providerB.id)!;
+      // Weighted minutes: A 60, B 30 live + 60 × 0.5 catch-up = 60 → an even split of 131.99 GEL.
+      expect(b).toMatchObject({ minutes: 90, liveMinutes: 30, catchupMinutes: 60, share: 0.5, catchupFees: { currency: 'GEL', amountMinor: 120 }, minimumGuarantee: null, guaranteeTopUp: null });
+      expect(a).toMatchObject({ minutes: 60, liveMinutes: 60, catchupMinutes: 0, share: 0.5, revenue: [{ currency: 'GEL', amountMinor: 6600 }], catchupFees: null });
+      // The default 30-day period owes ~98.6 % of the monthly guarantee; the share falls short by the rest.
+      expect(a.minimumGuarantee).toEqual({ currency: 'GEL', amountMinor: Math.round(30000 * (30 / 30.4375)) });
+      expect(a.guaranteeTopUp).toEqual({ currency: 'GEL', amountMinor: a.minimumGuarantee!.amountMinor - 6600 });
+      const csv = await request(admin).get('/admin/v1/finance/partners.csv').set(finance.headers).expect(200);
+      expect(csv.text).toContain(`Licensor B,,90,30,60,50.00,66.00,,,,,,1.20,GEL`);
     });
 
     it('overview: viewing, catalog health and approvals for everyone; revenue only for finance roles', async () => {

@@ -124,8 +124,9 @@ given as `template`).
 { "id": "basic", "name": "Basic", "description": "…" }
 ```
 
-Membership is declared on the items (`packages` on channels and VOD). Packages are stored for the
-commercial catalogue (Phase 17); this contract does not set prices.
+Membership is declared on the items (`packages` on channels and VOD). A ZIPTV plan in VOD mode
+`package` opens the films and series of the vendor packages it names; this contract does not set
+prices.
 
 ## What ZIPTV does with it
 
@@ -139,5 +140,8 @@ commercial catalogue (Phase 17); this contract does not set prices.
 - **Quality limit**: when the grant that lets a viewer watch has `maxQuality`, the stream proxy
   removes taller HLS variants from master playlists before the player sees them. Non-HLS feeds
   with a quality limit are not offered (the limit could not be enforced).
-- **Movies, series, packages** are stored (Phase 17 decides how they are sold).
+- **Movies, series, packages** are stored and offered to viewers by the entitlement engine: an item
+  is listed where one of its rights covers the viewer's country, device and time under a sellable
+  model (`subscription` or `b2b`); a plan opens it when its VOD mode is `included`, or `package` and
+  the item is in one of the plan's vendor packages. An item without rights is not sold.
 - Every sync, refused feed and skipped item is written to the provider's **sync journal**.

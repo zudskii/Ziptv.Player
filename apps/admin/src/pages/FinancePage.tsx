@@ -131,9 +131,32 @@ export function FinancePage() {
               empty={t('finance.noProviders')}
               columns={[
                 { header: t('finance.licensor'), cell: (row) => <div><p className="font-medium">{row.providerName}</p><p className="text-xs text-fg-muted">{row.contractRef ?? '—'}</p></div> },
-                { header: t('finance.watched'), cell: (row) => minutes(row.minutes), className: 'whitespace-nowrap' },
+                {
+                  header: t('finance.watched'),
+                  cell: (row) => (
+                    <div>
+                      <p>{minutes(row.minutes)}</p>
+                      {row.catchupMinutes > 0 && <p className="text-xs text-fg-muted">{t('contract.catchupPart', { minutes: minutes(row.catchupMinutes) })}</p>}
+                    </div>
+                  ),
+                  className: 'whitespace-nowrap',
+                },
                 { header: t('finance.share'), cell: (row) => percent(row.share * 100) },
                 { header: t('finance.revenueShare'), cell: (row) => moneyList(row.revenue) },
+                {
+                  header: t('contract.guarantee'),
+                  cell: (row) =>
+                    row.minimumGuarantee ? (
+                      <div>
+                        <p>{money(row.minimumGuarantee)}</p>
+                        {row.guaranteeTopUp && row.guaranteeTopUp.amountMinor > 0 && <p className="text-xs text-amber-200">{t('contract.topUp', { amount: money(row.guaranteeTopUp) })}</p>}
+                      </div>
+                    ) : (
+                      '—'
+                    ),
+                  className: 'whitespace-nowrap',
+                },
+                { header: t('contract.catchupFees'), cell: (row) => money(row.catchupFees), className: 'whitespace-nowrap' },
                 { header: t('finance.costMonth'), cell: (row) => money(row.monthlyCost) },
               ]}
             />

@@ -8,9 +8,11 @@ import type {
   ProviderFeedRepository,
   ProviderSyncEvent,
   SealedVod,
+  VodCatalogItem,
+  VodCatalogQuery,
 } from '../../../../application/ports/provider-feed-repository.js';
 import type { FeedRight } from '../../../../domain/operator/vendor-feed.js';
-import { newEntityId } from '../../../../domain/shared/ids.js';
+import { isEntityId, newEntityId } from '../../../../domain/shared/ids.js';
 import { json, type Database, type RightsGrantsTable, type StoredFeedRight } from '../schema.js';
 
 const CHUNK = 500;
@@ -174,6 +176,85 @@ export class PgProviderFeedRepository implements ProviderFeedRepository {
       episodes: Number(episodes.rows[0]?.n ?? 0),
       packages: packages.rows.map((row) => ({ externalId: row.external_id, name: row.name, status: row.status, items: Number(row.items) })),
       recent: recent.map((row) => ({ externalId: row.external_id, type: row.type, title: row.title, year: row.year, status: row.status })),
+    };
+  }
+
+  async packageOptions(): Promise<{ id: string; providerId: string; providerName: string; name: string; items: number; status: 'active' | 'gone' }[]> {
+    const rows = await sql<{ id: string; provider_id: string; provider_name: string; name: string; status: 'active' | 'gone'; items: string }>`
+      SELECT p.id, p.provider_id, pr.name AS provider_name, p.name, p.status,
+             (SELECT count(*) FROM provider_vod v WHERE v.provider_id = p.provider_id AND v.status = 'active' AND p.external_id = ANY(v.packages)) AS items
+        FROM provider_packages p JOIN providers pr ON pr.id = p.provider_id
+       ORDER BY p.status, pr.name, p.name LIMIT 1000`.execute(this.db);
+    return rows.rows.map((row) => ({ id: row.id, providerId: row.provider_id, providerName: row.provider_name, name: row.name, items: Number(row.items), status: row.status }));
+  }
+
+  async vodCatalog(query: VodCatalogQuery): Promise<{ items: VodCatalogItem[]; total: number }> {
+    const country = query.country ?? '';
+    const at = query.at.toISOString();
+    // A right that covers the viewer now under a sellable model (the exact rule runs again in the domain).
+    const licensed = sql<boolean>`EXISTS (
+      SELECT 1 FROM jsonb_array_elements(v.rights) r
+       WHERE (r->'territories' ? '*' OR r->'territories' ? ${country})
+         AND r->'devices' ? ${query.device}
+         AND (r->'models' ? 'subscription' OR r->'models' ? 'b2b')
+         AND (r->>'start')::timestamptz <= ${at}::timestamptz
+         AND (r->>'end' IS NULL OR (r->>'end')::timestamptz > ${at}::timestamptz))`;
+    const type = query.type ? sql`AND v.type = ${query.type}` : sql``;
+    const text = query.q?.trim() ? sql`AND v.title ILIKE ${`%${query.q.trim().replace(/[\\%_]/g, (char) => `\\${char}`)}%`} ESCAPE '\\'` : sql``;
+    const [rows, total] = await Promise.all([
+      sql<{ id: string; provider_id: string; type: 'movie' | 'series'; title: string; year: number | null; poster: string | null; genres: string[]; rating: number | null; rights: StoredFeedRight[]; package_ids: string[] }>`
+        SELECT v.id, v.provider_id, v.type, v.title, v.year, v.poster, v.genres, v.rating, v.rights,
+               ARRAY(SELECT pp.id FROM provider_packages pp WHERE pp.provider_id = v.provider_id AND pp.status = 'active' AND pp.external_id = ANY(v.packages)) AS package_ids
+          FROM provider_vod v JOIN providers p ON p.id = v.provider_id
+         WHERE v.status = 'active' AND p.status = 'active' AND ${licensed} ${type} ${text}
+         ORDER BY v.title, v.id
+         LIMIT ${query.limit} OFFSET ${query.offset}`.execute(this.db),
+      sql<{ n: string }>`
+        SELECT count(*) AS n FROM provider_vod v JOIN providers p ON p.id = v.provider_id
+         WHERE v.status = 'active' AND p.status = 'active' AND ${licensed} ${type} ${text}`.execute(this.db),
+    ]);
+    return {
+      items: rows.rows.map((row) => ({
+        id: row.id,
+        providerId: row.provider_id,
+        type: row.type,
+        title: row.title,
+        year: row.year,
+        poster: row.poster,
+        genres: row.genres,
+        rating: row.rating === null ? null : Number(row.rating),
+        rights: fromStoredRights(row.rights),
+        packageIds: row.package_ids,
+      })),
+      total: Number(total.rows[0]?.n ?? 0),
+    };
+  }
+
+  async vodItem(id: string): Promise<Awaited<ReturnType<ProviderFeedRepository['vodItem']>>> {
+    if (!isEntityId(id)) return null;
+    const row = await sql<{ id: string; provider_id: string; type: 'movie' | 'series'; title: string; year: number | null; poster: string | null; genres: string[]; rating: number | null; rights: StoredFeedRight[]; package_ids: string[]; plot: string | null; duration_secs: number | null; locator: string | null }>`
+      SELECT v.id, v.provider_id, v.type, v.title, v.year, v.poster, v.genres, v.rating, v.rights, v.plot, v.duration_secs, v.locator,
+             ARRAY(SELECT pp.id FROM provider_packages pp WHERE pp.provider_id = v.provider_id AND pp.status = 'active' AND pp.external_id = ANY(v.packages)) AS package_ids
+        FROM provider_vod v JOIN providers p ON p.id = v.provider_id
+       WHERE v.id = ${id} AND v.status = 'active' AND p.status = 'active'`.execute(this.db);
+    const item = row.rows[0];
+    if (!item) return null;
+    const episodes = await this.db.selectFrom('provider_episodes').selectAll().where('vod_id', '=', id).orderBy('season').orderBy('episode').execute();
+    return {
+      id: item.id,
+      providerId: item.provider_id,
+      type: item.type,
+      title: item.title,
+      year: item.year,
+      poster: item.poster,
+      genres: item.genres,
+      rating: item.rating === null ? null : Number(item.rating),
+      rights: fromStoredRights(item.rights),
+      packageIds: item.package_ids,
+      plot: item.plot,
+      durationSecs: item.duration_secs,
+      locator: item.locator,
+      episodes: episodes.map((episode) => ({ externalId: episode.external_id, season: episode.season, episode: episode.episode, title: episode.title, durationSecs: episode.duration_secs, locator: episode.locator })),
     };
   }
 

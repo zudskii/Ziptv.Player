@@ -74,7 +74,7 @@ describe('subscription state machine', () => {
 
 describe('entitlement engine', () => {
   const grant = (models: RightsGrant['businessModels'], territory = 'GE'): RightsGrant => ({ id: 'g', channelId: 'c', territory, deviceClasses: ['web', 'tv'], businessModels: models, startAt: at(-10), endAt: null, status: 'active', catchupDays: 0, maxQuality: null });
-  const basic = { id: 'basic', businessModel: 'subscription' as const, maxStreams: 2, maxDevices: 4 };
+  const basic = { id: 'basic', businessModel: 'subscription' as const, maxStreams: 2, maxDevices: 4, maxQuality: null, catchupDays: null };
   const input = (patch: Partial<AccessInput> = {}): AccessInput => ({
     now: t0,
     mode: 'subscription',
@@ -110,7 +110,7 @@ describe('entitlement engine', () => {
   });
 
   it('limits come from the most generous active package', () => {
-    const premium = { id: 'premium', businessModel: 'subscription' as const, maxStreams: 4, maxDevices: 6 };
+    const premium = { id: 'premium', businessModel: 'subscription' as const, maxStreams: 4, maxDevices: 6, maxQuality: null, catchupDays: null };
     const entitlements = [
       { packageId: 'basic', startsAt: at(-1), endsAt: at(30), revoked: false },
       { packageId: 'premium', startsAt: at(-1), endsAt: at(-0.5), revoked: false },

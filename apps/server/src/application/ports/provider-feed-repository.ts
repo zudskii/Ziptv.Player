@@ -57,6 +57,31 @@ export interface ProviderContentSummary {
   recent: { externalId: string; type: 'movie' | 'series'; title: string; year: number | null; status: 'active' | 'gone' }[];
 }
 
+/** A licensed film/series as the viewer catalogue sees it (Phase 17). */
+export interface VodCatalogItem {
+  id: string;
+  providerId: string;
+  type: 'movie' | 'series';
+  title: string;
+  year: number | null;
+  poster: string | null;
+  genres: string[];
+  rating: number | null;
+  rights: FeedRight[];
+  /** provider_packages ids it belongs to. */
+  packageIds: string[];
+}
+
+export interface VodCatalogQuery {
+  country: string | null;
+  device: FeedRight['devices'][number];
+  at: Date;
+  type?: 'movie' | 'series' | undefined;
+  q?: string | undefined;
+  limit: number;
+  offset: number;
+}
+
 /**
  * What full-catalogue providers (vendor feeds) add to the operator catalogue: the sync journal,
  * the incremental position, VOD and packages, and the rights grants kept in step with the feed.
@@ -79,6 +104,15 @@ export interface ProviderFeedRepository {
   upsertPackages(providerId: string, packages: readonly { externalId: string; name: string; description: string | null }[], now: Date): Promise<void>;
   markPackagesGone(providerId: string, which: { externalIds: readonly string[] } | { seenBefore: Date }): Promise<number>;
   content(providerId: string): Promise<ProviderContentSummary>;
+  /** Vendor packages of every provider (the console's VOD plan picker). */
+  packageOptions(): Promise<{ id: string; providerId: string; providerName: string; name: string; items: number; status: 'active' | 'gone' }[]>;
+  /**
+   * Films/series of active providers with a vendor right for this country and device at `at`
+   * under a sellable model (subscription or B2B); the entitlement engine decides the rest.
+   */
+  vodCatalog(query: VodCatalogQuery): Promise<{ items: VodCatalogItem[]; total: number }>;
+  /** One active film/series of an active provider, with its sealed stream locators. */
+  vodItem(id: string): Promise<(VodCatalogItem & { plot: string | null; durationSecs: number | null; locator: string | null; episodes: { externalId: string; season: number; episode: number; title: string; durationSecs: number | null; locator: string | null }[] }) | null>;
 
   /** Channel ids whose matched streams from this provider carry feed rights (or had feed grants). */
   feedChannels(providerId: string): Promise<string[]>;

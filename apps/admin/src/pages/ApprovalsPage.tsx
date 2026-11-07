@@ -10,7 +10,7 @@ import { useAction } from '../lib/mutation';
 import { formatTime } from '../lib/nav';
 import { statusLabel, t } from '../i18n';
 
-const kindLabel = (kind: ChangeRequestDto['kind']) => t(`approvals.kind.${kind.replace('.', '_') as 'package_create' | 'package_update' | 'rights_grant' | 'rights_revoke'}`);
+const kindLabel = (kind: ChangeRequestDto['kind']) => t(`approvals.kind.${kind.replace('.', '_') as 'package_create' | 'package_update' | 'rights_grant' | 'rights_revoke' | 'promo_create'}`);
 
 const STATUS_TONE: Record<ChangeRequestDto['status'], 'neutral' | 'ok' | 'warn' | 'danger' | 'accent'> = {
   pending: 'warn',

@@ -15,6 +15,7 @@ import * as viewerControls from './0012-viewer-controls.js';
 import * as profileLibrary from './0013-profile-library.js';
 import * as vodFilters from './0014-vod-filters.js';
 import * as providerFeeds from './0015-provider-feeds.js';
+import * as commercialCatalog from './0016-commercial-catalog.js';
 
 /**
  * Forward-only migrations, applied in key order. Add a new file and register it here;
@@ -36,4 +37,5 @@ export const MIGRATIONS: Record<string, Migration> = {
   '0013-profile-library': profileLibrary,
   '0014-vod-filters': vodFilters,
   '0015-provider-feeds': providerFeeds,
+  '0016-commercial-catalog': commercialCatalog,
 };

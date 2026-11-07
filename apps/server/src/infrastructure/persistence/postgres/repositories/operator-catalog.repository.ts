@@ -52,6 +52,9 @@ function toProvider(row: ProviderRow): ProviderRecord {
       monthlyCostMinor: row.monthly_cost_minor,
       costCurrency: row.cost_currency,
       notes: row.notes,
+      minimumGuarantee: row.minimum_guarantee_minor !== null && row.guarantee_currency ? { amountMinor: row.minimum_guarantee_minor, currency: row.guarantee_currency } : null,
+      catchupWeight: Number(row.catchup_weight),
+      catchupFeePerHour: row.catchup_fee_per_hour_minor !== null && row.catchup_fee_currency ? { amountMinor: row.catchup_fee_per_hour_minor, currency: row.catchup_fee_currency } : null,
     },
     feed: { cursor: row.sync_cursor, generatedAt: row.feed_generated_at },
     createdAt: row.created_at,
@@ -179,6 +182,9 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
         ...(contract.monthlyCostMinor !== undefined ? { monthly_cost_minor: contract.monthlyCostMinor } : {}),
         ...(contract.costCurrency !== undefined ? { cost_currency: contract.costCurrency } : {}),
         ...(contract.notes !== undefined ? { notes: contract.notes } : {}),
+        ...(contract.minimumGuarantee !== undefined ? { minimum_guarantee_minor: contract.minimumGuarantee?.amountMinor ?? null, guarantee_currency: contract.minimumGuarantee?.currency ?? null } : {}),
+        ...(contract.catchupWeight !== undefined ? { catchup_weight: contract.catchupWeight } : {}),
+        ...(contract.catchupFeePerHour !== undefined ? { catchup_fee_per_hour_minor: contract.catchupFeePerHour?.amountMinor ?? null, catchup_fee_currency: contract.catchupFeePerHour?.currency ?? null } : {}),
       })
       .where('id', '=', id)
       .executeTakeFirst();

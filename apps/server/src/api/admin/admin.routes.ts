@@ -93,6 +93,9 @@ const UpdateProviderBody = z
         slaTargetPct: z.number().gt(0).max(100).nullable().optional(),
         monthlyCost: z.object({ currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'), amountMinor: z.number().int().min(0).max(1_000_000_000) }).strict().nullable().optional(),
         notes: z.string().max(4000).optional(),
+        minimumGuarantee: z.object({ currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'), amountMinor: z.number().int().min(0).max(1_000_000_000) }).strict().nullable().optional(),
+        catchupWeight: z.number().min(0).max(5).optional(),
+        catchupFeePerHour: z.object({ currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'), amountMinor: z.number().int().min(0).max(100_000_000) }).strict().nullable().optional(),
       })
       .strict()
       .optional(),
@@ -159,11 +162,37 @@ const PackageFields = {
   maxDevices: z.number().int().min(1).max(50),
   maxStreams: z.number().int().min(1).max(20),
   businessModel: z.enum(['subscription', 'b2b']).optional(),
+  vodMode: z.enum(['included', 'package', 'none']).optional(),
+  vodPackages: z.array(EntityId).max(200).optional(),
+  maxQuality: z.enum(['sd', 'hd', 'fhd', 'uhd']).nullable().optional(),
+  catchupDays: z.number().int().min(0).max(30).nullable().optional(),
+  prices: z
+    .array(z.object({ country: z.string().trim().regex(/^[A-Za-z]{2}$/, 'ISO 3166 code'), currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code'), priceMinor: z.number().int().min(0).max(100_000_00) }).strict())
+    .max(250)
+    .optional(),
 };
 const CreatePackageBody = z.object(PackageFields).strict();
 const UpdatePackageBody = z
   .object({ ...PackageFields, status: z.enum(['draft', 'active', 'retired']), channelIds: z.array(EntityId).max(5000) })
   .partial()
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, 'nothing to change');
+const PromoCodeText = z.string().trim().min(3).max(32).regex(/^[A-Za-z0-9_-]+$/, 'letters, digits, dashes, underscores');
+const CreatePromoBody = z
+  .object({
+    code: PromoCodeText,
+    kind: z.enum(['percent', 'amount']),
+    value: z.number().int().min(1).max(100_000_00),
+    currency: z.string().trim().regex(/^[A-Za-z]{3}$/, 'ISO 4217 code').optional(),
+    families: z.array(EntityId).max(100).optional(),
+    maxRedemptions: z.number().int().min(1).max(10_000_000).nullable().optional(),
+    startsAt: z.string().datetime({ offset: true }).optional(),
+    endsAt: z.string().datetime({ offset: true }).nullable().optional(),
+    note: z.string().trim().max(500).optional(),
+  })
+  .strict();
+const UpdatePromoBody = z
+  .object({ active: z.literal(false).optional(), note: z.string().trim().max(500).optional() })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'nothing to change');
 const CompBody = z.object({ packageId: EntityId, endsAt: z.string().datetime({ offset: true }).nullable().optional(), note: z.string().trim().min(3).max(500) }).strict();
@@ -172,7 +201,7 @@ const PaymentEventsQuery = z.object({ limit: z.coerce.number().int().min(1).max(
 
 const ChangeRequestsQuery = z.object({
   status: z.enum(['open', 'pending', 'applied', 'rejected', 'withdrawn', 'failed', 'reviewed']).optional(),
-  kind: z.enum(['package.create', 'package.update', 'rights.grant', 'rights.revoke']).optional(),
+  kind: z.enum(['package.create', 'package.update', 'rights.grant', 'rights.revoke', 'promo.create']).optional(),
   targetId: EntityId.optional(),
   offset: z.coerce.number().int().min(0).default(0),
   limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -423,6 +452,20 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
     const outcome = await commerce.updatePackage(currentStaff(req), id(req, 'Package id'), parseInput(UpdatePackageBody, req.body, 'Package change'), adminContext(req));
     if (outcome.status === 'applied') res.json(outcome.package);
     else res.status(202).json({ changeRequest: outcome.request } satisfies ChangeRequestedDto);
+  });
+  r.get('/provider-packages', 'billing:read', async (_req, res) => {
+    res.json(await commerce.providerPackages());
+  });
+  r.get('/promo-codes', 'billing:read', async (_req, res) => {
+    res.json(await commerce.promos());
+  });
+  r.post('/promo-codes', 'billing:write', async (req, res) => {
+    const outcome = await commerce.createPromo(currentStaff(req), parseInput(CreatePromoBody, req.body, 'Promo code'), adminContext(req));
+    if (outcome.status === 'applied') res.status(201).json(outcome.promo);
+    else res.status(202).json({ changeRequest: outcome.request } satisfies ChangeRequestedDto);
+  });
+  r.patch('/promo-codes/:id', 'billing:write', async (req, res) => {
+    res.json(await commerce.updatePromo(currentStaff(req), id(req, 'Promo code id'), parseInput(UpdatePromoBody, req.body, 'Promo code change'), adminContext(req)));
   });
   r.get('/users/:id/billing', 'billing:read', async (req, res) => {
     res.json(await commerce.userBilling(id(req, 'User id')));

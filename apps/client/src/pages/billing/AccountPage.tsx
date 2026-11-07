@@ -71,6 +71,8 @@ function SubscriptionSection({ data }: { data: AccountBillingDto }) {
           <p className="text-sm text-fg-muted">
             {t('billing.limits', { streams: data.limits.maxStreams, devices: data.limits.maxDevices })}
           </p>
+          {subscription.price && <p className="text-sm text-fg-muted">{t('plans.youPay', { price: formatPrice(subscription.price.amountMinor, subscription.price.currency) })}</p>}
+          {subscription.grandfathered && <p className="rounded-lg border border-line/10 bg-fg/5 p-2 text-sm text-fg-muted">{t('plans.grandfathered')}</p>}
           <div className="flex flex-wrap gap-2">
             {subscription.cancelAtPeriodEnd ? (
               <Button variant="primary" loading={resume.isPending} onClick={() => resume.mutate(undefined, { onSuccess: () => toast.success(t('billing.account.resumed')), onError: (error) => toast.error(t('billing.account.notResumed'), { description: errorMessage(error) }) })}>

@@ -5,7 +5,8 @@ import { playbackOrder } from '../../domain/health/failover.js';
 import { playableFeeds } from '../../domain/operator/feeds.js';
 import { catchupProblem, type CatchupProblem } from '../../domain/catalog/catchup-url.js';
 import { catchupDaysFor, catchupGrants, denialReason, findCoveringGrant, isLicensedAt, qualityCapFor, type RightsQuery } from '../../domain/operator/rights.js';
-import { QUALITY_HEIGHT } from '../../domain/operator/vendor-feed.js';
+import { QUALITY_HEIGHT, type Quality } from '../../domain/operator/vendor-feed.js';
+import { planCatchupDays, stricterQuality } from '../../domain/commerce/plan.js';
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { AppError } from '../errors.js';
 import { OPERATOR_LOCK_SOURCE } from '../../domain/viewer/parental.js';
@@ -28,6 +29,8 @@ import type { ProviderConnections } from './provider-connections.js';
 export interface ViewingContext {
   country: string | null;
   device: DeviceClass;
+  /** Ceilings of the plan that allows the viewing (Phase 17): narrow the licence, never widen it. */
+  plan?: { maxQuality: Quality | null; catchupDays: number | null };
 }
 
 /** Cache prefix of operator catalog reads (cleared by every console write). */
@@ -98,7 +101,7 @@ export class OperatorService {
       channels.push({ ...this.toChannelDto(snapshot, channel, numbers?.get(channel.id) ?? null, favoriteIds.has(channel.id), query), parentalLock: this.parentalLocked(viewer, snapshot, channel) });
     }
     // Commerce: mark channels the viewer's packages do not cover (and which packages would).
-    const annotations = this.deps.entitlements ? await this.deps.entitlements.annotate(viewer, channels.map((channel) => ({ id: channel.id, grants: snapshot.grants.get(channel.id) ?? [] })), context) : new Map();
+    const annotations = this.deps.entitlements ? await this.deps.entitlements.annotate(viewer, channels.map((channel) => ({ id: channel.id, grants: snapshot.grants.get(channel.id) ?? [], catchupDays: channel.catchupDays })), context) : new Map();
     for (const channel of channels) Object.assign(channel, annotations.get(channel.id) ?? {});
     channels.sort((a, b) => (a.number ?? Number.MAX_SAFE_INTEGER) - (b.number ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name));
     return { country: context.country, device: context.device, lineup: lineup ? toLineupDto(lineup) : null, lineups: lineups.map(toLineupDto), channels };
@@ -115,7 +118,7 @@ export class OperatorService {
     const query: RightsQuery = { country: context.country, device: context.device, at: this.deps.clock.now() };
     const grants = snapshot.grants.get(channel.id) ?? [];
     this.assertUnlocked(viewer, snapshot, channel);
-    if (archive) return this.resolveArchive(snapshot, channel, grants, query, archive);
+    if (archive) return this.resolveArchive(snapshot, channel, grants, query, archive, context.plan ?? null);
     if (!findCoveringGrant(grants, query)) {
       const reason = denialReason(grants, query);
       throw new AppError(
@@ -126,14 +129,16 @@ export class OperatorService {
       );
     }
 
-    // The licence may cap the picture quality (the most generous covering grant decides).
-    const cap = qualityCapFor(grants, query);
+    // The licence may cap the picture quality (the most generous covering grant decides); the plan
+    // may cap it further.
+    const licensedCap = qualityCapFor(grants, query);
+    const cap = stricterQuality(licensedCap, context.plan?.maxQuality ?? null);
     const targets: StreamTarget[] = [];
     for (const feed of await this.orderedFeeds(channel.id)) {
       try {
         const located = await this.locators.locate(feed);
         if (!located) continue;
-        targets.push({ kind: located.kind, unplayableReason: null, locator: located.locator, telemetry: { type: 'feed', id: feed.id }, ...(cap ? { maxHeight: QUALITY_HEIGHT[cap] } : {}) });
+        targets.push({ kind: located.kind, unplayableReason: null, locator: located.locator, telemetry: { type: 'feed', id: feed.id }, ...(cap ? { maxHeight: QUALITY_HEIGHT[cap], strictCap: licensedCap !== null } : {}) });
       } catch (error) {
         // One broken feed must not hide the others (backup feeds exist for exactly this).
         this.deps.logger.warn({ err: error, feedId: feed.id, channelId: channel.id }, 'Feed could not be resolved');
@@ -154,13 +159,14 @@ export class OperatorService {
    * broadcast, within both the licensed window and the provider's archive of each feed; feeds in
    * failover order, archive addresses built server-side.
    */
-  private async resolveArchive(snapshot: CatalogSnapshot, channel: MasterChannelRecord, grants: StoredGrant[], query: RightsQuery, range: ArchiveRange) {
+  private async resolveArchive(snapshot: CatalogSnapshot, channel: MasterChannelRecord, grants: StoredGrant[], query: RightsQuery, range: ArchiveRange, plan: ViewingContext['plan'] | null) {
     const licensed = catchupGrants(grants, query, range.start);
     if (licensed.length === 0) {
       throw new AppError('NOT_ENTITLED', 403, findCoveringGrant(grants, query) ? 'Catch-up is not licensed for this programme.' : 'This channel is not available here.', { reason: 'catchup_not_licensed' });
     }
-    const licensedDays = Math.max(...licensed.map((grant) => grant.catchupDays));
-    const cap = qualityCapFor(licensed, query);
+    const licensedDays = planCatchupDays(Math.max(...licensed.map((grant) => grant.catchupDays)), plan?.catchupDays ?? null);
+    const licensedCap = qualityCapFor(licensed, query);
+    const cap = stricterQuality(licensedCap, plan?.maxQuality ?? null);
     const now = query.at;
     const targets: StreamTarget[] = [];
     let problem: CatchupProblem | null = 'not_available';
@@ -173,7 +179,7 @@ export class OperatorService {
       try {
         const located = await this.locators.locateArchive(feed, { ...range, now });
         if (!located) continue;
-        targets.push({ kind: located.kind, unplayableReason: null, locator: located.locator, telemetry: { type: 'feed', id: feed.id }, ...(cap ? { maxHeight: QUALITY_HEIGHT[cap] } : {}) });
+        targets.push({ kind: located.kind, unplayableReason: null, locator: located.locator, telemetry: { type: 'feed', id: feed.id }, ...(cap ? { maxHeight: QUALITY_HEIGHT[cap], strictCap: licensedCap !== null } : {}) });
       } catch (error) {
         this.deps.logger.warn({ err: error, feedId: feed.id, channelId: channel.id }, 'Archive of a feed could not be resolved');
       }

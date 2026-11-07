@@ -67,7 +67,10 @@ export class ConsoleService {
 
   /**
    * Licensor revenue share by watch minutes: each package's net revenue in the period is split
-   * between the providers whose feeds its viewers watched, in proportion to the minutes.
+   * between the providers whose feeds its viewers watched, in proportion to the minutes. Contract
+   * terms (Phase 17.5): a catch-up minute counts by the provider's catch-up weight; a separate
+   * catch-up tariff is charged per catch-up hour; a minimum guarantee (pro rata for the period)
+   * tops the share up when it falls short.
    */
   async partners(range: { from?: Date | undefined; to?: Date | undefined }): Promise<PartnerReportDto> {
     const { from, to } = this.range(range);
@@ -75,12 +78,18 @@ export class ConsoleService {
       throw AppError.validation(`Watch minutes are kept for ${PLAYBACK_SESSION_RETENTION_DAYS} days; start the partner report within that window.`);
     }
     const [net, minutes, providers] = await Promise.all([this.deps.queries.packageNet(from, to), this.deps.queries.watchMinutes(from, to), this.deps.queries.providers()]);
-    const byPackage = new Map<string, Map<string, number>>();
+    const terms = new Map(providers.map((provider) => [provider.id, provider]));
+    const weightOf = (providerId: string) => terms.get(providerId)?.catchupWeight ?? 1;
+    const byPackage = new Map<string, Map<string, number>>(); // package → provider → weighted minutes
+    const live = new Map<string, number>();
+    const catchup = new Map<string, number>();
     for (const row of minutes) {
-      const providers = byPackage.get(row.packageId) ?? new Map<string, number>();
       const key = row.providerId ?? UNKNOWN_PROVIDER;
-      providers.set(key, (providers.get(key) ?? 0) + row.minutes);
-      byPackage.set(row.packageId, providers);
+      const shares = byPackage.get(row.packageId) ?? new Map<string, number>();
+      shares.set(key, (shares.get(key) ?? 0) + row.minutes + row.catchupMinutes * weightOf(key));
+      byPackage.set(row.packageId, shares);
+      live.set(key, (live.get(key) ?? 0) + row.minutes);
+      catchup.set(key, (catchup.get(key) ?? 0) + row.catchupMinutes);
     }
     const revenue = new Map<string, Map<string, number>>(); // provider → currency → minor (unrounded)
     const unattributed = new Map<string, number>();
@@ -97,22 +106,35 @@ export class ConsoleService {
         revenue.set(provider, amounts);
       }
     }
-    const minutesOf = new Map<string, number>();
-    for (const row of minutes) minutesOf.set(row.providerId ?? UNKNOWN_PROVIDER, (minutesOf.get(row.providerId ?? UNKNOWN_PROVIDER) ?? 0) + row.minutes);
-    const totalMinutes = [...minutesOf.values()].reduce((sum, value) => sum + value, 0);
-    const rows: PartnerReportDto['partners'] = providers.map((provider) => ({
-      providerId: provider.id,
-      providerName: provider.name,
-      contractRef: provider.contractRef,
-      minutes: Math.round(minutesOf.get(provider.id) ?? 0),
-      share: totalMinutes > 0 ? round((minutesOf.get(provider.id) ?? 0) / totalMinutes, 4) : 0,
-      revenue: toMoney(revenue.get(provider.id)),
-      monthlyCost: provider.monthlyCost,
-    }));
-    if (minutesOf.has(UNKNOWN_PROVIDER)) {
-      // Viewings recorded before the serving provider was tracked, or whose feed left the catalog.
-      rows.push({ providerId: UNKNOWN_PROVIDER, providerName: 'Unknown provider', contractRef: null, minutes: Math.round(minutesOf.get(UNKNOWN_PROVIDER)!), share: round(minutesOf.get(UNKNOWN_PROVIDER)! / totalMinutes, 4), revenue: toMoney(revenue.get(UNKNOWN_PROVIDER)), monthlyCost: null });
-    }
+    const weighted = new Map<string, number>();
+    for (const shares of byPackage.values()) for (const [provider, value] of shares) weighted.set(provider, (weighted.get(provider) ?? 0) + value);
+    const totalWeighted = [...weighted.values()].reduce((sum, value) => sum + value, 0);
+    const totalMinutes = [...live.values(), ...catchup.values()].reduce((sum, value) => sum + value, 0);
+    // The guarantee is monthly: a period of 15 days owes half of it.
+    const months = (to.getTime() - from.getTime()) / (DAY * 30.4375);
+    const row = (providerId: string, provider: (typeof providers)[number] | null): PartnerReportDto['partners'][number] => {
+      const amounts = revenue.get(providerId);
+      const guarantee = provider?.minimumGuarantee ? { currency: provider.minimumGuarantee.currency, amountMinor: Math.round(provider.minimumGuarantee.amountMinor * months) } : null;
+      const earned = guarantee ? Math.round(amounts?.get(guarantee.currency) ?? 0) : 0;
+      const catchupHours = (catchup.get(providerId) ?? 0) / 60;
+      return {
+        providerId,
+        providerName: provider?.name ?? 'Unknown provider',
+        contractRef: provider?.contractRef ?? null,
+        minutes: Math.round((live.get(providerId) ?? 0) + (catchup.get(providerId) ?? 0)),
+        liveMinutes: Math.round(live.get(providerId) ?? 0),
+        catchupMinutes: Math.round(catchup.get(providerId) ?? 0),
+        share: totalWeighted > 0 ? round((weighted.get(providerId) ?? 0) / totalWeighted, 4) : 0,
+        revenue: toMoney(amounts),
+        monthlyCost: provider?.monthlyCost ?? null,
+        minimumGuarantee: guarantee,
+        guaranteeTopUp: guarantee ? { currency: guarantee.currency, amountMinor: Math.max(0, guarantee.amountMinor - earned) } : null,
+        catchupFees: provider?.catchupFeePerHour ? { currency: provider.catchupFeePerHour.currency, amountMinor: Math.round(provider.catchupFeePerHour.amountMinor * catchupHours) } : null,
+      };
+    };
+    const rows = providers.map((provider) => row(provider.id, provider));
+    // Viewings recorded before the serving provider was tracked, or whose feed left the catalog.
+    if (live.has(UNKNOWN_PROVIDER) || catchup.has(UNKNOWN_PROVIDER)) rows.push(row(UNKNOWN_PROVIDER, null));
     rows.sort((a, b) => b.minutes - a.minutes || a.providerName.localeCompare(b.providerName));
     return { from: from.toISOString(), to: to.toISOString(), method: 'watch_minutes', totalMinutes: Math.round(totalMinutes), partners: rows, unattributedRevenue: toMoney(unattributed) };
   }
@@ -121,20 +143,28 @@ export class ConsoleService {
   async partnersCsv(range: { from?: Date | undefined; to?: Date | undefined }): Promise<string> {
     const report = await this.partners(range);
     const currencies = [...new Set([...report.partners.flatMap((row) => row.revenue), ...report.unattributedRevenue].map((money) => money.currency))].sort();
-    const header = ['provider', 'contract', 'minutes', 'share_pct', ...currencies.map((currency) => `revenue_${currency}`), 'monthly_cost', 'cost_currency'];
+    const header = ['provider', 'contract', 'minutes', 'live_minutes', 'catchup_minutes', 'share_pct', ...currencies.map((currency) => `revenue_${currency}`), 'monthly_cost', 'cost_currency', 'minimum_guarantee', 'guarantee_top_up', 'guarantee_currency', 'catchup_fees', 'catchup_fee_currency'];
+    const amount = (money: MoneyDto | null) => (money ? minorToDecimal(money.amountMinor) : '');
     const lines = report.partners.map((row) => [
       row.providerName,
       row.contractRef ?? '',
       String(row.minutes),
+      String(row.liveMinutes),
+      String(row.catchupMinutes),
       (row.share * 100).toFixed(2),
       ...currencies.map((currency) => minorToDecimal(row.revenue.find((money) => money.currency === currency)?.amountMinor ?? 0)),
-      row.monthlyCost ? minorToDecimal(row.monthlyCost.amountMinor) : '',
+      amount(row.monthlyCost),
       row.monthlyCost?.currency ?? '',
+      amount(row.minimumGuarantee),
+      amount(row.guaranteeTopUp),
+      row.minimumGuarantee?.currency ?? '',
+      amount(row.catchupFees),
+      row.catchupFees?.currency ?? '',
     ]);
     const unattributed = report.unattributedRevenue.length
-      ? [['(unattributed: no watch minutes)', '', '0', '0.00', ...currencies.map((currency) => minorToDecimal(report.unattributedRevenue.find((money) => money.currency === currency)?.amountMinor ?? 0)), '', '']]
+      ? [['(unattributed: no watch minutes)', '', '0', '0', '0', '0.00', ...currencies.map((currency) => minorToDecimal(report.unattributedRevenue.find((money) => money.currency === currency)?.amountMinor ?? 0)), '', '', '', '', '', '', '']]
       : [];
-    return [`# ZIPTV partner report ${report.from} – ${report.to} (method: watch minutes)`, header, ...lines, ...unattributed].map((line) => (Array.isArray(line) ? line.map(csvCell).join(',') : line)).join('\r\n') + '\r\n';
+    return [`# ZIPTV partner report ${report.from} – ${report.to} (method: watch minutes; catch-up weighted per contract)`, header, ...lines, ...unattributed].map((line) => (Array.isArray(line) ? line.map(csvCell).join(',') : line)).join('\r\n') + '\r\n';
   }
 
   // --- providers (9.3) ----------------------------------------------------------------------------

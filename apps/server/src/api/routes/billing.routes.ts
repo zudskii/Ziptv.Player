@@ -11,7 +11,9 @@ import { parseInput } from '../middleware/validate.js';
 import type { ViewingContextResolver } from '../middleware/viewing-context.js';
 import { EntityId, IsoInstant } from './schemas.js';
 
-const CheckoutBody = z.object({ packageId: z.string().trim().min(1).max(80) }).strict();
+const PromoCode = z.string().trim().max(32).optional();
+const CheckoutBody = z.object({ packageId: z.string().trim().min(1).max(80), promoCode: PromoCode }).strict();
+const ChangePlanBody = z.object({ packageId: z.string().trim().min(1).max(80) }).strict();
 const AccountQuery = z.object({ deviceId: EntityId.optional() });
 const DeviceBody = z.object({ key: z.string().min(32).max(128), name: z.string().trim().min(1).max(60), platform: z.enum(DEVICE_CLASSES) }).strict();
 const SessionBody = z
@@ -31,18 +33,35 @@ export function returnBase(req: Request, publicUrl: string | null): string {
 }
 
 /** `/billing` — plans, checkout, the viewer's subscription. */
-export function createBillingRouter(deps: { billing: BillingService; accounts: AccountBillingService; auth: RequestHandler; publicUrl: string | null; limit: RateLimiterFactory }): Router {
+export function createBillingRouter(deps: { billing: BillingService; accounts: AccountBillingService; auth: RequestHandler; publicUrl: string | null; limit: RateLimiterFactory; viewingContext: ViewingContextResolver }): Router {
   const router = Router();
   const checkoutLimiter = deps.limit({ name: 'billing:checkout', windowMs: 10 * 60_000, limit: 10, perUser: true });
   // The return page polls every 2 s; each poll of an open checkout asks the processor.
   const statusLimiter = deps.limit({ name: 'billing:checkout-status', windowMs: 60_000, limit: 60, perUser: true });
+  // Promo codes can be guessed: quotes are limited like checkouts are.
+  const quoteLimiter = deps.limit({ name: 'billing:quote', windowMs: 10 * 60_000, limit: 30, perUser: true });
   router.use(deps.auth);
+  // Prices follow the server-determined country (never a client claim).
   router.get('/packages', async (req, res) => {
-    res.json(await deps.billing.offers(currentViewer(req)));
+    res.json(await deps.billing.offers(currentViewer(req), deps.viewingContext(req).country));
+  });
+  router.post('/quote', quoteLimiter, async (req, res) => {
+    const body = parseInput(CheckoutBody, req.body, 'Quote');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await deps.billing.quote(currentViewer(req), body, deps.viewingContext(req).country));
   });
   router.post('/checkout', checkoutLimiter, async (req, res) => {
     const body = parseInput(CheckoutBody, req.body, 'Checkout');
-    res.status(201).json(await deps.billing.startCheckout(currentViewer(req), body.packageId, returnBase(req, deps.publicUrl)));
+    res.status(201).json(await deps.billing.startCheckout(currentViewer(req), body.packageId, returnBase(req, deps.publicUrl), { promoCode: body.promoCode, country: deps.viewingContext(req).country }));
+  });
+  router.post('/subscription/change/quote', async (req, res) => {
+    const body = parseInput(ChangePlanBody, req.body, 'Plan change');
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await deps.billing.changeQuote(currentViewer(req), body.packageId, deps.viewingContext(req).country));
+  });
+  router.post('/subscription/change', checkoutLimiter, async (req, res) => {
+    const body = parseInput(ChangePlanBody, req.body, 'Plan change');
+    res.json(await deps.billing.changePlan(currentViewer(req), body.packageId, deps.viewingContext(req).country));
   });
   router.get('/checkout/:id', statusLimiter, async (req, res) => {
     res.setHeader('Cache-Control', 'no-store');

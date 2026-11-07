@@ -16,7 +16,9 @@ export type ContentRefDto =
    * A channel of the operator catalog (rights-checked, always delivered through the proxy);
    * with `start`/`end` a past programme from its archive (catch-up rights).
    */
-  | { type: 'operator'; channelId: string; start?: string; end?: string };
+  | { type: 'operator'; channelId: string; start?: string; end?: string }
+  /** A film (or an episode of a series) of the operator's VOD catalogue: entitlement-checked, always proxied. */
+  | { type: 'operator_vod'; vodId: string; episodeId?: string };
 
 export type PlaybackEngineName = 'hls' | 'mpegts' | 'flv' | 'native' | 'dash';
 

@@ -12,8 +12,13 @@ export interface StreamTarget {
   locator: StreamLocator | null;
   /** What client telemetry of this target is about (operator feed / BYO source). */
   telemetry?: TelemetrySubject;
-  /** Licensed quality limit (operator channels): HLS variants taller than this are left out by the proxy. */
+  /** Quality limit (operator channels): HLS variants taller than this are left out by the proxy. */
   maxHeight?: number;
+  /**
+   * The limit is the licence's: a format whose quality cannot be limited (not HLS) is not offered.
+   * A plan's own ceiling alone is applied where it can be and does not take other formats away.
+   */
+  strictCap?: boolean;
 }
 
 export interface ResolvedContent {

@@ -3,6 +3,7 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 import { addPeriod } from '../../domain/commerce/subscription.js';
 import {
   WebhookSignatureError,
+  type CheckoutPrice,
   type HostedCheckoutPage,
   type PackageRecord,
   type PaymentProcessor,
@@ -18,6 +19,7 @@ const SIGNATURE_HEADER = 'x-fake-signature';
 interface FakeCheckout {
   ref: string;
   pkg: PackageRecord;
+  price: CheckoutPrice;
   trialDays: number;
   successUrl: string;
   cancelUrl: string;
@@ -27,6 +29,10 @@ interface FakeCheckout {
 
 interface FakeSubscription extends ProcessorSubscription {
   pkg: PackageRecord;
+  /** Recurring price per period. */
+  price: { amountMinor: number; currency: string };
+  /** Account credit left by a downgrade, used up by the next invoices. */
+  credit: number;
 }
 
 /**
@@ -55,9 +61,9 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
 
   // --- PaymentProcessor ---------------------------------------------------------------------------
 
-  async createCheckout(input: { checkoutId: string; pkg: PackageRecord; trialDays: number; successUrl: string; cancelUrl: string }): Promise<{ ref: string; redirectUrl: string }> {
+  async createCheckout(input: { checkoutId: string; pkg: PackageRecord; price: CheckoutPrice; trialDays: number; successUrl: string; cancelUrl: string }): Promise<{ ref: string; redirectUrl: string }> {
     const ref = `fcs_${randomBytes(9).toString('base64url')}`;
-    this.checkouts.set(ref, { ref, pkg: input.pkg, trialDays: input.trialDays, successUrl: input.successUrl, cancelUrl: input.cancelUrl, status: 'open', subscriptionRef: null });
+    this.checkouts.set(ref, { ref, pkg: input.pkg, price: input.price, trialDays: input.trialDays, successUrl: input.successUrl, cancelUrl: input.cancelUrl, status: 'open', subscriptionRef: null });
     return { ref, redirectUrl: `${this.options.baseUrl()}/billing/fake-checkout/${ref}` };
   }
 
@@ -98,6 +104,26 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
     this.emit('subscription.updated', subscription, null, null);
   }
 
+  async changePlan(ref: string, input: { pkg: PackageRecord; price: { amountMinor: number; currency: string }; dueNowMinor: number; carryMinor: number }): Promise<void> {
+    const subscription = this.require(ref);
+    if (subscription.status === 'canceled') throw new Error('Subscription is canceled');
+    subscription.pkg = input.pkg;
+    subscription.price = input.price;
+    subscription.credit += input.carryMinor;
+    if (input.dueNowMinor > 0 && subscription.currentPeriodStart && subscription.currentPeriodEnd) {
+      // The difference for the rest of the period, charged now (the period itself does not move).
+      const invoice: ProcessorInvoice = { ref: `fin_${randomBytes(9).toString('base64url')}`, amountMinor: input.dueNowMinor, currency: input.price.currency, periodStart: this.options.clock.now(), periodEnd: subscription.currentPeriodEnd, paidAt: this.options.clock.now() };
+      subscription.latestInvoice = invoice;
+    }
+    this.emit('subscription.updated', subscription, null, null);
+  }
+
+  /** The recurring price the processor will charge next (tests). */
+  priceOf(ref: string): { amountMinor: number; currency: string; credit: number } {
+    const subscription = this.require(ref);
+    return { ...subscription.price, credit: subscription.credit };
+  }
+
   async refundLatestInvoice(subscriptionRef: string): Promise<void> {
     const subscription = this.require(subscriptionRef);
     if (!subscription.latestInvoice) throw new Error('Nothing to refund');
@@ -121,10 +147,13 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
     const subscriptionRef = `fsub_${randomBytes(9).toString('base64url')}`;
     const trial = checkout.trialDays > 0;
     const periodEnd = trial ? null : addPeriod(now, checkout.pkg.billingPeriod);
-    const invoice = trial ? null : this.invoice(checkout.pkg, now, periodEnd!);
+    // A promo discounts the first payment (after a trial: the first renewal).
+    const invoice = trial ? null : this.invoice(checkout.price.amountMinor - checkout.price.firstDiscountMinor, checkout.price.currency, now, periodEnd!);
     const subscription: FakeSubscription = {
       ref: subscriptionRef,
       pkg: checkout.pkg,
+      price: { amountMinor: checkout.price.amountMinor, currency: checkout.price.currency },
+      credit: trial ? -checkout.price.firstDiscountMinor : 0,
       status: trial ? 'trialing' : 'active',
       trialEndsAt: trial ? new Date(now.getTime() + checkout.trialDays * 86_400_000) : null,
       currentPeriodStart: trial ? null : now,
@@ -158,7 +187,10 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
     subscription.status = 'active';
     subscription.currentPeriodStart = from;
     subscription.currentPeriodEnd = periodEnd;
-    subscription.latestInvoice = this.invoice(subscription.pkg, from, periodEnd);
+    // Credit (a downgrade) is used up first; a negative credit is a promo still owed on a trial's first renewal.
+    const amount = Math.max(0, subscription.price.amountMinor - subscription.credit);
+    subscription.credit = Math.max(0, subscription.credit - subscription.price.amountMinor);
+    subscription.latestInvoice = this.invoice(amount, subscription.price.currency, from, periodEnd);
     this.emit('invoice.paid', subscription, subscription.latestInvoice, null);
   }
 
@@ -177,8 +209,8 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
 
   // ---------------------------------------------------------------------------------------------
 
-  private invoice(pkg: PackageRecord, periodStart: Date, periodEnd: Date): ProcessorInvoice {
-    return { ref: `fin_${randomBytes(9).toString('base64url')}`, amountMinor: pkg.priceMinor, currency: pkg.currency, periodStart, periodEnd, paidAt: this.options.clock.now() };
+  private invoice(amountMinor: number, currency: string, periodStart: Date, periodEnd: Date): ProcessorInvoice {
+    return { ref: `fin_${randomBytes(9).toString('base64url')}`, amountMinor, currency, periodStart, periodEnd, paidAt: this.options.clock.now() };
   }
 
   private emit(type: ProcessorEventType, subscription: FakeSubscription, invoice: ProcessorInvoice | null, checkoutRef: string | null): void {
@@ -197,7 +229,7 @@ export class FakePaymentProcessor implements PaymentProcessor, HostedCheckoutPag
   }
 
   private snapshot(ref: string): ProcessorSubscription {
-    const { pkg: _pkg, ...subscription } = this.require(ref);
+    const { pkg: _pkg, price: _price, credit: _credit, ...subscription } = this.require(ref);
     return structuredClone(subscription);
   }
 

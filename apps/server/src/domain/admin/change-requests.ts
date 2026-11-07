@@ -12,7 +12,7 @@ import type { Permission } from './rbac.js';
  * it. An approval checks that the target has not changed since the request (stale requests fail).
  */
 
-export const CHANGE_KINDS = ['package.create', 'package.update', 'rights.grant', 'rights.revoke'] as const;
+export const CHANGE_KINDS = ['package.create', 'package.update', 'rights.grant', 'rights.revoke', 'promo.create'] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 export type ChangeMode = 'approval' | 'review';
 export type ChangeStatus = 'pending' | 'applied' | 'rejected' | 'withdrawn' | 'failed' | 'reviewed';
@@ -30,6 +30,8 @@ export const CHANGE_POLICY: Readonly<Record<ChangeKind, ChangePolicy>> = {
   'package.update': { mode: 'approval', write: 'billing:write', read: 'billing:read' },
   'rights.grant': { mode: 'approval', write: 'rights:write', read: 'rights:read' },
   'rights.revoke': { mode: 'review', write: 'rights:write', read: 'rights:read' },
+  // A promo code is a discount on revenue (up to 100 %): made by two people, like a price.
+  'promo.create': { mode: 'approval', write: 'billing:write', read: 'billing:read' },
 };
 
 export interface ChangeRequestState {

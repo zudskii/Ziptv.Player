@@ -34,6 +34,8 @@ export class WatchObserver implements PlaybackObserver {
 
   async onPlanIssued(viewer: Viewer, session: IssuedSession): Promise<void> {
     const ref = session.content.ref;
+    // Operator films have no history/progress store yet (Phase 17 opens the catalogue; their history comes later).
+    if (ref.type === 'operator_vod') return;
     try {
       await this.deps.history.start(
         {
@@ -89,6 +91,7 @@ export class WatchObserver implements PlaybackObserver {
   }
 
   async continues(viewer: Viewer, sessionId: string, ref: ContentRefDto): Promise<boolean> {
+    if (ref.type === 'operator_vod') return false;
     const row = await this.deps.history.find(sessionId, viewer.profileId);
     const expected = owner(ref);
     if (!row || row.sourceId !== expected.sourceId || row.channelId !== expected.channelId || row.contentType !== ref.type || row.key !== expected.key) return false;
@@ -118,7 +121,7 @@ export class WatchObserver implements PlaybackObserver {
 }
 
 /** History owner of a content reference: a user source item, or an operator channel. */
-function owner(ref: ContentRefDto): { sourceId: string | null; channelId: string | null; key: string } {
+function owner(ref: Exclude<ContentRefDto, { type: 'operator_vod' }>): { sourceId: string | null; channelId: string | null; key: string } {
   return ref.type === 'operator' ? { sourceId: null, channelId: ref.channelId, key: ref.channelId } : { sourceId: ref.sourceId, channelId: null, key: ref.key };
 }
 

@@ -181,7 +181,7 @@ export interface MoneyDto {
 
 // --- four-eyes change requests (Phase 9) ---------------------------------------------------------
 
-export type ChangeRequestKind = 'package.create' | 'package.update' | 'rights.grant' | 'rights.revoke';
+export type ChangeRequestKind = 'package.create' | 'package.update' | 'rights.grant' | 'rights.revoke' | 'promo.create';
 export type ChangeRequestStatus = 'pending' | 'applied' | 'rejected' | 'withdrawn' | 'failed' | 'reviewed';
 
 export interface StaffRefDto {
@@ -297,10 +297,20 @@ export interface PartnerReportDto {
     providerId: string;
     providerName: string;
     contractRef: string | null;
+    /** All watched minutes; live and catch-up separately. */
     minutes: number;
+    liveMinutes: number;
+    catchupMinutes: number;
+    /** Share of the weighted minutes (catch-up counts by the contract's catch-up weight). */
     share: number;
     revenue: MoneyDto[];
     monthlyCost: MoneyDto | null;
+    /** Phase 17 contract terms. The licensor's floor for the period (pro rata of the monthly guarantee). */
+    minimumGuarantee: MoneyDto | null;
+    /** What is owed on top of the revenue share to reach the guarantee (in the guarantee's currency). */
+    guaranteeTopUp: MoneyDto | null;
+    /** Separate catch-up tariff for the period's catch-up hours. */
+    catchupFees: MoneyDto | null;
   }[];
   /** Net revenue of packages nobody watched in the period (nothing to split it by). */
   unattributedRevenue: MoneyDto[];

@@ -1,9 +1,11 @@
 import type {
   AccountBillingDto,
+  CheckoutQuoteDto,
   CheckoutStartedDto,
   CheckoutStatusDto,
   DeviceDto,
   PackageOfferDto,
+  PlanChangeQuoteDto,
   PlaybackHeartbeatDto,
   PlaybackSessionDto,
   RegisterDeviceRequest,
@@ -19,7 +21,10 @@ import { currentDeviceId } from './device';
 
 export const billingApi = {
   packages: (signal?: AbortSignal) => apiRequest<PackageOfferDto[]>('/api/v1/billing/packages', { signal }),
-  startCheckout: (packageId: string) => apiRequest<CheckoutStartedDto>('/api/v1/billing/checkout', { method: 'POST', body: { packageId } }),
+  startCheckout: (input: { packageId: string; promoCode?: string }) => apiRequest<CheckoutStartedDto>('/api/v1/billing/checkout', { method: 'POST', body: input }),
+  quote: (input: { packageId: string; promoCode?: string }) => apiRequest<CheckoutQuoteDto>('/api/v1/billing/quote', { method: 'POST', body: input }),
+  changeQuote: (packageId: string) => apiRequest<PlanChangeQuoteDto>('/api/v1/billing/subscription/change/quote', { method: 'POST', body: { packageId } }),
+  changePlan: (packageId: string) => apiRequest<SubscriptionDto>('/api/v1/billing/subscription/change', { method: 'POST', body: { packageId } }),
   checkout: (id: string, signal?: AbortSignal) => apiRequest<CheckoutStatusDto>(`/api/v1/billing/checkout/${encodeURIComponent(id)}`, { signal }),
   account: (deviceId: string | null, signal?: AbortSignal) => apiRequest<AccountBillingDto>(`/api/v1/billing/account${deviceId ? `?deviceId=${encodeURIComponent(deviceId)}` : ''}`, { signal }),
   cancel: () => apiRequest<SubscriptionDto>('/api/v1/billing/subscription/cancel', { method: 'POST', body: {} }),
@@ -75,6 +80,12 @@ export function useCheckoutStatus(id: string | null) {
 function useInvalidateCommerce() {
   const client = useQueryClient();
   return () => Promise.all([client.invalidateQueries({ queryKey: billingKeys.all }), client.invalidateQueries({ queryKey: operatorKeys.all })]);
+}
+
+/** Moves the subscription to another plan now (prorated by the processor). */
+export function useChangePlan() {
+  const invalidate = useInvalidateCommerce();
+  return useMutation({ mutationFn: billingApi.changePlan, onSettled: invalidate });
 }
 
 export function useCancelSubscription() {

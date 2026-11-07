@@ -34,6 +34,10 @@ export class NoPaymentProcessor implements PaymentProcessor {
     throw disabled();
   }
 
+  async changePlan(): Promise<void> {
+    throw disabled();
+  }
+
   async refundLatestInvoice(): Promise<void> {
     throw disabled();
   }

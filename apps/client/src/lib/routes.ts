@@ -16,6 +16,10 @@ export const paths = {
   movies: (sourceId?: string, category?: string | null) => `/movies${sourceId ? `/${sourceId}` : ''}${category ? `?category=${encodeURIComponent(category)}` : ''}`,
   seriesList: (sourceId?: string, category?: string | null) => `/series${sourceId ? `/${sourceId}` : ''}${category ? `?category=${encodeURIComponent(category)}` : ''}`,
   search: (q: string) => `/search?q=${encodeURIComponent(q)}`,
+  /** The operator's films and series (Phase 17). */
+  films: '/films',
+  film: (id: string) => `/films/${id}`,
+  playFilm: (id: string, episodeId?: string) => `/films/${id}/play${episodeId ? `?episode=${encodeURIComponent(episodeId)}` : ''}`,
 };
 
 function archiveQuery(programme: { start: string; end: string }): string {

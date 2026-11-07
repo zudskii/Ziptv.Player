@@ -110,7 +110,7 @@ describe.skipIf(!hasBackend)('Plans, checkout return and subscription screens ag
   it('the account page cancels at period end and resumes', async () => {
     const user = userEvent.setup();
     await signUp();
-    const started = await ui.billingApi.startCheckout('0190f1a2-0000-7000-8000-00000000b051');
+    const started = await ui.billingApi.startCheckout({ packageId: '0190f1a2-0000-7000-8000-00000000b051' });
     backend.server.container.commerce.fakeProcessor!.pay(new URL(started.redirectUrl).pathname.split('/').pop()!);
     await waitFor(async () => expect((await ui.billingApi.checkout(started.checkoutId)).status).toBe('completed'));
 

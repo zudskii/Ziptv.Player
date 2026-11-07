@@ -137,6 +137,12 @@ export interface ProviderContract {
   monthlyCostMinor: number | null;
   costCurrency: string | null;
   notes: string;
+  /** Phase 17 — partner report terms. Minimum guarantee per month. */
+  minimumGuarantee: { amountMinor: number; currency: string } | null;
+  /** How much a catch-up minute counts in the revenue share (1 = like live). */
+  catchupWeight: number;
+  /** Separate catch-up tariff per viewing hour. */
+  catchupFeePerHour: { amountMinor: number; currency: string } | null;
 }
 
 export interface ProviderStreamRecord {

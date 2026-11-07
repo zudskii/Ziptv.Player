@@ -1,10 +1,11 @@
-import type { CheckoutStartedDto, CheckoutStatusDto, PackageOfferDto, SubscriptionDto } from '@ziptv/contracts';
+import type { CheckoutQuoteDto, CheckoutStartedDto, CheckoutStatusDto, PackageOfferDto, PlanChangeQuoteDto, PromoProblem, SubscriptionDto } from '@ziptv/contracts';
 
+import { applyPromo, normalizePromoCode, priceFor, prorate, type Price, type Proration } from '../../domain/commerce/plan.js';
 import { accessUntil, applySubscriptionEvent, isTerminal, startSubscription, type DunningPolicy, type SubscriptionEvent, type SubscriptionState } from '../../domain/commerce/subscription.js';
 import { AppError } from '../errors.js';
 import type { Viewer } from '../identity/viewer.js';
 import type { Clock } from '../ports/clock.js';
-import { WebhookSignatureError, type CommerceRepository, type PackageRecord, type PaymentProcessor, type ProcessorEvent, type ProcessorSubscription, type SubscriptionRecord } from '../ports/commerce.js';
+import { WebhookSignatureError, type CommerceRepository, type PackageRecord, type PaymentProcessor, type ProcessorEvent, type ProcessorSubscription, type PromoCodeRecord, type SubscriptionRecord } from '../ports/commerce.js';
 import type { Logger } from '../ports/logger.js';
 
 export const SUBSCRIPTION_CHANGED = 'billing.subscription_changed';
@@ -35,24 +36,50 @@ export class BillingService {
 
   // --- viewer --------------------------------------------------------------------------------------
 
-  async offers(viewer: Viewer): Promise<PackageOfferDto[]> {
+  /** Plans on sale, priced for the viewer's country (server-determined). */
+  async offers(viewer: Viewer, country: string | null = null): Promise<PackageOfferDto[]> {
     const [packages, hadTrial] = await Promise.all([this.deps.commerce.listPackages('active'), this.deps.commerce.hadTrial(viewer.userId)]);
-    return packages.map((pkg) => ({
-      id: pkg.id,
-      slug: pkg.slug,
-      name: pkg.name,
-      description: pkg.description,
-      priceMinor: pkg.priceMinor,
-      currency: pkg.currency,
-      billingPeriod: pkg.billingPeriod,
-      trialDays: hadTrial ? 0 : pkg.trialDays,
-      maxDevices: pkg.maxDevices,
-      maxStreams: pkg.maxStreams,
-      channels: pkg.channels,
-    }));
+    const prices = await this.deps.commerce.packagePrices(packages.map((pkg) => pkg.id));
+    return packages.map((pkg) => {
+      const price = priceFor(pkg, prices.get(pkg.id) ?? [], country);
+      return {
+        id: pkg.id,
+        slug: pkg.slug,
+        name: pkg.name,
+        description: pkg.description,
+        priceMinor: price.priceMinor,
+        currency: price.currency,
+        billingPeriod: pkg.billingPeriod,
+        trialDays: hadTrial ? 0 : pkg.trialDays,
+        maxDevices: pkg.maxDevices,
+        maxStreams: pkg.maxStreams,
+        channels: pkg.channels,
+        vodMode: pkg.vodMode,
+        maxQuality: pkg.maxQuality,
+        catchupDays: pkg.catchupDays,
+        priceCountry: price.country,
+      };
+    });
   }
 
-  async startCheckout(viewer: Viewer, packageId: string, returnBase: string): Promise<CheckoutStartedDto> {
+  /** What the viewer would pay for a plan here, with a promo code checked (nothing is reserved). */
+  async quote(viewer: Viewer, input: { packageId: string; promoCode?: string | undefined }, country: string | null): Promise<CheckoutQuoteDto> {
+    const pkg = await this.deps.commerce.findPackage(input.packageId);
+    if (!pkg || pkg.status !== 'active') throw AppError.notFound('Package');
+    const priced = await this.priced(viewer, pkg, country, input.promoCode);
+    const trialDays = pkg.trialDays > 0 && !(await this.deps.commerce.hadTrial(viewer.userId)) ? pkg.trialDays : 0;
+    return {
+      packageId: pkg.id,
+      priceMinor: priced.price.priceMinor,
+      currency: priced.price.currency,
+      billingPeriod: pkg.billingPeriod,
+      trialDays,
+      promo: priced.promo ? { code: priced.promo.record.code, discountMinor: priced.promo.discountMinor, firstPaymentMinor: priced.price.priceMinor - priced.promo.discountMinor } : null,
+      promoProblem: priced.problem,
+    };
+  }
+
+  async startCheckout(viewer: Viewer, packageId: string, returnBase: string, options: { promoCode?: string | undefined; country?: string | null } = {}): Promise<CheckoutStartedDto> {
     const { commerce, processor, clock } = this.deps;
     const account = await commerce.account(viewer.userId);
     if (!account?.email) throw new AppError('ACCOUNT_REQUIRED', 403, 'Create an account (or sign in) to subscribe.');
@@ -60,22 +87,101 @@ export class BillingService {
     const pkg = await commerce.findPackage(packageId);
     if (!pkg || pkg.status !== 'active') throw AppError.notFound('Package');
     if (await commerce.liveSubscription(viewer.userId)) throw new AppError('ALREADY_SUBSCRIBED', 409, 'You already have a subscription. Manage it from your account.');
+    const country = options.country ?? null;
+    const priced = await this.priced(viewer, pkg, country, options.promoCode);
+    if (priced.problem) throw new AppError('PROMO_INVALID', 422, PROMO_MESSAGES[priced.problem], { problem: priced.problem });
 
     const trialDays = pkg.trialDays > 0 && !(await commerce.hadTrial(viewer.userId)) ? pkg.trialDays : 0;
     const id = commerce.newId();
-    await commerce.createCheckout({ id, userId: viewer.userId, packageId: pkg.id, processor: processor.name, processorRef: null, withTrial: trialDays > 0 }, clock.now());
+    const discountMinor = priced.promo?.discountMinor ?? 0;
+    await commerce.createCheckout(
+      { id, userId: viewer.userId, packageId: pkg.id, processor: processor.name, processorRef: null, withTrial: trialDays > 0, amountMinor: priced.price.priceMinor, currency: priced.price.currency, country, promoId: priced.promo?.record.id ?? null, discountMinor },
+      clock.now(),
+    );
     const started = await processor.createCheckout({
       checkoutId: id,
       userId: viewer.userId,
       email: account.email,
       pkg,
+      price: { amountMinor: priced.price.priceMinor, currency: priced.price.currency, firstDiscountMinor: discountMinor },
       trialDays,
       successUrl: `${returnBase}/billing/return?checkout=${id}`,
       cancelUrl: `${returnBase}/plans?canceled=1`,
     });
     await commerce.setCheckoutRef(id, started.ref);
-    this.deps.logger.info({ userId: viewer.userId, checkoutId: id, package: pkg.slug, trialDays }, 'Checkout started');
+    this.deps.logger.info({ userId: viewer.userId, checkoutId: id, package: pkg.slug, trialDays, price: priced.price, promo: priced.promo?.record.code ?? null }, 'Checkout started');
     return { checkoutId: id, redirectUrl: started.redirectUrl };
+  }
+
+  // --- plan change (17.3 proration) --------------------------------------------------------------
+
+  /** What moving to another plan now would cost (credit for the unused time, the rest at the new price). */
+  async changeQuote(viewer: Viewer, packageId: string, country: string | null): Promise<PlanChangeQuoteDto> {
+    const { subscription, current, target, proration } = await this.planChange(viewer, packageId, country);
+    return {
+      from: { packageId: current.pkg.id, name: current.pkg.name, ...current.price },
+      to: { packageId: target.pkg.id, name: target.pkg.name, ...target.price },
+      ...proration,
+      ...(subscription.status === 'trialing' ? { creditMinor: 0, chargeMinor: 0, dueNowMinor: 0, carryMinor: 0 } : {}),
+    };
+  }
+
+  /** Moves the subscription to another plan now: the processor collects or credits the difference. */
+  async changePlan(viewer: Viewer, packageId: string, country: string | null): Promise<SubscriptionDto> {
+    const { subscription, target, proration } = await this.planChange(viewer, packageId, country);
+    const trial = subscription.status === 'trialing';
+    await this.deps.processor.changePlan(subscription.processorRef, {
+      pkg: target.pkg,
+      price: { amountMinor: target.price.priceMinor, currency: target.price.currency },
+      dueNowMinor: trial ? 0 : proration.dueNowMinor,
+      carryMinor: trial ? 0 : proration.carryMinor,
+    });
+    // Applied now (the processor accepted it); its webhook confirms it (and records the proration invoice).
+    const after = await this.deps.commerce.transaction(async (tx) => {
+      const locked = await tx.findSubscription(subscription.id, { lock: true });
+      if (!locked) throw AppError.notFound('Subscription');
+      const now = this.deps.clock.now();
+      await tx.changeSubscriptionPlan(locked.id, { packageId: target.pkg.id, priceMinor: target.price.priceMinor, currency: target.price.currency }, now);
+      const changed: SubscriptionRecord = { ...locked, packageId: target.pkg.id, priceMinor: target.price.priceMinor, currency: target.price.currency, updatedAt: now };
+      await this.afterChange(tx, locked, changed, now, 'plan_change');
+      await tx.enqueue(SUBSCRIPTION_CHANGED, { userId: changed.userId, subscriptionId: changed.id, from: locked.status, to: changed.status, cancelAtPeriodEnd: changed.cancelAtPeriodEnd, planChanged: { from: locked.packageId, to: target.pkg.id } }, now);
+      return changed;
+    });
+    this.deps.logger.info({ userId: viewer.userId, subscriptionId: subscription.id, from: subscription.packageId, to: target.pkg.id, dueNowMinor: proration.dueNowMinor, carryMinor: proration.carryMinor }, 'Plan changed');
+    return this.toDto(after, target.pkg);
+  }
+
+  private async planChange(viewer: Viewer, packageId: string, country: string | null): Promise<{ subscription: SubscriptionRecord; current: { pkg: PackageRecord; price: Price }; target: { pkg: PackageRecord; price: Price }; proration: Proration }> {
+    const subscription = await this.requireLive(viewer.userId);
+    if (subscription.status !== 'active' && subscription.status !== 'trialing') throw new AppError('CONFLICT', 409, 'Settle the open payment before changing your plan.');
+    if (subscription.cancelAtPeriodEnd) throw new AppError('CONFLICT', 409, 'Resume your subscription before changing your plan.');
+    const [currentPkg, targetPkg] = await Promise.all([this.deps.commerce.findPackage(subscription.packageId), this.deps.commerce.findPackage(packageId)]);
+    if (!targetPkg || targetPkg.status !== 'active') throw AppError.notFound('Package');
+    if (!currentPkg) throw AppError.notFound('Package');
+    if (targetPkg.id === currentPkg.id) throw new AppError('CONFLICT', 409, 'This is already your plan.');
+    if (targetPkg.billingPeriod !== currentPkg.billingPeriod) throw new AppError('CONFLICT', 409, 'Plans with another billing period start at the end of the current one: cancel, then subscribe.');
+    const currentPrice: Price = subscription.priceMinor !== null && subscription.currency ? { priceMinor: subscription.priceMinor, currency: subscription.currency } : { priceMinor: currentPkg.priceMinor, currency: currentPkg.currency };
+    const targetPrice = priceFor(targetPkg, (await this.deps.commerce.packagePrices([targetPkg.id])).get(targetPkg.id) ?? [], country);
+    if (targetPrice.currency !== currentPrice.currency) throw new AppError('CONFLICT', 409, 'This plan is priced in another currency: it can start when the current period ends.');
+    const now = this.deps.clock.now();
+    const proration =
+      subscription.currentPeriodStart && subscription.currentPeriodEnd && subscription.status === 'active'
+        ? prorate({ current: currentPrice, next: targetPrice, periodStart: subscription.currentPeriodStart, periodEnd: subscription.currentPeriodEnd, at: now })
+        : { creditMinor: 0, chargeMinor: 0, dueNowMinor: 0, carryMinor: 0, remaining: 0 };
+    return { subscription, current: { pkg: currentPkg, price: currentPrice }, target: { pkg: targetPkg, price: { priceMinor: targetPrice.priceMinor, currency: targetPrice.currency } }, proration };
+  }
+
+  /** The price here, and a promo code applied to its first payment (a problem when it does not apply). */
+  private async priced(viewer: Viewer, pkg: PackageRecord, country: string | null, code: string | undefined): Promise<{ price: Price; promo: { record: PromoCodeRecord; discountMinor: number } | null; problem: PromoProblem | null }> {
+    const regional = (await this.deps.commerce.packagePrices([pkg.id])).get(pkg.id) ?? [];
+    const local = priceFor(pkg, regional, country);
+    const price: Price = { priceMinor: local.priceMinor, currency: local.currency };
+    const normalized = code ? normalizePromoCode(code) : '';
+    if (!normalized) return { price, promo: null, problem: null };
+    const record = await this.deps.commerce.findPromo(normalized);
+    if (!record || record.code !== normalized) return { price, promo: null, problem: 'unknown' };
+    const applied = applyPromo(price, record, { family: pkg.familyId, now: this.deps.clock.now(), usedByViewer: await this.deps.commerce.hasRedeemed(record.id, viewer.userId) });
+    return applied.ok ? { price, promo: { record, discountMinor: applied.discountMinor }, problem: null } : { price, promo: null, problem: applied.problem };
   }
 
   /**
@@ -249,8 +355,23 @@ export class BillingService {
       if (event.subscription.status === 'trialing' && (!checkout.withTrial || (await tx.hadTrial(checkout.userId)))) return reject('trial already used');
       const initial = initialState(event.subscription, now);
       if (!initial) return 'ignored: processor subscription not usable';
-      subscription = await tx.createSubscription({ id: tx.newId(), userId: checkout.userId, packageId: checkout.packageId, processor, processorRef: event.subscription.ref, ...initial }, now);
+      const pkg = await tx.findPackage(checkout.packageId);
+      subscription = await tx.createSubscription(
+        {
+          id: tx.newId(),
+          userId: checkout.userId,
+          packageId: checkout.packageId,
+          processor,
+          processorRef: event.subscription.ref,
+          // The price quoted at checkout stays this subscriber's price (grandfathering).
+          priceMinor: checkout.amountMinor ?? pkg?.priceMinor ?? null,
+          currency: checkout.currency ?? pkg?.currency ?? null,
+          ...initial,
+        },
+        now,
+      );
       await tx.completeCheckout(checkout.id, subscription.id, now);
+      if (checkout.promoId) await tx.redeemPromo({ promoId: checkout.promoId, userId: checkout.userId, checkoutId: checkout.id, now });
       await this.recordInvoice(tx, subscription, event.invoice);
       await this.afterChange(tx, null, subscription, now, 'checkout');
       return `created: ${subscription.status}`;
@@ -397,9 +518,22 @@ export class BillingService {
       currentPeriodEnd: subscription.currentPeriodEnd?.toISOString() ?? null,
       cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
       accessUntil: until?.toISOString() ?? null,
+      price: subscription.priceMinor !== null && subscription.currency ? { amountMinor: subscription.priceMinor, currency: subscription.currency } : null,
+      grandfathered: Boolean(owned?.supersededBy),
     };
   }
 }
+
+const PROMO_MESSAGES: Record<PromoProblem, string> = {
+  unknown: 'This promo code does not exist.',
+  inactive: 'This promo code is no longer valid.',
+  not_started: 'This promo code is not valid yet.',
+  expired: 'This promo code has expired.',
+  exhausted: 'This promo code has been used up.',
+  not_for_plan: 'This promo code does not apply to this plan.',
+  currency: 'This promo code does not apply to prices in this currency.',
+  already_used: 'You have already used this promo code.',
+};
 
 function pick(state: SubscriptionState): SubscriptionState {
   return {

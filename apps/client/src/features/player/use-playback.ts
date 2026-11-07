@@ -71,6 +71,8 @@ export function contentKey(content: ContentRefDto | undefined | null): string {
       return `catchup:${content.sourceId}:${content.key}:${content.start}`;
     case 'operator':
       return `operator:${content.channelId}${content.start ? `:${content.start}` : ''}`;
+    case 'operator_vod':
+      return `operator_vod:${content.vodId}:${content.episodeId ?? ''}`;
     default:
       return `${content.type}:${content.sourceId}:${content.key}`;
   }

@@ -16,6 +16,7 @@ import { planCandidates, type DeliveryPolicy } from '../../domain/playback/plan.
 import { directArtwork, type ArtworkUrls } from '../catalog/artwork.js';
 import { toChannelDto } from '../catalog/catalog-mapper.js';
 import type { SeriesEpisodes } from '../catalog/series-episodes.js';
+import type { OperatorVodService } from '../operator/operator-vod.service.js';
 import type { OperatorService, ViewingContext } from '../operator/operator.service.js';
 import type { LiveCatalogService } from '../catalog/live.service.js';
 import { AppError } from '../errors.js';
@@ -47,6 +48,8 @@ export interface PlaybackServiceDeps {
   streamUrls?: StreamUrlResolver;
   /** Operator catalog channels (rights + licensed feeds). */
   operator?: Pick<OperatorService, 'resolve'>;
+  /** Operator films and series (Phase 17: the entitlement engine decides). */
+  operatorVod?: Pick<OperatorVodService, 'resolveTarget'>;
   /** Episodes incl. on-demand loading of provider-API series; defaults to stored episodes only. */
   episodes?: Pick<SeriesEpisodes, 'list'>;
   observer?: PlaybackObserver;
@@ -112,12 +115,17 @@ export class PlaybackService {
   }
 
   async resolve(viewer: Viewer, request: ResolvePlaybackRequest, context: ViewingContext = { country: null, device: 'web' }): Promise<PlaybackPlanDto> {
-    const kind = request.content.type === 'operator' ? 'operator' : 'byo';
+    const kind = request.content.type === 'operator' || request.content.type === 'operator_vod' ? 'operator' : 'byo';
     try {
       if (request.content.type === 'operator' && this.deps.operatorAccess === 'subscription') {
         throw new AppError('PLAYBACK_SESSION_REQUIRED', 403, 'Operator channels are played through a playback session.', { reason: 'playback_session_required' });
       }
-      const plan = request.content.type === 'operator' ? await this.resolveOperator(viewer, request, request.content, context) : await this.resolveByo(viewer, request);
+      const plan =
+        request.content.type === 'operator'
+          ? await this.resolveOperator(viewer, request, request.content, context)
+          : request.content.type === 'operator_vod'
+            ? await this.resolveOperatorVod(viewer, request, request.content, context)
+            : await this.resolveByo(viewer, request);
       (this.deps.metrics ?? NOOP_METRICS).playbackPlan(kind, 'ok');
       return plan;
     } catch (error) {
@@ -136,7 +144,7 @@ export class PlaybackService {
   }
 
   private async resolveByo(viewer: Viewer, request: ResolvePlaybackRequest): Promise<PlaybackPlanDto> {
-    if (request.content.type === 'operator') throw AppError.notFound('Channel');
+    if (request.content.type === 'operator' || request.content.type === 'operator_vod') throw AppError.notFound('Channel');
     const source = await this.deps.live.requireSource(viewer, request.content.sourceId);
     const resolved = await this.resolveContent(viewer, source, request.content);
 
@@ -245,9 +253,9 @@ export class PlaybackService {
       const locator = target.locator;
       if (!locator) continue;
       const kind: StreamKind = target.kind === 'unknown' ? await this.deps.prober.probe(locator.url, locator.headers) : target.kind;
-      // A quality limit can only be enforced on HLS (variants are filtered); other formats would bypass it.
-      if (target.maxHeight && kind !== 'hls') continue;
-      const cap = target.maxHeight ? { maxHeight: target.maxHeight } : undefined;
+      // A licensed quality limit can only be enforced on HLS (variants are filtered); other formats would bypass it.
+      if (target.maxHeight && target.strictCap !== false && kind !== 'hls') continue;
+      const cap = target.maxHeight && kind === 'hls' ? { maxHeight: target.maxHeight } : undefined;
       parts.push({
         candidates: planCandidates({
           kind,
@@ -275,6 +283,25 @@ export class PlaybackService {
     return { sessionId, content, candidates: this.tagged(parts, expiresAt, sessionId), expiresAt: new Date(expiresAt * 1000).toISOString(), resumeFrom: null, next: null, alternates: [] };
   }
 
+  /** A film/episode of the operator's VOD catalogue: entitlement first, then proxied candidates (quality-capped). */
+  private async resolveOperatorVod(viewer: Viewer, request: ResolvePlaybackRequest, ref: Extract<ContentRefDto, { type: 'operator_vod' }>, context: ViewingContext): Promise<PlaybackPlanDto> {
+    if (!this.deps.operatorVod) throw AppError.notFound('Title');
+    if (!this.deps.proxyEnabled) throw new AppError('UNPLAYABLE', 422, 'The stream proxy is disabled.', { reason: 'unsupported_format' });
+    if (!viewer.sessionId) throw new AppError('UNAUTHORIZED', 401, 'Sign in again to play this.');
+    const resolved = await this.deps.operatorVod.resolveTarget(viewer, context, ref.vodId, ref.episodeId);
+    const locator = resolved.target.locator!;
+    const grant: MediaGrant = { kind: 'session', id: viewer.sessionId };
+    const expiresAt = this.deps.media.newStreamExpiry('playback');
+    const kind: StreamKind = resolved.target.kind === 'unknown' ? await this.deps.prober.probe(locator.url, locator.headers) : resolved.target.kind;
+    if (resolved.target.maxHeight && resolved.target.strictCap !== false && kind !== 'hls') throw new AppError('UNPLAYABLE', 422, 'This title cannot be delivered at the licensed quality.', { reason: 'unsupported_format' });
+    const cap = resolved.target.maxHeight && kind === 'hls' ? { maxHeight: resolved.target.maxHeight } : undefined;
+    const candidates = planCandidates({ kind, url: locator.url, headers: locator.headers, secureContext: request.secureContext, proxyEnabled: true, policy: 'proxy', proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt, grant, cap) });
+    if (candidates.length === 0) throw new AppError('UNPLAYABLE', 422, 'This title cannot be delivered to this browser.', { reason: 'unsupported_format' });
+    const sessionId = randomUUID();
+    const content: PlaybackContentDto = { ...resolved.content, ref, image: this.artwork.url(resolved.content.image) };
+    return { sessionId, content, candidates, expiresAt: new Date(expiresAt * 1000).toISOString(), resumeFrom: null, next: null, alternates: [] };
+  }
+
   async recordEvent(viewer: Viewer, event: PlaybackEventRequest): Promise<void> {
     await Promise.all([this.observer.onEvent(viewer, event), this.deps.telemetry?.record(event), this.trackConnection(viewer, event)]);
   }
@@ -296,7 +323,7 @@ export class PlaybackService {
 
   // ---------------------------------------------------------------------------------------
 
-  private async resolveContent(viewer: Viewer, source: SourceRecord, ref: ContentRefDto): Promise<ResolvedContent> {
+  private async resolveContent(viewer: Viewer, source: SourceRecord, ref: Exclude<ContentRefDto, { type: 'operator' | 'operator_vod' }>): Promise<ResolvedContent> {
     const pin = { sourceId: source.id, revision: source.revision };
     switch (ref.type) {
       case 'channel': {
@@ -375,8 +402,6 @@ export class PlaybackService {
             : null,
         };
       }
-      case 'operator':
-        throw new Error('Operator channels are resolved by resolveOperator');
       case 'catchup':
         return this.resolveCatchup(viewer, source, ref);
     }

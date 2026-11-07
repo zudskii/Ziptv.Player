@@ -1,4 +1,4 @@
-import type { OperatorChannelListDto, OperatorFavoritesImportDto, OperatorNowNextDto, OperatorScheduleDto } from '@ziptv/contracts';
+import type { OperatorChannelListDto, OperatorFavoritesImportDto, OperatorNowNextDto, OperatorScheduleDto, OperatorVodDetailDto, OperatorVodPageDto } from '@ziptv/contracts';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { apiRequest } from '../../lib/api-client';
@@ -19,6 +19,29 @@ export function useOperatorChannels(lineup: string | null = null) {
   return useQuery({
     queryKey: operatorKeys.channels(lineup),
     queryFn: ({ signal }) => apiRequest<OperatorChannelListDto>(`${BASE}/channels${lineup ? `?lineup=${encodeURIComponent(lineup)}` : ''}`, { signal }),
+    staleTime: 60_000,
+  });
+}
+
+/**
+ * The operator's films or series for this viewer, each marked by the entitlement engine: in the
+ * viewer's plan, in a plan they could switch to, or not sold.
+ */
+export function useOperatorVod(type: 'movie' | 'series', q: string) {
+  const params = new URLSearchParams({ type, limit: '96' });
+  if (q) params.set('q', q);
+  return useQuery({
+    queryKey: ['operator', 'vod', type, q],
+    queryFn: ({ signal }) => apiRequest<OperatorVodPageDto>(`${BASE}/vod?${params.toString()}`, { signal }),
+    staleTime: 60_000,
+  });
+}
+
+export function useOperatorVodDetail(id: string | undefined) {
+  return useQuery({
+    queryKey: ['operator', 'vod', 'detail', id],
+    queryFn: ({ signal }) => apiRequest<OperatorVodDetailDto>(`${BASE}/vod/${encodeURIComponent(id!)}`, { signal }),
+    enabled: Boolean(id),
     staleTime: 60_000,
   });
 }

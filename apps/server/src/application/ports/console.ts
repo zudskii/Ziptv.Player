@@ -5,6 +5,20 @@ export interface Money {
   amountMinor: number;
 }
 
+/** A provider with the contract terms the partner report applies (Phase 17.5). */
+export interface PartnerTerms {
+  id: string;
+  name: string;
+  contractRef: string | null;
+  monthlyCost: Money | null;
+  /** Floor of the licensor's revenue share, per month. */
+  minimumGuarantee: Money | null;
+  /** Weight of a catch-up minute in the share (1 = a live minute). */
+  catchupWeight: number;
+  /** Separate catch-up tariff per viewing hour. */
+  catchupFeePerHour: Money | null;
+}
+
 export interface SubscriptionCounts {
   active: number;
   trialing: number;
@@ -56,9 +70,9 @@ export interface ConsoleQueries {
   packageFinance(from: Date, to: Date): Promise<PackageFinanceRow[]>;
   /** Net revenue (paid − refunded) per package and currency in [from, to). */
   packageNet(from: Date, to: Date): Promise<{ packageId: string; currency: string; amountMinor: number }[]>;
-  /** Minutes watched on package access in [from, to), per package and serving provider (null = unknown). */
-  watchMinutes(from: Date, to: Date): Promise<{ packageId: string; providerId: string | null; minutes: number }[]>;
-  providers(): Promise<{ id: string; name: string; contractRef: string | null; monthlyCost: Money | null }[]>;
+  /** Minutes watched on package access in [from, to), per package and serving provider (null = unknown); live and catch-up apart. */
+  watchMinutes(from: Date, to: Date): Promise<{ packageId: string; providerId: string | null; minutes: number; catchupMinutes: number }[]>;
+  providers(): Promise<PartnerTerms[]>;
   providerReport(providerId: string, since: Date): Promise<{ feeds: { total: number; healthy: number; unhealthy: number }; probes: { ok: number; total: number }; openIncidents: number; incidents: number; minutes: number }>;
   /** Channels with counts, for grouping duplicates in the application. */
   channelsForDuplicates(): Promise<{ id: string; name: string; slug: string; status: 'active' | 'hidden'; feeds: number }[]>;

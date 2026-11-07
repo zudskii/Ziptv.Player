@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../application/errors.js';
 import type { OperatorEpgService } from '../../application/operator/operator-epg.service.js';
 import type { OperatorService } from '../../application/operator/operator.service.js';
+import type { OperatorVodService } from '../../application/operator/operator-vod.service.js';
 import { DEVICE_CLASSES } from '../../domain/operator/catalog.js';
 import type { RateLimiterFactory } from '../middleware/rate-limit.js';
 import { currentViewer, routeParam } from '../middleware/request-context.js';
@@ -14,16 +15,40 @@ import { EntityId } from './schemas.js';
 export const DeviceClass = z.enum(DEVICE_CLASSES);
 const ChannelsQuery = z.object({ lineup: z.string().trim().min(1).max(80).optional(), device: DeviceClass.default('web') }).strict();
 const ScheduleQuery = z.object({ from: z.coerce.date().optional(), to: z.coerce.date().optional(), device: DeviceClass.default('web') }).strict();
+const VodQuery = z
+  .object({
+    type: z.enum(['movie', 'series']).optional(),
+    q: z.string().trim().max(100).optional(),
+    device: DeviceClass.default('web'),
+    limit: z.coerce.number().int().min(1).max(100).default(48),
+    offset: z.coerce.number().int().min(0).max(100_000).default(0),
+  })
+  .strict();
 const GuideQuery = z.object({ channels: z.string().max(40_000).transform((value) => [...new Set(value.split(',').map((id) => id.trim()).filter(Boolean))].slice(0, 1000)), device: DeviceClass.default('web') }).strict();
 
 /**
  * Operator (licensed) channels. The list is already filtered by rights for the server-determined
  * market and device, so what a viewer sees is exactly what they may play.
  */
-export function createOperatorRouter(deps: { operator: OperatorService; epg?: OperatorEpgService; auth: RequestHandler; viewingContext: ViewingContextResolver; limit: RateLimiterFactory }): Router {
+export function createOperatorRouter(deps: { operator: OperatorService; vod?: OperatorVodService; epg?: OperatorEpgService; auth: RequestHandler; viewingContext: ViewingContextResolver; limit: RateLimiterFactory }): Router {
   const { operator } = deps;
   const router = Router();
   const writeLimiter = deps.limit({ name: 'operator:write', windowMs: 60 * 1000, limit: 60, perUser: true });
+
+  // Films and series the operator licenses here, each with this viewer's access (in plan / upgrade).
+  router.get('/vod', deps.auth, async (req, res) => {
+    const query = parseInput(VodQuery, req.query, 'VOD filter');
+    if (!deps.vod) throw AppError.notFound('Catalog');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await deps.vod.list(currentViewer(req), deps.viewingContext(req, query.device), query));
+  });
+
+  router.get('/vod/:id', deps.auth, async (req, res) => {
+    const query = parseInput(z.object({ device: DeviceClass.default('web') }).strict(), req.query, 'VOD request');
+    if (!deps.vod) throw AppError.notFound('Title');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.json(await deps.vod.detail(currentViewer(req), deps.viewingContext(req, query.device), parseInput(EntityId, routeParam(req, 'id'), 'Title id')));
+  });
 
   router.get('/channels', deps.auth, async (req, res) => {
     const query = parseInput(ChannelsQuery, req.query, 'Channel filter');
