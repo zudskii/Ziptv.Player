@@ -1,4 +1,5 @@
 import type { BusinessModel, DeviceClass } from './catalog.js';
+import { QUALITIES, type Quality } from './vendor-feed.js';
 
 /**
  * Rights: the business invariant of the operator catalog. A master channel may be listed and
@@ -17,6 +18,8 @@ export interface RightsGrant {
   status: 'active' | 'revoked';
   /** Catch-up is licensed separately: how many days back viewers may replay (0 = live only). */
   catchupDays: number;
+  /** Highest picture quality licensed under this grant; null = no limit. */
+  maxQuality: Quality | null;
 }
 
 export interface RightsQuery {
@@ -77,4 +80,18 @@ export function denialReason(grants: readonly RightsGrant[], query: RightsQuery)
   const live = grants.filter((grant) => isLicensedAt([grant], query.at));
   if (live.some((grant) => grant.territory === '*' || grant.territory === query.country)) return 'device';
   return live.length > 0 ? 'territory' : 'not_licensed';
+}
+
+/**
+ * The quality cap for this viewing: the most generous of the grants that cover it (a viewer covered
+ * by an unlimited grant has no cap). Null = no cap; undefined grants list = nothing covers.
+ */
+export function qualityCapFor(grants: readonly RightsGrant[], query: RightsQuery): Quality | null {
+  let best: Quality | null | undefined;
+  for (const grant of grants) {
+    if (!grantCovers(grant, query)) continue;
+    if (grant.maxQuality === null) return null;
+    if (best === undefined || best === null || QUALITIES.indexOf(grant.maxQuality) > QUALITIES.indexOf(best)) best = grant.maxQuality;
+  }
+  return best ?? null;
 }

@@ -84,3 +84,39 @@ export function looksLikeHlsPlaylist(head: Buffer): boolean {
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
   return text.trimStart().startsWith('#EXTM3U');
 }
+
+/**
+ * Licensed quality limit: leaves out the variants of a master playlist taller than `maxHeight`
+ * (EXT-X-STREAM-INF and their URI line, and I-frame playlists), so a player can never select them.
+ * A variant without RESOLUTION is kept only when no variant states one (nothing to compare with);
+ * when every stated variant is too tall, none is left and the player reports the stream unplayable.
+ * Media playlists pass through unchanged.
+ */
+export function capHlsVariants(text: string, maxHeight: number): string {
+  if (!isMasterPlaylist(text)) return text;
+  const lines = text.split(/\r\n|\r|\n/);
+  const height = (line: string): number | null => {
+    const match = /RESOLUTION=(\d+)x(\d+)/i.exec(line);
+    return match ? Number(match[2]) : null;
+  };
+  const anyResolution = lines.some((line) => /^#EXT-X-(?:I-FRAME-)?STREAM-INF:/i.test(line.trim()) && height(line) !== null);
+  const tooTall = (line: string) => {
+    const value = height(line);
+    return value === null ? anyResolution : value > maxHeight;
+  };
+  const out: string[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = lines[index]!;
+    const trimmed = line.trim();
+    if (/^#EXT-X-STREAM-INF:/i.test(trimmed) && tooTall(trimmed)) {
+      // Skip the tag and its URI (the next non-empty, non-comment line).
+      let next = index + 1;
+      while (next < lines.length && (!lines[next]!.trim() || (lines[next]!.trim().startsWith('#') && !/^#EXT/i.test(lines[next]!.trim())))) next++;
+      index = next;
+      continue;
+    }
+    if (/^#EXT-X-I-FRAME-STREAM-INF:/i.test(trimmed) && tooTall(trimmed)) continue;
+    out.push(line);
+  }
+  return out.join('\n');
+}

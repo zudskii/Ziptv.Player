@@ -1,4 +1,4 @@
-import type { ProviderDto, ProviderHealthDto, ProviderReportDto } from '@ziptv/contracts';
+import type { ProviderConflictsDto, ProviderContentDto, ProviderDto, ProviderHealthDto, ProviderReportDto, ProviderSyncEventDto } from '@ziptv/contracts';
 import { useQuery } from '@tanstack/react-query';
 import { Activity, Plus, RefreshCw } from 'lucide-react';
 import { useState, type FormEvent } from 'react';
@@ -66,28 +66,48 @@ export function ProvidersPage() {
   );
 }
 
+type NewProviderType = 'm3u' | 'xtream' | 'vendor_feed';
+
 function CreateProviderDialog({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (provider: ProviderDto) => void }) {
-  const [type, setType] = useState<'m3u' | 'xtream'>('m3u');
+  const [type, setType] = useState<NewProviderType>('m3u');
   const create = useAction((body: Record<string, unknown>) => api<ProviderDto>('/providers', { method: 'POST', body }), { inlineErrors: true, success: t('providers.added'), invalidate: [['providers']], onSuccess: onCreated });
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const value = (key: string) => String(form.get(key) ?? '').trim();
     const secretRef = value('secretRef');
-    const connection = type === 'm3u' ? { url: value('url') } : { server: value('server'), username: value('username'), password: String(form.get('password') ?? '') };
-    create.mutate({ name: value('name'), type, credential: secretRef ? { secretRef } : { connection } });
+    const connection =
+      type === 'm3u'
+        ? { url: value('url') }
+        : type === 'vendor_feed'
+          ? { url: value('url'), ...(value('token') ? { token: value('token') } : {}) }
+          : { server: value('server'), username: value('username'), password: String(form.get('password') ?? '') };
+    create.mutate({
+      name: value('name'),
+      type,
+      credential: secretRef ? { secretRef } : { connection },
+      ...(type === 'vendor_feed' ? { config: { publicKeys: [{ id: value('keyId') || 'k1', key: value('publicKey') }] } } : {}),
+    });
   };
   return (
     <Dialog open={open} title={t('providers.add')} onClose={onClose}>
       <form className="space-y-4" onSubmit={submit} autoComplete="off">
         <Field label={t('common.name')} name="name" required maxLength={120} />
-        <SelectField label={t('providers.integration')} value={type} onChange={(e) => setType(e.target.value as 'm3u' | 'xtream')}>
+        <SelectField label={t('providers.integration')} value={type} onChange={(e) => setType(e.target.value as NewProviderType)}>
           <option value="m3u">{t('providers.m3u')}</option>
           <option value="xtream">{t('providers.xtream')}</option>
+          <option value="vendor_feed">{t('feed.type')}</option>
         </SelectField>
         <Field label={t('providers.secretRef')} name="secretRef" placeholder="env:ZIPTV_SECRET_LICENSOR_A" hint={t('providers.secretRefHint')} />
         {type === 'm3u' ? (
           <Field label={t('providers.url')} name="url" type="url" />
+        ) : type === 'vendor_feed' ? (
+          <>
+            <Field label={t('feed.url')} name="url" type="url" placeholder="https://feeds.vendor.example/ziptv/v1" />
+            <Field label={t('feed.token')} name="token" type="password" autoComplete="new-password" hint={t('feed.tokenHint')} />
+            <Field label={t('feed.keyId')} name="keyId" defaultValue="k1" maxLength={64} required />
+            <TextArea label={t('feed.publicKey')} name="publicKey" required rows={3} maxLength={600} hint={t('feed.publicKeyHint')} />
+          </>
         ) : (
           <>
             <Field label={t('providers.server')} name="server" type="url" />
@@ -189,11 +209,21 @@ export function ProviderDetailPage() {
             [t('providers.next'), formatTime(provider.sync.nextAt)],
             [t('providers.every'), `${provider.syncIntervalHours} h`],
             [t('common.error'), provider.sync.error ?? '—'],
-            [t('common.streams'), `${provider.stats.streams} total · ${provider.stats.matched} matched · ${provider.stats.pending} pending · ${provider.stats.gone} gone`],
-            [t('providers.credential'), provider.credential ? `${provider.credential.source} · rotated ${formatDate(provider.credential.rotatedAt)}` : '—'],
+            [t('common.streams'), t('feed.streamStats', { total: provider.stats.streams, matched: provider.stats.matched, pending: provider.stats.pending, gone: provider.stats.gone })],
+            [t('providers.credential'), provider.credential ? t('feed.credentialRotated', { source: provider.credential.source, date: formatDate(provider.credential.rotatedAt) }) : '—'],
+            ...(provider.feed
+              ? ([
+                  [t('feed.position'), provider.feed.cursor ? <code key="c" className="text-xs">{provider.feed.cursor}</code> : t('feed.fullNext')],
+                  [t('feed.generatedAt'), formatTime(provider.feed.generatedAt)],
+                  [t('feed.keys'), provider.feed.keyIds.join(', ') || '—'],
+                ] as [string, React.ReactNode][])
+              : []),
           ]}
         />
       </Section>
+      <ConflictsSection providerId={provider.id} />
+      {provider.type === 'vendor_feed' && <ContentSection providerId={provider.id} />}
+      <JournalSection providerId={provider.id} />
       <ContractDialog open={editing} provider={provider} onClose={() => setEditing(false)} />
     </>
   );
@@ -238,5 +268,105 @@ function ContractDialog({ open, provider, onClose }: { open: boolean; provider: 
         </div>
       </form>
     </Dialog>
+  );
+}
+
+const LEVEL_TONE = { info: 'neutral', warning: 'warn', error: 'danger' } as const;
+
+/** 16.4 — what each sync did, and every refused feed or skipped item, newest first. */
+function JournalSection({ providerId }: { providerId: string }) {
+  const events = useQuery({ queryKey: ['provider-events', providerId], queryFn: () => api<ProviderSyncEventDto[]>(`/providers/${providerId}/events?limit=50`), refetchInterval: 15_000 });
+  return (
+    <Section title={t('feed.journal')} description={t('feed.journalHint')}>
+      <ErrorNote error={events.error} />
+      <DataTable
+        label={t('feed.journal')}
+        rows={events.data ?? []}
+        rowKey={(row) => row.id}
+        empty={events.isPending ? t('common.loading') : t('feed.journalEmpty')}
+        columns={[
+          { header: t('feed.when'), cell: (row) => formatTime(row.at), className: 'whitespace-nowrap' },
+          { header: t('feed.level'), cell: (row) => <Badge tone={LEVEL_TONE[row.level]}>{t(`feed.levels.${row.level}`)}</Badge> },
+          { header: t('feed.code'), cell: (row) => <code className="text-xs">{row.code}</code> },
+          { header: t('feed.message'), cell: (row) => <span className="break-words">{row.message}</span> },
+        ]}
+      />
+    </Section>
+  );
+}
+
+/** 16.4 — what needs a decision: grants beyond the licence, the review queue, skipped items. */
+function ConflictsSection({ providerId }: { providerId: string }) {
+  const conflicts = useQuery({ queryKey: ['provider-conflicts', providerId], queryFn: () => api<ProviderConflictsDto>(`/providers/${providerId}/conflicts`), refetchInterval: 30_000 });
+  const data = conflicts.data;
+  const total = data ? data.grantsBeyondFeed.length + data.skippedItems.length + (data.pendingStreams > 0 ? 1 : 0) : 0;
+  return (
+    <Section title={t('feed.conflicts')} description={total === 0 && data ? t('feed.noConflicts') : undefined}>
+      <ErrorNote error={conflicts.error} />
+      {data && data.pendingStreams > 0 && (
+        <p className="mb-3 text-sm">
+          <Link to={`/channels?review=${providerId}`} className="text-amber-200 hover:underline">
+            {t('feed.pendingStreams', { count: data.pendingStreams })}
+          </Link>
+        </p>
+      )}
+      {data && data.grantsBeyondFeed.length > 0 && (
+        <DataTable
+          label={t('feed.beyondFeed')}
+          rows={data.grantsBeyondFeed}
+          rowKey={(row) => row.grantId}
+          empty=""
+          columns={[
+            { header: t('common.channel'), cell: (row) => <Link to={`/channels/${row.channelId}`} className="text-amber-200 hover:underline">{row.channelName}</Link> },
+            { header: t('common.territory'), cell: (row) => row.territory },
+            { header: t('feed.reason'), cell: (row) => row.reason },
+          ]}
+        />
+      )}
+      {data && data.skippedItems.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1 text-sm font-medium">{t('feed.skipped', { count: data.skippedItems.length })}</p>
+          <ul className="space-y-1 text-sm text-fg-muted">
+            {data.skippedItems.map((item) => (
+              <li key={item.path}>
+                <code className="text-xs">{item.path}</code> — {item.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Section>
+  );
+}
+
+/** What a vendor feed delivered besides channels (sold through packages in Phase 17). */
+function ContentSection({ providerId }: { providerId: string }) {
+  const content = useQuery({ queryKey: ['provider-content', providerId], queryFn: () => api<ProviderContentDto>(`/providers/${providerId}/content`) });
+  const data = content.data;
+  return (
+    <Section title={t('feed.content')}>
+      <ErrorNote error={content.error} />
+      {data && (
+        <>
+          <div className="mb-4 grid gap-4 sm:grid-cols-3">
+            <Stat label={t('feed.movies')} value={data.movies} />
+            <Stat label={t('feed.series')} value={data.series} note={t('feed.episodes', { count: data.episodes })} />
+            <Stat label={t('feed.packages')} value={data.packages.filter((item) => item.status === 'active').length} />
+          </div>
+          <DataTable
+            label={t('feed.packages')}
+            rows={data.packages}
+            rowKey={(row) => row.externalId}
+            empty={t('feed.noPackages')}
+            columns={[
+              { header: t('common.name'), cell: (row) => row.name },
+              { header: t('feed.externalId'), cell: (row) => <code className="text-xs">{row.externalId}</code> },
+              { header: t('feed.items'), cell: (row) => row.items, className: 'tabular-nums' },
+              { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Badge> },
+            ]}
+          />
+        </>
+      )}
+    </Section>
   );
 }

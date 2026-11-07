@@ -17,6 +17,8 @@ export interface MediaToken {
   grant: MediaGrant | null;
   /** Archive tokens: the channel's catch-up rules (the URL is its live stream). */
   catchup?: CatchupInfo;
+  /** Licensed quality limit: HLS variants taller than this are left out of master playlists. */
+  maxHeight?: number;
 }
 
 /** Wire payload (inside the ciphertext): short keys keep segment URLs small. */
@@ -27,6 +29,8 @@ interface Payload {
   p: 's' | 'i' | 'a';
   g?: { k: 's' | 'x' | 'p'; i: string };
   c?: { m: CatchupMode; d: number; t?: string };
+  /** max picture height (quality limit) */
+  q?: number;
 }
 
 const VERSION = '2';
@@ -77,8 +81,8 @@ export class MediaTokenCodec {
     return this.nowSeconds();
   }
 
-  issue(url: string, headers: StreamHeaders | undefined, expiresAt: number, grant: MediaGrant): string {
-    const payload: Payload = { u: url, e: expiresAt, p: 's', g: { k: GRANT_CODES[grant.kind], i: grant.id } };
+  issue(url: string, headers: StreamHeaders | undefined, expiresAt: number, grant: MediaGrant, limits?: { maxHeight?: number | undefined }): string {
+    const payload: Payload = { u: url, e: expiresAt, p: 's', g: { k: GRANT_CODES[grant.kind], i: grant.id }, ...(limits?.maxHeight ? { q: limits.maxHeight } : {}) };
     if (headers && Object.keys(headers).length > 0) payload.h = headers;
     return this.encode(payload);
   }
@@ -126,6 +130,7 @@ export class MediaTokenCodec {
       purpose: tokenPurpose,
       grant: payload.g ? { kind: GRANT_KINDS[payload.g.k], id: payload.g.i } : null,
       ...(payload.c ? { catchup: { mode: payload.c.m, days: payload.c.d, template: payload.c.t ?? null } } : {}),
+      ...(payload.q ? { maxHeight: payload.q } : {}),
     };
   }
 
@@ -158,6 +163,7 @@ function isPayload(value: unknown): value is Payload {
     typeof candidate.e === 'number' &&
     (candidate.p === 's' || candidate.p === 'i' || candidate.p === 'a') &&
     (candidate.c === undefined || isCatchup(candidate.c)) &&
+    (candidate.q === undefined || (typeof candidate.q === 'number' && Number.isInteger(candidate.q) && candidate.q > 0)) &&
     (candidate.h === undefined || (typeof candidate.h === 'object' && candidate.h !== null)) &&
     (grant === undefined || (typeof grant === 'object' && grant !== null && (grant.k === 's' || grant.k === 'x' || grant.k === 'p') && typeof grant.i === 'string'))
   );

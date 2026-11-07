@@ -245,6 +245,9 @@ export class PlaybackService {
       const locator = target.locator;
       if (!locator) continue;
       const kind: StreamKind = target.kind === 'unknown' ? await this.deps.prober.probe(locator.url, locator.headers) : target.kind;
+      // A quality limit can only be enforced on HLS (variants are filtered); other formats would bypass it.
+      if (target.maxHeight && kind !== 'hls') continue;
+      const cap = target.maxHeight ? { maxHeight: target.maxHeight } : undefined;
       parts.push({
         candidates: planCandidates({
           kind,
@@ -253,7 +256,7 @@ export class PlaybackService {
           secureContext: request.secureContext,
           proxyEnabled: true,
           policy: 'proxy',
-          proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt, grant),
+          proxyUrl: () => this.deps.media.streamProxyPath(locator.url, locator.headers, expiresAt, grant, cap),
         }),
         subject: target.telemetry,
       });

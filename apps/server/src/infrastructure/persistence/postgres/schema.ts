@@ -12,6 +12,7 @@ import type { SubscriptionStatus } from '../../../domain/commerce/subscription.j
 import type { FeedHealthState, ProbeOutcome, RegionState } from '../../../domain/health/feed-health.js';
 import type { FailoverEventReason, IncidentKind, IncidentStatus, ProbeStepKind } from '../../../application/ports/health.js';
 import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../../domain/operator/catalog.js';
+import type { Quality } from '../../../domain/operator/vendor-feed.js';
 
 /**
  * Typed view of the database. This file is the single place where table and column names
@@ -515,6 +516,8 @@ export interface ProvidersTable {
   notes: Generated<string>;
   created_at: Generated<Date>;
   updated_at: Generated<Date>;
+  sync_cursor: string | null;
+  feed_generated_at: Date | null;
 }
 
 export interface ProviderCredentialsTable {
@@ -570,6 +573,7 @@ export interface ProviderStreamsTable {
   suggestion: string | null;
   first_seen_at: Generated<Date>;
   last_seen_at: Generated<Date>;
+  rights: NullableJson<StoredFeedRight[]>;
 }
 
 export interface ChannelFeedsTable {
@@ -598,6 +602,71 @@ export interface RightsGrantsTable {
   created_by: string | null;
   created_at: Generated<Date>;
   revoked_at: Date | null;
+  origin: Generated<'manual' | 'feed'>;
+  provider_id: string | null;
+  max_quality: Quality | null;
+}
+
+/** Rights a vendor feed delivered (JSON, dates as ISO strings). */
+export interface StoredFeedRight {
+  territories: string[];
+  devices: DeviceClass[];
+  models: BusinessModel[];
+  start: string;
+  end: string | null;
+  catchupDays: number;
+  maxQuality: Quality | null;
+}
+
+export interface ProviderVodTable {
+  id: string;
+  provider_id: string;
+  external_id: string;
+  type: 'movie' | 'series';
+  title: string;
+  year: number | null;
+  genres: Generated<string[]>;
+  genre_ids: Generated<string[]>;
+  poster: string | null;
+  plot: string | null;
+  duration_secs: number | null;
+  rating: number | null;
+  locator: string | null;
+  rights: JsonDefault<StoredFeedRight[]>;
+  packages: Generated<string[]>;
+  status: Generated<'active' | 'gone'>;
+  first_seen_at: Generated<Date>;
+  last_seen_at: Generated<Date>;
+}
+
+export interface ProviderEpisodesTable {
+  vod_id: string;
+  external_id: string;
+  season: number;
+  episode: number;
+  title: string;
+  duration_secs: number | null;
+  locator: string | null;
+}
+
+export interface ProviderPackagesTable {
+  id: string;
+  provider_id: string;
+  external_id: string;
+  name: string;
+  description: string | null;
+  status: Generated<'active' | 'gone'>;
+  updated_at: Generated<Date>;
+}
+
+export interface ProviderSyncEventsTable {
+  id: string;
+  provider_id: string;
+  at: Generated<Date>;
+  level: 'info' | 'warning' | 'error';
+  code: string;
+  message: string;
+  details: JsonDefault<Record<string, unknown>>;
 }
 
 export interface LineupsTable {
@@ -973,6 +1042,10 @@ export interface Database {
   provider_streams: ProviderStreamsTable;
   channel_feeds: ChannelFeedsTable;
   rights_grants: RightsGrantsTable;
+  provider_vod: ProviderVodTable;
+  provider_episodes: ProviderEpisodesTable;
+  provider_packages: ProviderPackagesTable;
+  provider_sync_events: ProviderSyncEventsTable;
   lineups: LineupsTable;
   lineup_channels: LineupChannelsTable;
   operator_favorites: OperatorFavoritesTable;

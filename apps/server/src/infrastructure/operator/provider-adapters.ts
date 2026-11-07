@@ -4,6 +4,9 @@ import type { CatalogBuild, CatchupInfo, StreamKind, StreamLocator } from '../..
 import { xtreamStreamUrl, xtreamTimeshiftUrl } from '../../domain/sources/xtream.js';
 import type { M3uProvider } from '../providers/m3u-provider.js';
 import type { XtreamProvider } from '../providers/xtream-provider.js';
+import type { FeedSignatures } from '../../application/ports/feed-signatures.js';
+import type { UpstreamClient } from '../http/upstream-client.js';
+import { VendorFeedAdapter } from './vendor-feed-adapter.js';
 
 const HEALTH_TIMEOUT_MS = 20_000;
 type OpenLocator = (sealed: string | null) => StreamLocator | null;
@@ -153,10 +156,17 @@ export class MockProviderAdapter implements ProviderAdapter {
   }
 }
 
-export function createProviderAdapters(deps: { m3u: M3uProvider; xtream: XtreamProvider; openLocator: OpenLocator }): ProviderAdapters {
+export function createProviderAdapters(deps: {
+  m3u: M3uProvider;
+  xtream: XtreamProvider;
+  openLocator: OpenLocator;
+  upstream: Pick<UpstreamClient, 'fetchBytes'>;
+  signatures: FeedSignatures;
+}): ProviderAdapters {
   return {
     m3u: new M3uProviderAdapter(deps.m3u, deps.openLocator),
     xtream: new XtreamProviderAdapter(deps.xtream),
     mock: new MockProviderAdapter(deps.openLocator),
+    vendor_feed: new VendorFeedAdapter({ upstream: deps.upstream, signatures: deps.signatures, openLocator: deps.openLocator }),
   };
 }

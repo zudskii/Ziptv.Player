@@ -16,7 +16,7 @@ import type { MediaGrant } from '../../application/ports/media-urls.js';
 import type { MediaTokenCodec } from '../crypto/media-token.js';
 import { destroyQuietly } from '../streams/destroy.js';
 import { collect, peekStream, rejoin } from '../streams/peek.js';
-import { isLiveMediaPlaylist, looksLikeHlsPlaylist, rewriteHlsPlaylist } from './hls-rewriter.js';
+import { capHlsVariants, isLiveMediaPlaylist, looksLikeHlsPlaylist, rewriteHlsPlaylist } from './hls-rewriter.js';
 
 const MAX_MANIFEST_BYTES = 5 * 1024 * 1024;
 const SNIFF_BYTES = 64;
@@ -95,10 +95,12 @@ export function createStreamProxyHandler(deps: StreamProxyDeps): RequestHandler 
       if (looksLikeHlsPlaylist(peeked.head)) {
         const manifest = await collect(peeked, MAX_MANIFEST_BYTES);
         if (!manifest) throw new AppError('UPSTREAM_ERROR', 502, 'Stream playlist is too large.');
-        const text = manifest.toString('utf8');
+        // A licensed quality limit travels in the token: taller variants are removed before anything else.
+        const text = token.maxHeight ? capHlsVariants(manifest.toString('utf8'), token.maxHeight) : manifest.toString('utf8');
+        const limits = token.maxHeight ? { maxHeight: token.maxHeight } : undefined;
         const mediaExpiry = isLiveMediaPlaylist(text) ? liveMediaExpiry(deps.tokens.now(), token.expiresAt) : token.expiresAt;
         const rewritten = rewriteHlsPlaylist(text, upstream.url, (absoluteUrl, role) =>
-          deps.tokens.issue(absoluteUrl, token.headers, role === 'media' ? mediaExpiry : token.expiresAt, grant),
+          deps.tokens.issue(absoluteUrl, token.headers, role === 'media' ? mediaExpiry : token.expiresAt, grant, limits),
           { strict: deps.strictManifests === true },
         );
         res.status(200);

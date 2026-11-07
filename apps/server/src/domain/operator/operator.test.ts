@@ -6,6 +6,7 @@ import { denialReason, findCoveringGrant, type RightsGrant } from './rights.js';
 
 const at = new Date('2026-10-27T12:00:00Z');
 const grant = (patch: Partial<RightsGrant> = {}): RightsGrant => ({
+  maxQuality: null,
   id: 'g1',
   channelId: 'c1',
   territory: 'GE',

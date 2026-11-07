@@ -2,7 +2,7 @@ import type { CategoryDto, DuplicateGroupDto, LineupDto, MasterChannelDetailDto,
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { GitMerge, Plus, Search } from 'lucide-react';
 import { useDeferredValue, useState, type FormEvent } from 'react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useNavigate, useSearchParams } from 'react-router';
 
 import { Badge, Button, ConfirmDialog, DataTable, Dialog, ErrorNote, Field, PageHeader, Pager, SelectField, Tabs } from '../components/ui';
 import { api } from '../lib/api';
@@ -16,7 +16,10 @@ const PAGE = 50;
 
 /** 9.2 — the master catalog: channels, the review queue of provider streams, duplicates, categories. */
 export function ChannelsPage() {
-  const [tab, setTab] = useState<Tab>('channels');
+  // `?review=<providerId>` (from a provider's conflicts) opens that provider's review queue.
+  const [params] = useSearchParams();
+  const reviewProvider = params.get('review') ?? '';
+  const [tab, setTab] = useState<Tab>(reviewProvider ? 'review' : 'channels');
   return (
     <>
       <PageHeader title={t('common.channels')} description={t('channels.intro')} />
@@ -33,7 +36,7 @@ export function ChannelsPage() {
         ]}
       />
       {tab === 'channels' && <ChannelList />}
-      {tab === 'review' && <ReviewQueue />}
+      {tab === 'review' && <ReviewQueue initialProvider={reviewProvider} />}
       {tab === 'duplicates' && <Duplicates />}
       {tab === 'categories' && <Categories />}
       {tab === 'lineups' && <Lineups />}
@@ -168,9 +171,9 @@ function CreateChannelDialog({ open, onClose, onCreated }: { open: boolean; onCl
   );
 }
 
-function ReviewQueue() {
+function ReviewQueue({ initialProvider = '' }: { initialProvider?: string }) {
   const { can } = useAuth();
-  const [providerId, setProviderId] = useState('');
+  const [providerId, setProviderId] = useState(initialProvider);
   const [offset, setOffset] = useState(0);
   const providers = useQuery({ queryKey: ['providers'], queryFn: () => api<ProviderDto[]>('/providers'), enabled: can('providers:read') });
   const streams = useQuery({

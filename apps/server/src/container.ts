@@ -41,6 +41,8 @@ import { HmacUnlockTokens } from './infrastructure/crypto/unlock-tokens.js';
 import { PgParentalRepository } from './infrastructure/persistence/postgres/repositories/parental.repository.js';
 import { PgLibraryRepository } from './infrastructure/persistence/postgres/repositories/library.repository.js';
 import { LibraryService } from './application/identity/library.service.js';
+import { Ed25519FeedSignatures } from './infrastructure/crypto/feed-signatures.js';
+import { PgProviderFeedRepository } from './infrastructure/persistence/postgres/repositories/provider-feed.repository.js';
 import { VodBrowseService } from './application/catalog/vod-browse.service.js';
 import { PgVodBrowseRepository } from './infrastructure/persistence/postgres/repositories/vod-browse.repository.js';
 import { ProfileService } from './application/identity/profile.service.js';
@@ -430,8 +432,11 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
   // --- operator catalog (licensed channels, ZP-ENT-03) --------------------------------------------
   const secretStore = new LocalSecretStore(cipher);
   const operatorCatalog = new PgOperatorCatalogRepository(db);
-  const providerAdapters = createProviderAdapters({ m3u, xtream, openLocator: (sealed) => secrets.openLocator(sealed) });
-  const providerConnections = new ProviderConnections({ secrets: secretStore, urlPolicy });
+  const feedSignatures = new Ed25519FeedSignatures();
+  const providerAdapters = createProviderAdapters({ m3u, xtream, openLocator: (sealed) => secrets.openLocator(sealed), upstream, signatures: feedSignatures });
+  // Production fetches vendor feeds over HTTPS only; tests and development may use plain HTTP.
+  const providerConnections = new ProviderConnections({ secrets: secretStore, urlPolicy, allowHttpFeeds: config.env !== 'production' });
+  const providerFeeds = new PgProviderFeedRepository(db);
   const operator = new OperatorService({
     catalog: operatorCatalog,
     adapters: providerAdapters,
@@ -446,7 +451,20 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
     health: healthRepository,
     entitlements,
   });
-  const providerSync = new ProviderSyncService({ catalog: operatorCatalog, adapters: providerAdapters, connections: providerConnections, secrets, clock, logger: logger.child({ module: 'provider-sync' }) });
+  const providerSync = new ProviderSyncService({
+    catalog: operatorCatalog,
+    adapters: providerAdapters,
+    connections: providerConnections,
+    secrets,
+    clock,
+    logger: logger.child({ module: 'provider-sync' }),
+    feeds: providerFeeds,
+    // A feed changed rights: viewer catalogue caches go; viewings a revoked grant allowed stop now.
+    onRightsChanged: async (revokedChannelIds) => {
+      operator.forget();
+      for (const channelId of revokedChannelIds) await authorization.revalidateChannel(channelId);
+    },
+  });
   const myList = new MyListService({ list: listRepository, sources: sourceRepository, catalog: catalogRepository, cache, artwork, operatorFavorites: (viewer) => operator.favoriteListItems(viewer) });
   const watch = new WatchStateService({ progress: progressRepository, history: historyRepository, cache, artwork });
   const epg = new EpgService({
@@ -652,6 +670,8 @@ export function buildContainer(config: AppConfig, logger: Logger, options: Conta
       connections: providerConnections,
       secrets: secretStore,
       sync: providerSync,
+      feeds: providerFeeds,
+      signatures: feedSignatures,
       jobs,
       clock,
       allowMockProviders: config.operator.allowMockProviders,

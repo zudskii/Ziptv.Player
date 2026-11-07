@@ -73,8 +73,11 @@ const Credential = z.union([
 // Mock (development) channels; `catchup` = the stream's archive, M3U conventions.
 const MockCatchup = z.object({ mode: z.enum(['default', 'append', 'shift', 'flussonic']), days: z.number().int().min(1).max(30), template: z.string().max(2_000).optional() }).strict();
 const MockChannel = z.object({ id: z.string().min(1).max(120), name: Name, url: HttpUrl, tvgId: z.string().max(200).optional(), group: z.string().max(120).optional(), logo: HttpUrl.optional(), kind: z.enum(['hls', 'dash', 'mpegts', 'flv', 'progressive']).optional(), catchup: MockCatchup.optional() }).strict();
-const ProviderConfig = z.object({ channels: z.array(MockChannel).max(5_000).optional(), notes: z.string().max(2_000).optional() }).strict();
+// Vendor feeds: the Ed25519 public keys the vendor signs its feed with (key rotation = several ids).
+const FeedPublicKey = z.object({ id: z.string().trim().regex(/^[A-Za-z0-9._-]{1,64}$/), key: z.string().trim().min(40).max(600) }).strict();
+const ProviderConfig = z.object({ channels: z.array(MockChannel).max(5_000).optional(), publicKeys: z.array(FeedPublicKey).min(1).max(5).optional(), notes: z.string().max(2_000).optional() }).strict();
 const SyncHours = z.number().int().min(1).max(168);
+const EventsQuery = z.object({ limit: z.coerce.number().int().min(1).max(200).default(50) }).strict();
 const CreateProviderBody = z.object({ name: Name, slug: Slug.optional(), type: z.enum(PROVIDER_TYPES), credential: Credential.optional(), config: ProviderConfig.optional(), syncIntervalHours: SyncHours.optional() }).strict();
 const UpdateProviderBody = z
   .object({
@@ -134,6 +137,7 @@ const GrantBody = z
     contractRef: z.string().trim().min(1).max(200),
     /** Catch-up rights (days back; 0/absent = live only). */
     catchupDays: z.number().int().min(0).max(30).optional(),
+    maxQuality: z.enum(['sd', 'hd', 'fhd', 'uhd']).nullable().optional(),
   })
   .strict();
 const CreateLineupBody = z.object({ name: Name, slug: Slug.optional(), country: Country, status: z.enum(['draft', 'active']).optional() }).strict();
@@ -286,6 +290,16 @@ export function createAdminRoutes(services: AdminServices, limit: RateLimiterFac
   });
   r.get('/providers/:id/health', 'providers:read', async (req, res) => {
     res.json(await catalog.health(id(req, 'Provider id')));
+  });
+  r.get('/providers/:id/events', 'providers:read', async (req, res) => {
+    const { limit } = parseInput(EventsQuery, req.query, 'Journal filter');
+    res.json(await catalog.events(id(req, 'Provider id'), limit));
+  });
+  r.get('/providers/:id/conflicts', 'providers:read', async (req, res) => {
+    res.json(await catalog.conflicts(id(req, 'Provider id')));
+  });
+  r.get('/providers/:id/content', 'providers:read', async (req, res) => {
+    res.json(await catalog.content(id(req, 'Provider id')));
   });
 
   // --- ingestion review ------------------------------------------------------------------------

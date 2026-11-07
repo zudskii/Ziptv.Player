@@ -155,12 +155,14 @@ export function ChannelDetailPage() {
             { header: t('common.model'), cell: (row) => row.businessModels.join(', ') },
             { header: t('common.window'), cell: (row) => t('catalog.windowRange', { from: formatDate(row.startAt), to: row.endAt ? formatDate(row.endAt) : t('catalog.openEnded') }), className: 'whitespace-nowrap' },
             { header: t('common.catchup'), cell: (row) => (row.catchupDays > 0 ? t('catalog.days', { n: row.catchupDays }) : '—'), className: 'tabular-nums' },
-            { header: t('common.contract'), cell: (row) => <code className="text-xs">{row.contractRef}</code> },
+            { header: t('feed.quality'), cell: (row) => (row.maxQuality ? t(`feed.qualities.${row.maxQuality}`) : t('feed.unlimited')) },
+            { header: t('common.contract'), cell: (row) => <div><code className="text-xs">{row.contractRef}</code>{row.origin === 'feed' && <p className="mt-0.5"><Badge tone="neutral">{t('feed.fromFeed')}</Badge></p>}</div> },
             { header: t('common.status'), cell: (row) => <Badge tone={row.status === 'active' ? 'ok' : 'neutral'}>{statusLabel(row.status)}</Badge> },
             {
               header: '',
               cell: (row) =>
-                can('rights:write') && row.status === 'active' ? (
+                // Feed grants follow the provider's signed feed (the next sync would bring them back).
+                can('rights:write') && row.status === 'active' && row.origin === 'manual' ? (
                   <Button tone="danger" onClick={() => setRevoking(row)}>
                     <Ban className="h-4 w-4" aria-hidden /> {t('channeldetail.revoke')}
                   </Button>
@@ -266,7 +268,7 @@ function GrantDialog({ open, channelId, onClose }: { open: boolean; channelId: s
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const value = (key: string) => String(form.get(key) ?? '').trim();
-    request.mutate({ territory: value('territory').toUpperCase() || '*', deviceClasses: devices, businessModels: models, startAt: fromDateInput(value('start')) ?? new Date().toISOString(), endAt: fromDateInput(value('end')), contractRef: value('contract'), catchupDays: Number(value('catchup') || 0) });
+    request.mutate({ territory: value('territory').toUpperCase() || '*', deviceClasses: devices, businessModels: models, startAt: fromDateInput(value('start')) ?? new Date().toISOString(), endAt: fromDateInput(value('end')), contractRef: value('contract'), catchupDays: Number(value('catchup') || 0), maxQuality: value('quality') || null });
   };
   return (
     <Dialog open={open} title={t('channeldetail.requestTitle')} onClose={onClose}>
@@ -297,6 +299,13 @@ function GrantDialog({ open, channelId, onClose }: { open: boolean; channelId: s
           <Field label={t('channeldetail.until')} name="end" type="date" />
         </div>
         <Field label={t('channeldetail.catchupDays')} name="catchup" type="number" min={0} max={30} defaultValue="0" />
+        <SelectField label={t('feed.qualityLimit')} name="quality" defaultValue="">
+          <option value="">{t('feed.unlimited')}</option>
+          <option value="sd">{t('feed.qualities.sd')}</option>
+          <option value="hd">{t('feed.qualities.hd')}</option>
+          <option value="fhd">{t('feed.qualities.fhd')}</option>
+          <option value="uhd">{t('feed.qualities.uhd')}</option>
+        </SelectField>
         <Field label={t('channeldetail.contractRef')} name="contract" required maxLength={200} />
         <ErrorNote error={request.error} />
         <div className="flex justify-end gap-2">

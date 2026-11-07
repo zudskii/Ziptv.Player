@@ -14,8 +14,8 @@ export class SignedMediaUrls implements MediaUrls {
     return use === 'export' ? this.tokens.newExpiry(this.exportTtlSeconds) : this.tokens.newExpiry();
   }
 
-  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number, grant: MediaGrant): string {
-    return `${this.mediaPrefix}/stream/${this.tokens.issue(url, headers, expiresAt, grant)}`;
+  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number, grant: MediaGrant, limits?: { maxHeight: number }): string {
+    return `${this.mediaPrefix}/stream/${this.tokens.issue(url, headers, expiresAt, grant, limits)}`;
   }
 
   archiveProxyTemplate(url: string, headers: StreamHeaders, catchup: CatchupInfo, expiresAt: number, grant: MediaGrant): string {

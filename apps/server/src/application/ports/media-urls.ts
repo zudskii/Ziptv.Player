@@ -17,7 +17,8 @@ export interface MediaUrls {
   /** Expiry (unix seconds) for a new playback plan, or for links written into an exported playlist. */
   newStreamExpiry(use?: 'playback' | 'export'): number;
   /** Path (relative to the API origin) of the stream proxy for one upstream URL. */
-  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number, grant: MediaGrant): string;
+  /** `limits.maxHeight`: the proxy leaves out HLS variants taller than this (licensed quality limit). */
+  streamProxyPath(url: string, headers: StreamHeaders, expiresAt: number, grant: MediaGrant, limits?: { maxHeight: number }): string;
   /**
    * Catch-up template (path relative to the API origin, with `{utc}` / `{utcend}` placeholders)
    * for an exported channel: the player fills in the programme, the server builds the archive

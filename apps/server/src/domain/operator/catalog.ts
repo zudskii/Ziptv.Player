@@ -11,7 +11,7 @@ export type DeviceClass = (typeof DEVICE_CLASSES)[number];
 export const BUSINESS_MODELS = ['subscription', 'fast', 'b2b'] as const;
 export type BusinessModel = (typeof BUSINESS_MODELS)[number];
 
-export const PROVIDER_TYPES = ['m3u', 'xtream', 'mock'] as const;
+export const PROVIDER_TYPES = ['m3u', 'xtream', 'mock', 'vendor_feed'] as const;
 export type ProviderType = (typeof PROVIDER_TYPES)[number];
 export type ProviderStatus = 'active' | 'paused' | 'terminated';
 

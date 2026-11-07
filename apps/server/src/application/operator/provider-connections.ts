@@ -12,8 +12,14 @@ export class ProviderConnections {
     private readonly deps: {
       secrets: SecretStore;
       urlPolicy: UrlPolicy;
+      /** Tests and development: plain-HTTP vendor feeds (production requires HTTPS). */
+      allowHttpFeeds?: boolean;
     },
   ) {}
+
+  private get allowHttpFeeds(): boolean {
+    return this.deps.allowHttpFeeds === true;
+  }
 
   async open(provider: ProviderRecord): Promise<ProviderConnection> {
     if (provider.type === 'mock') return { type: 'mock' };
@@ -47,6 +53,11 @@ export class ProviderConnections {
         if (!text('username') || !text('password')) throw AppError.validation('Xtream credentials need server, username and password.');
         return { type: 'xtream', server: server.href, username: text('username'), password: text('password') };
       }
+      case 'vendor_feed': {
+        const url = this.url(text('url'));
+        if (url.protocol !== 'https:' && !this.allowHttpFeeds) throw AppError.validation('Vendor feeds are fetched over HTTPS.');
+        return { type: 'vendor_feed', url: url.href, token: text('token') || null };
+      }
       case 'mock':
         return { type: 'mock' };
     }
@@ -55,7 +66,7 @@ export class ProviderConnections {
   /** Host shown in the console (never the path/query, which may hold tokens). */
   hostOf(connection: ProviderConnection): string {
     if (connection.type === 'mock') return 'mock';
-    return new URL(connection.type === 'm3u' ? connection.url : connection.server).host;
+    return new URL(connection.type === 'xtream' ? connection.server : connection.url).host;
   }
 
   private url(value: string): URL {

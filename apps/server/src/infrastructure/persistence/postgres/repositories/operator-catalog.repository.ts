@@ -53,6 +53,7 @@ function toProvider(row: ProviderRow): ProviderRecord {
       costCurrency: row.cost_currency,
       notes: row.notes,
     },
+    feed: { cursor: row.sync_cursor, generatedAt: row.feed_generated_at },
     createdAt: row.created_at,
   };
 }
@@ -107,6 +108,9 @@ function toGrant(row: Selectable<RightsGrantsTable>): StoredGrant {
     status: row.status,
     contractRef: row.contract_ref,
     catchupDays: row.catchup_days,
+    maxQuality: row.max_quality,
+    origin: row.origin,
+    providerId: row.provider_id,
     createdBy: row.created_by,
     createdAt: row.created_at,
     revokedAt: row.revoked_at,
@@ -565,6 +569,7 @@ export class PgOperatorCatalogRepository implements OperatorCatalogRepository {
         end_at: input.endAt,
         contract_ref: input.contractRef,
         catchup_days: input.catchupDays,
+        max_quality: input.maxQuality ?? null,
         created_by: input.createdBy,
       })
       .returningAll()

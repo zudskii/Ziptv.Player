@@ -12,12 +12,15 @@ import type {
   MasterChannelDto,
   MasterChannelPageDto,
   MasterChannelStatsDto,
+  ProviderConflictsDto,
+  ProviderContentDto,
   ProviderCredentialInput,
   ProviderDto,
   ProviderHealthDto,
   ProviderStreamDto,
   ProviderStreamPageDto,
   ProviderStreamStatus,
+  ProviderSyncEventDto,
   ReviewStreamRequest,
   RightsGrantDto,
   UpdateFeedRequest,
@@ -32,6 +35,9 @@ import { playableFeeds } from '../../domain/operator/feeds.js';
 import { normalizeChannelName } from '../../domain/shared/text.js';
 import { actorOf, type AdminContext, type StaffPrincipal } from '../admin/principal.js';
 import { AppError } from '../errors.js';
+import { beyondFeed } from '../../domain/operator/vendor-feed.js';
+import type { FeedSignatures } from '../ports/feed-signatures.js';
+import type { ProviderFeedRepository } from '../ports/provider-feed-repository.js';
 import type { AdminTransaction, AdminUnitOfWork } from '../ports/admin.js';
 import type { ConsoleQueries } from '../ports/console.js';
 import type { ChangeHandler, ChangeRequestService } from '../admin/change-requests.service.js';
@@ -58,7 +64,10 @@ export class CatalogAdminService {
       adapters: ProviderAdapters;
       connections: ProviderConnections;
       secrets: SecretStore;
-      sync: Pick<ProviderSyncService, 'attach'>;
+      sync: Pick<ProviderSyncService, 'attach' | 'afterManualMatch'>;
+      /** Vendor feeds: sync journal, delivered content, signing keys. */
+      feeds?: ProviderFeedRepository;
+      signatures?: FeedSignatures;
       jobs?: JobKicker;
       clock: Clock;
       /** Development providers (channel list typed into the console); off in production. */
@@ -82,6 +91,7 @@ export class CatalogAdminService {
 
   async createProvider(actor: StaffPrincipal, input: CreateProviderRequest, context: AdminContext): Promise<ProviderDto> {
     if (input.type === 'mock' && !this.deps.allowMockProviders) throw AppError.validation('Mock providers are disabled on this server.');
+    this.checkFeedKeys(input.type, input.config);
     if (input.type !== 'mock' && input.config?.['channels'] !== undefined) throw AppError.validation('Only mock providers take a channel list.');
     const slug = slugify(input.slug ?? input.name);
     const credential = input.credential ? await this.credential(input.type, input.credential) : null;
@@ -108,6 +118,7 @@ export class CatalogAdminService {
   async updateProvider(actor: StaffPrincipal, id: string, input: UpdateProviderRequest, context: AdminContext): Promise<ProviderDto> {
     const before = await this.requireProvider(id);
     if (before.type !== 'mock' && input.config?.['channels'] !== undefined) throw AppError.validation('Only mock providers take a channel list.');
+    if (input.config !== undefined) this.checkFeedKeys(before.type, input.config);
     const after = await this.write(async (catalog, audit) => {
       const updated = await catalog.updateProvider(id, {
         ...(input.name !== undefined ? { name: input.name.trim() } : {}),
@@ -174,7 +185,8 @@ export class CatalogAdminService {
    * channel from other providers (and later syncs) is recognised automatically.
    */
   async review(actor: StaffPrincipal, streamId: string, decision: ReviewStreamRequest, context: AdminContext): Promise<ProviderStreamDto> {
-    if (!(await this.deps.catalog.findStream(streamId))) throw AppError.notFound('Stream');
+    const previous = await this.deps.catalog.findStream(streamId);
+    if (!previous) throw AppError.notFound('Stream');
     await this.write(async (catalog, audit) => {
       // Decided on the locked current state: concurrent reviewers and the sync worker serialise here.
       const stream = (await catalog.findStream(streamId, { lock: true }))!;
@@ -214,8 +226,64 @@ export class CatalogAdminService {
       }
     });
     const updated = (await this.deps.catalog.findStream(streamId))!;
+    // A vendor feed's rights follow the stream to the channel it was matched to (and leave the old one).
+    await this.deps.sync.afterManualMatch(updated, updated.channelId, previous.channelId);
     const suggestion = updated.suggestion ? await this.deps.catalog.findChannels([updated.suggestion]) : [];
     return toStreamDto(updated, new Map(suggestion.map((channel) => [channel.id, channel])));
+  }
+
+  /** The sync journal of a provider, newest first. */
+  async events(id: string, limit: number): Promise<ProviderSyncEventDto[]> {
+    await this.requireProvider(id);
+    const events = (await this.deps.feeds?.events(id, limit)) ?? [];
+    return events.map((event) => ({ id: event.id, at: event.at.toISOString(), level: event.level, code: event.code, message: event.message, details: event.details }));
+  }
+
+  /** What a vendor feed delivered besides channels. */
+  async content(id: string): Promise<ProviderContentDto> {
+    await this.requireProvider(id);
+    return (await this.deps.feeds?.content(id)) ?? { movies: 0, series: 0, episodes: 0, packages: [], recent: [] };
+  }
+
+  /**
+   * What needs a decision for a provider: staff grants that go beyond what its feed licenses (the
+   * operator would offer more than it bought), streams waiting for review, items the last sync skipped.
+   */
+  async conflicts(id: string): Promise<ProviderConflictsDto> {
+    const provider = await this.requireProvider(id);
+    const channelIds = (await this.deps.feeds?.feedChannels(id)) ?? [];
+    const [grants, channels, events] = await Promise.all([this.deps.catalog.grantsOf(channelIds), this.deps.catalog.findChannels(channelIds), this.deps.feeds?.events(id, 20) ?? Promise.resolve([])]);
+    const names = new Map(channels.map((channel) => [channel.id, channel.name]));
+    const grantsBeyondFeed: ProviderConflictsDto['grantsBeyondFeed'] = [];
+    for (const channelId of channelIds) {
+      const active = grants.filter((grant) => grant.channelId === channelId && grant.status === 'active');
+      const feed = active.filter((grant) => grant.origin === 'feed' && grant.providerId === id);
+      for (const grant of active.filter((item) => item.origin === 'manual')) {
+        const reason = beyondFeed(grant, feed);
+        if (reason) grantsBeyondFeed.push({ grantId: grant.id, channelId, channelName: names.get(channelId) ?? channelId, territory: grant.territory, reason });
+      }
+    }
+    // Items the most recent successful sync skipped (journalled just before its "sync_ok").
+    const end = events.findIndex((event) => event.code === 'sync_ok' || event.level === 'error');
+    const report = end >= 0 && events[end]!.code === 'sync_ok' && events[end + 1]?.code === 'items_skipped' ? events[end + 1]! : null;
+    const skipped = (report?.details['issues'] as { path: string; message: string }[] | undefined) ?? [];
+    return { grantsBeyondFeed, pendingStreams: provider.stats.pending, skippedItems: skipped };
+  }
+
+  /** Vendor feeds are signed: at least one usable Ed25519 public key must be configured. */
+  private checkFeedKeys(type: ProviderRecord['type'], config: Record<string, unknown> | undefined): void {
+    const keys = config?.['publicKeys'];
+    if (type !== 'vendor_feed') {
+      if (keys !== undefined) throw AppError.validation('Only vendor feeds take signing keys.');
+      return;
+    }
+    if (!Array.isArray(keys) || keys.length === 0) throw AppError.validation('A vendor feed needs the public key(s) its feed is signed with.');
+    const ids = new Set<string>();
+    for (const key of keys as { id: string; key: string }[]) {
+      if (ids.has(key.id)) throw AppError.validation(`Key id "${key.id}" is used twice.`);
+      ids.add(key.id);
+      if (this.deps.signatures && !this.deps.signatures.isPublicKey(key.key)) throw AppError.validation(`Key "${key.id}" is not an Ed25519 public key (base64 of 32 bytes, or PEM).`);
+    }
   }
 
   // --- categories & channels ---------------------------------------------------------------------
@@ -402,6 +470,7 @@ export class CatalogAdminService {
             grant.startAt.getTime() === startAt.getTime() &&
             (grant.endAt?.getTime() ?? null) === (endAt?.getTime() ?? null) &&
             grant.catchupDays === (input.catchupDays ?? 0) &&
+            grant.maxQuality === (input.maxQuality ?? null) &&
             [...grant.deviceClasses].sort().join(',') === devices &&
             [...grant.businessModels].sort().join(',') === models,
         );
@@ -416,6 +485,7 @@ export class CatalogAdminService {
           endAt,
           contractRef: input.contractRef.trim(),
           catchupDays: input.catchupDays ?? 0,
+          maxQuality: input.maxQuality ?? null,
           // The person who asked for it; the approver is in the audit entry.
           createdBy: change.requestedBy,
         });
@@ -653,8 +723,18 @@ function toProviderDto(provider: ProviderRecord): ProviderDto {
       monthlyCost: provider.contract.monthlyCostMinor !== null && provider.contract.costCurrency ? { currency: provider.contract.costCurrency, amountMinor: provider.contract.monthlyCostMinor } : null,
       notes: provider.contract.notes,
     },
+    feed:
+      provider.type === 'vendor_feed'
+        ? { cursor: provider.feed.cursor, generatedAt: provider.feed.generatedAt?.toISOString() ?? null, keyIds: feedKeyIds(provider.config) }
+        : null,
     createdAt: provider.createdAt.toISOString(),
   };
+}
+
+/** Ids of the vendor's signing keys (the keys themselves are public, but the list is what staff check). */
+function feedKeyIds(config: Record<string, unknown>): string[] {
+  const keys = Array.isArray(config['publicKeys']) ? (config['publicKeys'] as unknown[]) : [];
+  return keys.flatMap((key) => (key && typeof key === 'object' && typeof (key as { id?: unknown }).id === 'string' ? [(key as { id: string }).id] : []));
 }
 
 /** Contract fields of a provider update (null clears a field). */
@@ -725,6 +805,9 @@ function toGrantDto(grant: StoredGrant): RightsGrantDto {
     endAt: grant.endAt?.toISOString() ?? null,
     contractRef: grant.contractRef,
     catchupDays: grant.catchupDays,
+    maxQuality: grant.maxQuality,
+    origin: grant.origin,
+    providerId: grant.providerId,
     status: grant.status,
     createdAt: grant.createdAt.toISOString(),
     revokedAt: grant.revokedAt?.toISOString() ?? null,

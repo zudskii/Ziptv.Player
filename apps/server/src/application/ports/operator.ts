@@ -1,6 +1,7 @@
 import type { CatchupInfo, StreamKind, StreamLocator } from '../../domain/catalog/model.js';
 import type { AliasKind, BusinessModel, DeviceClass, MatchMethod, ProviderStatus, ProviderType, StreamStatus } from '../../domain/operator/catalog.js';
 import type { RightsGrant } from '../../domain/operator/rights.js';
+import type { FeedIssue, FeedRight, Quality } from '../../domain/operator/vendor-feed.js';
 
 // ---------------------------------------------------------------------------------------------
 // Provider connectors
@@ -10,6 +11,7 @@ import type { RightsGrant } from '../../domain/operator/rights.js';
 export type ProviderConnection =
   | { type: 'm3u'; url: string }
   | { type: 'xtream'; server: string; username: string; password: string }
+  | { type: 'vendor_feed'; url: string; token: string | null }
   | { type: 'mock' };
 
 /** One channel a provider offers, as its connector reports it. */
@@ -27,6 +29,42 @@ export interface ProviderChannel {
   xtream: { id: number } | null;
   /** The provider's archive of this stream (catch-up), if any. */
   catchup: CatchupInfo | null;
+  /** Vendor feeds: the rights the vendor licenses this channel under (null = the feed says nothing; staff grants decide). */
+  rights?: FeedRight[] | null;
+}
+
+/** Movies/series a provider offers (vendor feeds), locators already sealed by the sync. */
+export interface ProviderVodItem {
+  externalId: string;
+  type: 'movie' | 'series';
+  title: string;
+  year: number | null;
+  genres: string[];
+  poster: string | null;
+  plot: string | null;
+  durationSecs: number | null;
+  rating: number | null;
+  locator: StreamLocator | null;
+  episodes: { externalId: string; season: number; episode: number; title: string; durationSecs: number | null; locator: StreamLocator }[];
+  rights: FeedRight[];
+  packages: string[];
+}
+
+/**
+ * Everything a full-catalogue provider (vendor feed) delivered in one sync: a complete snapshot
+ * (`full`) or the changes since `cursor`.
+ */
+export interface ProviderCatalogDelta {
+  full: boolean;
+  cursor: string;
+  generatedAt: Date;
+  channels: ProviderChannel[];
+  vod: ProviderVodItem[];
+  packages: { externalId: string; name: string; description: string | null; channelIds: string[]; vodIds: string[] }[];
+  deleted: { channels: string[]; vod: string[]; packages: string[] };
+  epgUrls: string[];
+  /** Items left out because they were invalid (the rest applies). */
+  issues: FeedIssue[];
 }
 
 export interface ProviderHealth {
@@ -45,6 +83,12 @@ export interface ProviderAdapter {
   /** Archive address of [start, end) on this stream; null when the stream has no usable archive. */
   resolveArchive(provider: ProviderRecord, connection: ProviderConnection, stream: ProviderStreamRecord, times: { start: Date; end: Date; now: Date }): Promise<StreamLocator | null>;
   health(provider: ProviderRecord, connection: ProviderConnection, signal: AbortSignal): Promise<ProviderHealth>;
+  /**
+   * Full-catalogue providers (channels, VOD, packages, rights — incremental): the changes since
+   * `cursor` (null = everything). Channel-list providers (M3U, Xtream) do not implement it and are
+   * synced with `listChannels`.
+   */
+  fetchCatalog?(provider: ProviderRecord, connection: ProviderConnection, cursor: string | null, signal: AbortSignal): Promise<ProviderCatalogDelta>;
 }
 
 export type ProviderAdapters = Readonly<Record<ProviderType, ProviderAdapter>>;
@@ -80,6 +124,8 @@ export interface ProviderRecord {
   stats: ProviderStats;
   credential: { secretRef: string; rotatedAt: Date } | null;
   contract: ProviderContract;
+  /** Incremental syncs: where the last one ended, and when the last feed applied was generated. */
+  feed: { cursor: string | null; generatedAt: Date | null };
   createdAt: Date;
 }
 
@@ -168,10 +214,15 @@ export interface NewGrant {
   endAt: Date | null;
   contractRef: string;
   catchupDays: number;
+  /** Highest licensed quality (null/absent = no limit). */
+  maxQuality?: Quality | null;
   createdBy: string | null;
 }
 
 export interface StoredGrant extends RightsGrant {
+  /** manual = made by staff; feed = kept in step with a vendor's signed feed by the sync. */
+  origin: 'manual' | 'feed';
+  providerId: string | null;
   contractRef: string;
   createdBy: string | null;
   createdAt: Date;
